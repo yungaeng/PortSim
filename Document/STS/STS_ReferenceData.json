@@ -1,0 +1,1254 @@
+{
+  "schema_version": "1.0",
+  "document_kind": "engineering_reference_not_runtime_config",
+  "analysis_date": "2026-09-23",
+  "project_objective": {
+    "basis": "user_clarification",
+    "portsim_goal": "Automate container transfer from ship through STS, AGV and yard crane to yard stacking, then quantify end-to-end time savings.",
+    "sts_goal": "Apply equipment parameters, physical conditions and sensor observations to automatically pick containers from the ship, transfer them to AGVs and continue with subsequent jobs.",
+    "parameter_role": "Inputs and constraints that determine automatic movement and control decisions.",
+    "primary_outputs": ["completed_automatic_transfers", "operation_times", "waiting_times", "end_to_end_completion_time", "time_savings_against_defined_baseline"],
+    "comparison_role": "Parameter sweeps and controller ON/OFF comparisons are secondary validation tools.",
+    "time_measurement": "Use simulation event time; account for equipment concurrency rather than summing equipment durations.",
+    "baseline_operation_definition": null
+  },
+  "repository_baseline": {
+    "branch": "junsoo",
+    "commit": "13e007e",
+    "code_modified": false,
+    "simulation_run": false
+  },
+  "status_definitions": {
+    "drawing_read": "scanned drawing manually read; not manufacturer revalidated",
+    "derived": "calculated from explicitly identified values",
+    "reference_typical": "generic reference; not confirmed installed",
+    "proposed": "project design suggestion",
+    "unknown": "null means unresolved, not zero/absent",
+    "current_code": "observed in repository baseline"
+  },
+  "sources": [
+    {
+      "id": "ga_j5300",
+      "file": "References/ga-zpmc-qc8-12.pdf",
+      "sha256": "bba9bfc3174e2e0da2b48d5b6b5bbeba5d008be7a48527af4e7e270f6f693a63",
+      "pages": 1,
+      "kind": "scanned_general_arrangement",
+      "drawing_number": "J5300",
+      "manufacturer_as_drawn": "ZPMC",
+      "project_as_drawn": "OMAN 65LT CONTAINER CRANE",
+      "item_as_drawn": "GENERAL ARRANGEMENT",
+      "structure_label": "PORT OF SALALAH",
+      "revision": null,
+      "date": null,
+      "crane_serial_numbers": null,
+      "read_method": "full-page visual inspection and specification/title crops"
+    },
+    {
+      "id": "sensor_reference",
+      "file": "References/STS_Crane_Sensor_Layout_AI_Reference.txt",
+      "sha256": "36b5444dfb869f3363ef92847433c129633908cfefa9dff70670615d69d3abb2",
+      "kind": "generic_sensor_layout_reference",
+      "instructions_treated_as_data": true,
+      "specific_crane_installation_evidence": false
+    },
+    {
+      "id": "bromma_load",
+      "url": "https://bromma.com/products/container-weighing/",
+      "scope": "generic twistlock load/under-spreader weight example only",
+      "accessed": "2026-09-23"
+    },
+    {
+      "id": "bromma_landed",
+      "url": "https://bromma.com/prevent-accidents-with-bromma-landing-and-hold-indication-system/",
+      "scope": "generic landed interlock example only",
+      "accessed": "2026-09-23"
+    },
+    {
+      "id": "nist_units",
+      "url": "https://nvlpubs.nist.gov/nistpubs/hb/2026/NIST.HB.44-2026.pdf",
+      "locator": "Appendix C, long ton conversion",
+      "scope": "unit conversion only; does not establish LT meaning in J5300",
+      "accessed": "2026-09-23"
+    }
+  ],
+  "identity_policy": "Do not merge the Oman/Salalah GA with the Busan DGT planning profile.",
+  "unit_policy": {
+    "analysis_units": [
+      "m",
+      "s",
+      "kg",
+      "N",
+      "N*m",
+      "rad"
+    ],
+    "ue_length_unit": "cm",
+    "m_to_cm": 100,
+    "mm_to_cm": 0.1,
+    "m_per_min_to_cm_per_s": 1.6666666666666667,
+    "unknown_values": null,
+    "force_torque_api_conversion": "Verify consuming API. If kg-cm-s based: N x100 and N*m x10000."
+  },
+  "coordinate_proposal": {
+    "status": "proposed",
+    "origin": "intersection of waterside rail top and STS centerline",
+    "x_positive": "landside",
+    "x_negative": "waterside",
+    "y_positive": "quay / gantry travel direction",
+    "z_positive": "up",
+    "drawing_to_world_transform": null,
+    "spreader_corner_socket_positions_m": {
+      "FL": null,
+      "FR": null,
+      "RL": null,
+      "RR": null
+    },
+    "note": "Current container long axis is Y. Define spreader forward/left before FL/FR/RL/RR mapping."
+  },
+  "geometry": {
+    "rail_gauge": {
+      "value": 30.48,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Rail Gage 30.48m"
+    },
+    "outreach": {
+      "value": 63.5,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Out reach 63.5m"
+    },
+    "backreach": {
+      "value": 25,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Back reach 25.0m"
+    },
+    "lift_above_rail": {
+      "value": 40,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Height of lift / Above rail 40.0m"
+    },
+    "lift_total": {
+      "value": 55.2,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Height of lift / Total 55.2m"
+    },
+    "lift_below_rail": {
+      "value": 15.2,
+      "unit": "m",
+      "status": "derived",
+      "formula": "55.2 - 40.0; matches 15200 side-view annotation"
+    },
+    "upper_structure_height": {
+      "value": 76.8,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, side elevation",
+      "raw": "APPROX. 76800",
+      "approximate": true,
+      "note": "dimension interpreted as mm; structural envelope only"
+    },
+    "raised_boom_top_height": {
+      "value": 116.2,
+      "unit": "m",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, side elevation, raised boom",
+      "raw": "APPROX. 116200",
+      "approximate": true,
+      "note": "dimension interpreted as mm; not hoisting height"
+    },
+    "lift_reference_point": {
+      "value": null,
+      "unit": "frame",
+      "status": "unknown",
+      "reason": "Detailed hook/spreader/headblock reference required"
+    },
+    "trolley_rail_height": {
+      "value": null,
+      "unit": "m",
+      "status": "unknown",
+      "reason": "Do not substitute 40m lift height"
+    },
+    "trolley_travel_limits": {
+      "value": null,
+      "unit": "m",
+      "status": "unknown",
+      "reason": "Map outreach/backreach dimension datums to crane local frame"
+    },
+    "rope_length_limits": {
+      "value": null,
+      "unit": "m",
+      "status": "unknown",
+      "reason": "Need trolley support elevation and full reeving"
+    },
+    "boom_rotation_limits": {
+      "value": null,
+      "unit": "rad",
+      "status": "unknown",
+      "reason": "Six-minute hoisting time does not specify angles"
+    },
+    "angle_annotations": {
+      "trim": {
+        "value": 3.5,
+        "unit": "deg",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "Trim 3.5°"
+      },
+      "list": {
+        "value": 5,
+        "unit": "deg",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "List 5°"
+      },
+      "skew": {
+        "value": 3,
+        "unit": "deg",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "Skew 3°"
+      },
+      "interpretation": "Signed ranges, mechanisms and anti-skew installation not established"
+    }
+  },
+  "capacity": {
+    "rated_under_spreader": {
+      "value": 65,
+      "unit": "LT",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Rated Load under Spreader 65LT"
+    },
+    "rated_payload_kg": {
+      "value": null,
+      "unit": "kg",
+      "status": "unknown",
+      "reason": "LT definition not explicit in supplied drawing"
+    },
+    "conditional_conversion": {
+      "status": "derived",
+      "active": false,
+      "condition": "manufacturer/source confirms LT means long ton",
+      "kg_per_long_ton": 1016.0469088,
+      "mass_kg": 66043.049072,
+      "source_id": "nist_units"
+    },
+    "spreader_tare": {
+      "value": null,
+      "unit": "kg",
+      "status": "unknown",
+      "reason": "not provided"
+    },
+    "headblock_tare": {
+      "value": null,
+      "unit": "kg",
+      "status": "unknown",
+      "reason": "not provided"
+    },
+    "trolley_mass": {
+      "value": null,
+      "unit": "kg",
+      "status": "unknown",
+      "reason": "not provided"
+    },
+    "container_cog": {
+      "value": null,
+      "unit": "m",
+      "status": "unknown",
+      "reason": "per-job input required"
+    },
+    "container_and_spreader_inertias": {
+      "value": null,
+      "unit": "kg*m^2",
+      "status": "unknown",
+      "reason": "not provided"
+    }
+  },
+  "drives": {
+    "hoist": {
+      "speed_points": [
+        {
+          "condition": "loaded",
+          "payload_value_as_drawn": 65,
+          "payload_unit_as_drawn": "LT",
+          "payload_kg": null,
+          "speed_m_per_min": 53,
+          "speed_m_per_s": 0.8833333333333333,
+          "speed_cm_per_s": 88.33333333333333,
+          "status": "drawing_read",
+          "conversion_status": "derived",
+          "source_id": "ga_j5300",
+          "locator": "page 1, Main Hoist speed table"
+        },
+        {
+          "condition": "loaded",
+          "payload_value_as_drawn": 50,
+          "payload_unit_as_drawn": "LT",
+          "payload_kg": null,
+          "speed_m_per_min": 59,
+          "speed_m_per_s": 0.9833333333333333,
+          "speed_cm_per_s": 98.33333333333333,
+          "status": "drawing_read",
+          "conversion_status": "derived",
+          "source_id": "ga_j5300",
+          "locator": "page 1, Main Hoist speed table"
+        },
+        {
+          "condition": "loaded",
+          "payload_value_as_drawn": 40,
+          "payload_unit_as_drawn": "LT",
+          "payload_kg": null,
+          "speed_m_per_min": 70,
+          "speed_m_per_s": 1.1666666666666667,
+          "speed_cm_per_s": 116.66666666666667,
+          "status": "drawing_read",
+          "conversion_status": "derived",
+          "source_id": "ga_j5300",
+          "locator": "page 1, Main Hoist speed table"
+        },
+        {
+          "condition": "loaded",
+          "payload_value_as_drawn": 25,
+          "payload_unit_as_drawn": "LT",
+          "payload_kg": null,
+          "speed_m_per_min": 87,
+          "speed_m_per_s": 1.45,
+          "speed_cm_per_s": 145,
+          "status": "drawing_read",
+          "conversion_status": "derived",
+          "source_id": "ga_j5300",
+          "locator": "page 1, Main Hoist speed table"
+        },
+        {
+          "condition": "empty_spreader",
+          "payload_value_as_drawn": null,
+          "payload_unit_as_drawn": null,
+          "payload_kg": null,
+          "speed_m_per_min": 170,
+          "speed_m_per_s": 2.8333333333333335,
+          "speed_cm_per_s": 283.3333333333333,
+          "status": "drawing_read",
+          "conversion_status": "derived",
+          "source_id": "ga_j5300",
+          "locator": "page 1, Main Hoist speed table",
+          "note": "empty_spreader is not zero suspended mass"
+        }
+      ],
+      "interpolation_policy": null,
+      "acceleration_mps2": null,
+      "deceleration_mps2": null,
+      "jerk_mps3": null,
+      "motors": {
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, Motors / Main Hoist",
+        "count": 2,
+        "power_each_kw": 335,
+        "shaft_rpm_as_drawn": [
+          650,
+          2085
+        ],
+        "operating_conditions": null
+      }
+    },
+    "main_trolley": {
+      "speed": {
+        "value": 240,
+        "unit": "m/min",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "240m/min"
+      },
+      "speed_mps": {
+        "value": 4,
+        "unit": "m/s",
+        "status": "derived",
+        "formula": "240 / 60"
+      },
+      "speed_cmps": {
+        "value": 400,
+        "unit": "cm/s",
+        "status": "derived",
+        "formula": "240 * 100 / 60"
+      },
+      "motor": {
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "count": null,
+        "power_kw_as_drawn": 224,
+        "shaft_rpm": 1650
+      }
+    },
+    "catenary_trolley": {
+      "speed": {
+        "value": 135,
+        "unit": "m/min",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "135m/min"
+      },
+      "speed_mps": {
+        "value": 2.25,
+        "unit": "m/s",
+        "status": "derived",
+        "formula": "135 / 60"
+      },
+      "speed_cmps": {
+        "value": 225,
+        "unit": "cm/s",
+        "status": "derived",
+        "formula": "135 * 100 / 60"
+      },
+      "motor": {
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "count": null,
+        "power_kw_as_drawn": 22.4,
+        "shaft_rpm": 1750
+      },
+      "main_trolley_synchronization_ratio": null
+    },
+    "gantry": {
+      "speed": {
+        "value": 60,
+        "unit": "m/min",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "60m/min"
+      },
+      "speed_mps": {
+        "value": 1,
+        "unit": "m/s",
+        "status": "derived",
+        "formula": "60 / 60"
+      },
+      "speed_cmps": {
+        "value": 100,
+        "unit": "cm/s",
+        "status": "derived",
+        "formula": "60 * 100 / 60"
+      },
+      "motors": {
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "count": 16,
+        "power_each_kw": 18.6,
+        "shaft_rpm": 1750
+      }
+    },
+    "boom_hoist": {
+      "time": {
+        "value": 6,
+        "unit": "min",
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "locator": "page 1, upper-right specification table",
+        "raw": "Boom Hoisting Time 6 min"
+      },
+      "time_s": {
+        "value": 360,
+        "unit": "s",
+        "status": "derived",
+        "formula": "6 * 60"
+      },
+      "motor": {
+        "status": "drawing_read",
+        "source_id": "ga_j5300",
+        "count": null,
+        "power_kw_as_drawn": 224,
+        "shaft_rpm": 1750
+      }
+    },
+    "missing_for_dynamic_model": [
+      "torque_speed_curves",
+      "gear_ratios",
+      "drum_effective_radii",
+      "drivetrain_efficiencies",
+      "rotational_inertias",
+      "brake_torque_and_timing",
+      "acceleration_deceleration_jerk",
+      "multi_motor_load_sharing"
+    ]
+  },
+  "electrical": {
+    "voltage": {
+      "value": 11,
+      "unit": "kV",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "11kV"
+    },
+    "phases": {
+      "value": 3,
+      "unit": "phase",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "3φ"
+    },
+    "frequency": {
+      "value": 50,
+      "unit": "Hz",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "50Hz"
+    },
+    "apparent_capacity": {
+      "value": 1718,
+      "unit": "kVA",
+      "status": "drawing_read",
+      "source_id": "ga_j5300",
+      "locator": "page 1, upper-right specification table",
+      "raw": "Electrical Capacity 1718kVA"
+    },
+    "power_factor": null,
+    "torque_current_model": null
+  },
+  "reeving": {
+    "status": "drawing_read",
+    "source_id": "ga_j5300",
+    "locator": "page 1, lower schematics",
+    "schematics_present": [
+      "main_hoist",
+      "trolley",
+      "boom_hoist",
+      "catenary_trolley"
+    ],
+    "detailed_topology": null,
+    "supporting_rope_parts": null,
+    "anchor_positions_m": null,
+    "sheave_diameters_m": null,
+    "rope_diameter_m": null,
+    "rope_stiffness": null,
+    "rope_damping": null,
+    "pretension_N": null,
+    "allowable_tension_N": null,
+    "note": "A rope tension device label does not establish a force sensor. Four current visual ropes do not establish actual reeving."
+  },
+  "sensors": [
+    {
+      "id": "S01",
+      "key": "wind",
+      "name": "풍향·풍속계",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_01_WIND_SENSOR",
+      "installed_on_reference_crane": null,
+      "typical_location": "차폐가 적은 상부 구조",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "upper_structure",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "wind_speed_mps",
+        "wind_direction",
+        "gust_mps"
+      ],
+      "controller_decisions": [
+        "speed_limit",
+        "operation_permission"
+      ],
+      "proposed_phase": 2,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S02",
+      "key": "boom_collision_lidar",
+      "name": "붐 충돌방지 LiDAR",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_02_BOOM_ANTI_COLLISION_LIDAR",
+      "installed_on_reference_crane": null,
+      "typical_location": "붐 양측, 선박 장애물 방향",
+      "quantity_example": {
+        "value": 2,
+        "status": "reference_typical"
+      },
+      "mount": {
+        "candidate_parent_frame": "boom",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "range_m",
+        "scan",
+        "valid"
+      ],
+      "controller_decisions": [
+        "warning",
+        "slowdown",
+        "stop"
+      ],
+      "proposed_phase": 2,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S03",
+      "key": "trolley_encoder",
+      "name": "트롤리 위치 엔코더",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_03_TROLLEY_POSITION_ENCODER",
+      "installed_on_reference_crane": null,
+      "typical_location": "트롤리/레일 기준 또는 구동계",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "trolley_or_drive",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "position_m"
+      ],
+      "controller_decisions": [
+        "trolley_position_control"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S04",
+      "key": "hoist_encoder",
+      "name": "권상 엔코더",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_04_HOIST_ENCODER",
+      "installed_on_reference_crane": null,
+      "typical_location": "기계실 드럼축/모터축/구동계",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "hoist_drive",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "shaft_angle_rad",
+        "shaft_speed_radps"
+      ],
+      "controller_decisions": [
+        "rope_length_estimate",
+        "spreader_height_estimate"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed",
+      "notes": [
+        "회전각-높이 변환에는 감속비/드럼 반경/줄걸이/신장 모델이 필요하다.",
+        "ASCII 배치도의 수직 위치는 실제 장착 위치가 아니다."
+      ]
+    },
+    {
+      "id": "S05",
+      "key": "twistlock_load",
+      "name": "트위스트록 하중 센서",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_05_LOAD_CELL",
+      "installed_on_reference_crane": null,
+      "typical_location": "스프레더 각 트위스트록 하중 경로",
+      "quantity_example": {
+        "value": 4,
+        "status": "reference_typical",
+        "condition": "single_container"
+      },
+      "mount": {
+        "candidate_parent_frame": "spreader_twistlock_load_path",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "load_fl_N",
+        "load_fr_N",
+        "load_rl_N",
+        "load_rr_N"
+      ],
+      "controller_decisions": [
+        "payload_load",
+        "eccentricity_estimate",
+        "overload"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed",
+      "notes": [
+        "스프레더 아래 컨테이너 하중 대상; 헤드블록/스프레더 자중을 포함하는 서스펜션 전체 하중과 구분.",
+        "4채널의 분담은 강성/접촉 또는 명시적 분배 가정이 필요하다."
+      ]
+    },
+    {
+      "id": "S06",
+      "key": "twistlock_state",
+      "name": "트위스트록 상태 센서",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_06_TWISTLOCK_STATE_SENSOR",
+      "installed_on_reference_crane": null,
+      "typical_location": "각 코너 잠금 기구",
+      "quantity_example": {
+        "value": 4,
+        "status": "reference_typical",
+        "condition": "single_container"
+      },
+      "mount": {
+        "candidate_parent_frame": "spreader_twistlock",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "corner_lock_states",
+        "valid"
+      ],
+      "controller_decisions": [
+        "loaded_hoist_permission"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S07",
+      "key": "landed",
+      "name": "착좌 센서",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_07_LANDED_SENSOR",
+      "installed_on_reference_crane": null,
+      "typical_location": "스프레더/트위스트록 주변 착좌 검출부",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "spreader_landed_pin",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "spreader_on_container_landed",
+        "valid"
+      ],
+      "controller_decisions": [
+        "lock_permission"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed",
+      "notes": [
+        "Landed를 TXT 권장 순서보다 앞당겨 1단계로 제안.",
+        "화물-AGV 지지 확인과 별개인 스프레더-컨테이너 착좌."
+      ]
+    },
+    {
+      "id": "S08",
+      "key": "spreader_camera",
+      "name": "스프레더 카메라",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_08_SPREADER_CAMERA",
+      "installed_on_reference_crane": null,
+      "typical_location": "코너/측면/중앙, 착지 목표 방향",
+      "quantity_example": {
+        "min": 1,
+        "max": 4,
+        "status": "reference_typical"
+      },
+      "mount": {
+        "candidate_parent_frame": "spreader",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "image",
+        "timestamp",
+        "valid"
+      ],
+      "controller_decisions": [
+        "alignment_estimate_from_perception"
+      ],
+      "proposed_phase": 2,
+      "phase_status": "proposed",
+      "notes": [
+        "정렬 오차는 영상 인식 또는 명시한 synthetic_pose 관측의 출력이며 카메라 자체 측정값과 구분."
+      ]
+    },
+    {
+      "id": "S09",
+      "key": "ttds",
+      "name": "Twin-Twenty Detection System",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_09_TTDS",
+      "installed_on_reference_crane": null,
+      "typical_location": "중앙 틈 및 컨테이너 존재 검출 광전 센서",
+      "quantity_example": {
+        "value": 7,
+        "status": "reference_typical",
+        "components": {
+          "gap_detection": 5,
+          "presence": 2
+        }
+      },
+      "mount": {
+        "candidate_parent_frame": "spreader_center",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "gap_detected",
+        "container_presence"
+      ],
+      "controller_decisions": [
+        "container_configuration",
+        "lock_mode_permission"
+      ],
+      "proposed_phase": 3,
+      "phase_status": "proposed",
+      "alternative_group": "container_configuration_detection"
+    },
+    {
+      "id": "S10",
+      "key": "length_gap_lidar",
+      "name": "컨테이너 길이/간극 LiDAR",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_10_CONTAINER_LENGTH_LIDAR",
+      "installed_on_reference_crane": null,
+      "typical_location": "컨테이너 상면을 향한 하향 스캔",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "spreader",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "scan",
+        "geometry",
+        "presence"
+      ],
+      "controller_decisions": [
+        "container_configuration"
+      ],
+      "proposed_phase": 3,
+      "phase_status": "proposed",
+      "alternative_group": "container_configuration_detection"
+    },
+    {
+      "id": "S11",
+      "key": "telescope_encoder",
+      "name": "스프레더 신축 엔코더",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_11_TELESCOPE_POSITION_ENCODER",
+      "installed_on_reference_crane": null,
+      "typical_location": "신축 빔 구동 기구",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "spreader_telescope",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "telescope_position_m"
+      ],
+      "controller_decisions": [
+        "spreader_length_mode"
+      ],
+      "proposed_phase": 3,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S12",
+      "key": "agv_position_lidar",
+      "name": "AGV 위치 LiDAR",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_12_AGV_VEHICLE_POSITION_LIDAR",
+      "installed_on_reference_crane": null,
+      "typical_location": "크레인 또는 인계 구역 고정 구조에서 AGV 방향",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "landside_transfer_frame",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "relative_position_m",
+        "heading_rad",
+        "valid"
+      ],
+      "controller_decisions": [
+        "agv_alignment",
+        "landing_permission"
+      ],
+      "proposed_phase": 1,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S13",
+      "key": "gantry_collision",
+      "name": "갠트리 충돌방지 센서",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_13_GANTRY_ANTI_COLLISION_SENSOR",
+      "installed_on_reference_crane": null,
+      "typical_location": "다리/보기 측 주행 방향",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "gantry_leg_or_bogie",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "obstacle_range_m",
+        "valid"
+      ],
+      "controller_decisions": [
+        "gantry_slowdown",
+        "gantry_stop"
+      ],
+      "proposed_phase": 2,
+      "phase_status": "proposed"
+    },
+    {
+      "id": "S14",
+      "key": "ship_profile",
+      "name": "선박 프로파일 스캐너",
+      "status": "reference_typical",
+      "source_id": "sensor_reference",
+      "source_section": "SENSOR_14_SHIP_PROFILING_SCANNER",
+      "installed_on_reference_crane": null,
+      "typical_location": "선박·컨테이너 적층 방향 하향 스캔",
+      "quantity_example": null,
+      "mount": {
+        "candidate_parent_frame": "boom_or_trolley",
+        "local_position_m": null,
+        "local_rotation_deg": null,
+        "status": "unknown"
+      },
+      "model": {
+        "range": null,
+        "sample_rate_hz": null,
+        "latency_s": null,
+        "noise_stddev": null,
+        "bias": null,
+        "resolution": null,
+        "fault_mode": null
+      },
+      "observations": [
+        "obstacle_profile",
+        "valid"
+      ],
+      "controller_decisions": [
+        "safe_travel_height"
+      ],
+      "proposed_phase": 2,
+      "phase_status": "proposed"
+    }
+  ],
+  "control_proposals": {
+    "status": "proposed",
+    "anti_sway": {
+      "installed_on_reference_crane": null,
+      "simulation_enabled": null,
+      "observations_needed": [
+        "signed_sway_x",
+        "signed_sway_y",
+        "angular_rates",
+        "rope_length",
+        "trolley_state"
+      ],
+      "pose_observation_source": null,
+      "algorithm": null,
+      "gains": null,
+      "actuator_mapping": null
+    },
+    "anti_skew": {
+      "installed_on_reference_crane": null,
+      "simulation_enabled": null,
+      "observations_needed": [
+        "relative_yaw",
+        "yaw_rate"
+      ],
+      "pose_observation_source": null,
+      "algorithm": null,
+      "gains": null,
+      "actuator_mapping": null,
+      "note": "Current angular locking must not count as control performance."
+    },
+    "additional_gaps": [
+      "gantry_position_feedback",
+      "hoist_and_travel_limits",
+      "brake_feedback",
+      "boom_position_feedback",
+      "actuator_specific_skew_feedback",
+      "payload_support_detection"
+    ],
+    "thresholds": {
+      "max_operating_wind_mps": null,
+      "overload_margin": null,
+      "landing_position_tolerance_m": null,
+      "landing_heading_tolerance_rad": null,
+      "obstacle_stop_distance_m": null,
+      "stale_measurement_timeout_s": null,
+      "unload_force_threshold_N": null
+    },
+    "sensor_message_fields": [
+      "sensor_id",
+      "simulation_timestamp_s",
+      "sequence",
+      "measured_value",
+      "valid",
+      "fault_code"
+    ],
+    "interlocks": [
+      "Separate empty-spreader ascent from loaded ascent.",
+      "Lock requires valid seating and size/mode state.",
+      "Loaded ascent requires all required locks valid and locked plus load/limit checks.",
+      "Unloading requires payload support and relieved lock load; spreader landed alone is insufficient.",
+      "Stale/missing sensor data is not a valid zero.",
+      "Controller uses observations, not hidden truth fallback."
+    ]
+  },
+  "current_code_observations": [
+    {
+      "file": "PortSim/Source/PortSim/QuayCrane.cpp",
+      "symbols": [
+        "AQuayCrane",
+        "Tick",
+        "UpdateRopes",
+        "GetSwayDegrees"
+      ],
+      "status": "current_code",
+      "details": "30m beam; four visual rope meshes; one suspension constraint; angular degrees locked; kinematic trolley drive; sway magnitude has no signed X/Y components."
+    },
+    {
+      "file": "PortSim/Source/PortSim/QuayCrane.cpp",
+      "symbols": [
+        "BeginPlay",
+        "ToggleLock"
+      ],
+      "status": "current_code",
+      "details": "Spreader 5000kg; single lock constraint/boolean rather than four sensed lock channels."
+    },
+    {
+      "file": "PortSim/Source/PortSim/TerminalAutomation.cpp",
+      "symbols": [
+        "BuildTerminal",
+        "DriveSpreaderTo"
+      ],
+      "status": "current_code",
+      "details": "Overrides TravelSpeed=350cm/s, Acceleration=220cm/s2, HoistSpeed=250cm/s; controller reads true positions."
+    },
+    {
+      "file": "PortSim/Source/PortSim/PortContainerActor.cpp",
+      "symbols": [
+        "BeginPlay"
+      ],
+      "status": "current_code",
+      "details": "Container mass fixed to 12000kg; not a drawing specification."
+    },
+    {
+      "file": "PortSim/Source/PortSim/TerminalFleet.cpp",
+      "symbols": [
+        "HoldFleetCargo",
+        "MoveAGV",
+        "TickRMGTransfer"
+      ],
+      "status": "current_code",
+      "details": "Cargo physics disabled while held by AGV/RMG and pose updated directly."
+    }
+  ],
+  "implementation_phases": [
+    {
+      "phase": 1,
+      "status": "proposed",
+      "scope": "single 40ft load/transfer, equipment profile, mechanics, sensor observations, state-dependent interlocks"
+    },
+    {
+      "phase": 2,
+      "status": "proposed",
+      "scope": "Apply wind/collision/profile/pose observations and sway/skew control to stable automatic movement and landing; comparisons are secondary validation."
+    },
+    {
+      "phase": 3,
+      "status": "proposed",
+      "scope": "Integrate ship-to-yard automation with AGV/RMG and event-based total-time savings; telescope/twin-lift only when required by handling scope."
+    }
+  ],
+  "validation_plan": {
+    "executed": false,
+    "acceptance_tolerances": null,
+    "scenarios": [
+      "unit_geometry_consistency",
+      "centered_and_eccentric_load_equilibrium",
+      "load_dependent_hoist_speed",
+      "single_lock_failure",
+      "landed_false_positive",
+      "sensor_stale_bias_failure",
+      "agv_alignment_and_support",
+      "anti_sway_skew_on_off",
+      "playback_rate_consistency"
+    ]
+  },
+  "adoption_gate": {
+    "runtime_ready": false,
+    "requires": [
+      "confirm_LT_definition",
+      "confirm_coordinate_and_lift_datums",
+      "provide_mass_reeving_drive_details",
+      "select_sensor_mounts_and_characteristics",
+      "define_controller_actuators_and_limits",
+      "implement_loader_and_validate"
+    ],
+    "unknown_fields_must_not_default_to_zero": true
+  }
+}

@@ -1,0 +1,555 @@
+{
+  "kind": "mixed_manufacturer_sensor_specs_and_simulation_assumptions",
+  "notes": [
+    "LT is provisionally treated as long ton; manufacturer confirmation remains outstanding.",
+    "Lift datum is provisionally the spreader centre. Trolley support clearance is assumed, not read from the GA.",
+    "Below 25 LT use the slowest-boundary loaded condition (87 m/min); interpolate linearly between documented loaded points.",
+    "Sensors are synthetic observations. Four corner loads use a quasi-static bilinear load split, not independent constraint reactions.",
+    "Positions, accelerations, sensor tolerances, masses and CoG below are simulation assumptions.",
+    "Site STS uses a reduced-order taut-rope suspension; roll/pitch constrained. Cable elasticity is diagnostic only. Motor and mount data are assumptions, not verified installation data.",
+    "Sensor metadata identifies manufacturer specifications separately from derived/assumed installation geometry. Source CSV IDs are mapped by function, not by number."
+  ],
+  "assumed_kg_per_LT": 1016.0469088,
+  "waterside_rail_x_m": -8.5,
+  "support_clearance_above_lift_m": 4,
+  "transfer_spreader_height_m": 19,
+  "trolley_acceleration_mps2": 1.5,
+  "gantry_acceleration_mps2": 1.0,
+  "hoist_acceleration_mps2": 1.0,
+  "default_container_mass_kg": 12000,
+  "spreader_mass_kg": 5000,
+  "container_cog_x_m": 0,
+  "container_cog_y_m": 0,
+  "container_cog_z_m": 0,
+  "sensor_sample_hz": 20,
+  "sensor_max_age_s": 0.15,
+  "position_sensor_bias_m": 0,
+  "load_estimate_bias_kg": 0,
+  "landing_tolerance_m": 0.18,
+  "seating_vertical_tolerance_m": 0.12,
+  "settle_speed_mps": 0.15,
+  "settle_time_s": 0.7,
+  "agv_position_tolerance_m": 0.05,
+  "agv_heading_tolerance_deg": 1,
+  "support_tolerance_m": 0.08,
+  "landing_speed_mps": 0.4,
+  "landing_slowdown_distance_m": 1.0,
+  "stage_timeout_s": 300,
+  "landing_sway_limit_deg": 1,
+  "auto_start_unload": true,
+  "dynamics": {
+    "kind": "unvalidated_simulation_assumptions",
+    "anti_sway": true,
+    "anti_skew": true,
+    "passive_damping_per_s": 0.06,
+    "anti_sway_velocity_gain": 2.0,
+    "skew_kp_nm_per_rad": 200000,
+    "skew_kd_nms_per_rad": 100000,
+    "skew_max_torque_nm": 50000,
+    "drum_radius_m": 1.3,
+    "gear_ratio": 24,
+    "efficiency": 0.9,
+    "reeving_parts_per_corner": 4,
+    "motor_count": 2,
+    "motor_max_torque_nm": 4920,
+    "motor_max_rpm": 2085,
+    "motor_inertia_kgm2": 10,
+    "rope_axial_rigidity_n": 80000000,
+    "rope_tension_limit_n": 250000,
+    "landing_skew_limit_deg": 0.5,
+    "wind_x_mps": 0,
+    "wind_y_mps": 0,
+    "wind_yaw_moment_nm": 0,
+    "wind_area_m2": 30,
+    "wind_drag_coefficient": 1.2
+  },
+  "sensor_mounts": [
+    {
+      "key": "wind",
+      "frame": "gantry",
+      "position_m": [
+        0,
+        0,
+        46
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m/s",
+      "minimum": 0,
+      "maximum": 60,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S07",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "자료에도 모델·좌표가 미공개. 기존 상부 장착 위치와 범위 가정을 유지.",
+      "reference_specs": {}
+    },
+    {
+      "key": "boom_collision_lidar",
+      "frame": "gantry",
+      "position_m": [
+        -40.25,
+        7.3,
+        44
+      ],
+      "rotation_deg": [
+        -5,
+        180,
+        90
+      ],
+      "unit": "m",
+      "minimum": 0.2,
+      "maximum": 80,
+      "fov_deg": 190,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S01",
+      "model": "SICK AOS502 STS / LMS511-10100S04",
+      "installation_status": "DERIVED",
+      "specification_status": "VERIFIED_PRODUCT",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://www.sick.com/media/docs/6/46/346/addendum_to_operating_instructions_aos502_sts_objektdetektionssysteme_en_im0065346.pdf"
+      ],
+      "source_notes": "매뉴얼 pp.11,16,20–23: 붐 양측 2대·감시영역 중앙·붐과 평행한 스캔면. 기존 ZPMC 원점에서 X=-8.5-63.5/2=-40.25 m로 파생; Y=±7.3 m·Z=44 m·5° 기울기는 형상 가정. DGT의 +X 해측과 엔진 +X 육측은 반대. 80 m는 명목 범위, 10% 반사율에서는 38 m. 반사율 모델은 미구현.",
+      "reference_specs": {
+        "product_scan_angle_deg": 190,
+        "nominal_range_m": 80,
+        "range_at_10_percent_remission_m": 38,
+        "scanner_count": 2,
+        "default_stop_depth_m": 3.5,
+        "default_warning_depth_m": 7.5,
+        "default_field_width_m": 50,
+        "minimum_crane_body_clearance_m": 0.5,
+        "field_evaluation": "reference_only_not_automatic_stop"
+      },
+      "additional_positions_m": [
+        [
+          -40.25,
+          -7.3,
+          44
+        ]
+      ]
+    },
+    {
+      "key": "trolley_encoder",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0.025,
+        0
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0,
+      "maximum": 1700,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S02",
+      "model": "SICK KH53 (1700 m option)",
+      "installation_status": "DERIVED",
+      "specification_status": "VERIFIED_PRODUCT",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://www.sick.com/media/docs/0/00/600/product_information_kh53_linear_encoders_en_im0011600.pdf"
+      ],
+      "source_notes": "제품자료 pp.2–4: 분해능 0.1 mm·반복성 0.3 mm·최대 속도 6.6 m/s. 1700 m 범위 옵션을 선택. 25 mm 간격을 로컬 +Y로 가정; 측정요소 기준면/전체 XYZ는 미확인. 장치 영점은 현 ZPMC 트롤리 최소 X=-72 m. 반복성은 정확도/균등 난수 오차로 변환하지 않음. 원문 pp.11–12에서 표준 KH53 N=25±10 mm, Advanced N=55±20 mm를 구분. CSV의 혼합 표기에서 표준형에 맞춰 25 mm 채택.",
+      "reference_specs": {
+        "resolution_m": 0.0001,
+        "repeatability_m": 0.0003,
+        "max_traversing_speed_mps": 6.6,
+        "read_head_nominal_gap_m": 0.025,
+        "possible_gap_options_m": [
+          0.025,
+          0.055
+        ],
+        "selected_gap_tolerance_m": 0.01,
+        "measuring_range_option_m": 1700,
+        "noise_model": "not_simulated"
+      },
+      "measurement_origin_m": -72,
+      "resolution_m": 0.0001,
+      "max_traversing_speed_mps": 6.6
+    },
+    {
+      "key": "hoist_encoder",
+      "frame": "gantry",
+      "position_m": [
+        20,
+        0,
+        43
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0,
+      "maximum": 80,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "자료에 없음",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "새 자료에 확정 수치가 없어 기존 시뮬레이션 가정을 유지.",
+      "reference_specs": {}
+    },
+    {
+      "key": "twistlock_load",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        -0.25
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "N",
+      "minimum": 0,
+      "maximum": 250000,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S03",
+      "model": "Bromma Load Sensing",
+      "installation_status": "ASSUMED",
+      "specification_status": "VERIFIED_LAYOUT_ONLY",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://bromma.com/wp-content/uploads/2019/03/Upgrade_Container_Weighing_LSS.pdf"
+      ],
+      "source_notes": "트위스트록당 1개 배치 원칙을 기존 4코너 모델에 적용. 기존 좌표·하중 센서 범위는 가정이며 정확한 ISO 피팅/OEM GA 치수는 제공 자료에 없음. 51 t 스프레더 정격을 센서 1개의 측정 한계로 사용하지 않음.",
+      "reference_specs": {
+        "sensors_per_twistlock": 1,
+        "modeled_corner_count": 4
+      }
+    },
+    {
+      "key": "twistlock_state",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        -0.25
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "boolean",
+      "minimum": 0,
+      "maximum": 1,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S04",
+      "model": "Bromma twistlock / landed reference",
+      "installation_status": "ASSUMED",
+      "specification_status": "VERIFIED_LAYOUT_ONLY",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://bromma.com/wp-content/uploads/2019/03/Upgrade_Container_Weighing_LSS.pdf"
+      ],
+      "source_notes": "트위스트록당 1개 배치 원칙을 기존 4코너 모델에 적용. 기존 좌표·하중 센서 범위는 가정이며 정확한 ISO 피팅/OEM GA 치수는 제공 자료에 없음. 51 t 스프레더 정격을 센서 1개의 측정 한계로 사용하지 않음.",
+      "reference_specs": {
+        "sensors_per_twistlock": 1,
+        "modeled_corner_count": 4
+      }
+    },
+    {
+      "key": "landed",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        -0.3
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "boolean",
+      "minimum": 0,
+      "maximum": 1,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S04",
+      "model": "Bromma twistlock / landed reference",
+      "installation_status": "ASSUMED",
+      "specification_status": "VERIFIED_LAYOUT_ONLY",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://bromma.com/wp-content/uploads/2019/03/Upgrade_Container_Weighing_LSS.pdf"
+      ],
+      "source_notes": "트위스트록당 1개 배치 원칙을 기존 4코너 모델에 적용. 기존 좌표·하중 센서 범위는 가정이며 정확한 ISO 피팅/OEM GA 치수는 제공 자료에 없음. 51 t 스프레더 정격을 센서 1개의 측정 한계로 사용하지 않음.",
+      "reference_specs": {
+        "sensors_per_twistlock": 1,
+        "modeled_corner_count": 4
+      }
+    },
+    {
+      "key": "spreader_camera",
+      "frame": "spreader",
+      "position_m": [
+        0,
+        0,
+        -0.3
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 50,
+      "fov_deg": 90,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S05",
+      "model": "Bromma Hawkeye · central pattern",
+      "installation_status": "ASSUMED",
+      "specification_status": "VERIFIED_LAYOUT_ONLY",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://bromma.com/wp-content/uploads/2025/11/Hawkeye_Final-Web-1.pdf"
+      ],
+      "source_notes": "공개 중앙 하부 카메라 패턴 1대를 선택. 최대 4대 구성 가능. XYZ·거리·FOV는 미공개이므로 가정. 광선은 진단용이며 영상/OCR 인식은 아님.",
+      "reference_specs": {
+        "maximum_cameras": 4,
+        "selected_cameras": 1,
+        "selected_pattern": "central underside"
+      }
+    },
+    {
+      "key": "ttds",
+      "frame": "spreader",
+      "position_m": [
+        0,
+        0,
+        -0.3
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "boolean",
+      "minimum": 0,
+      "maximum": 1,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S06",
+      "model": "Bromma TTDS · legacy reference",
+      "installation_status": "ASSUMED",
+      "specification_status": "LEGACY_UNVERIFIED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "자료의 38 mm 최소 간극·425/730 mm 치수는 구형 STS45 계열 참조. 현재 스프레더의 동일 모델/치수 기준면이 확인되지 않아 장착 Z로 대입하지 않음. TTDS 판별은 미구현.",
+      "reference_specs": {
+        "legacy_min_gap_m": 0.038,
+        "legacy_inner_from_main_beam_bottom_m": 0.425,
+        "legacy_outer_from_main_beam_bottom_m": 0.73,
+        "applied": false
+      }
+    },
+    {
+      "key": "length_gap_lidar",
+      "frame": "spreader",
+      "position_m": [
+        0,
+        0,
+        -0.3
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.01,
+      "maximum": 20,
+      "fov_deg": 120,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "자료에 없음",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "새 자료에 확정 수치가 없어 기존 시뮬레이션 가정을 유지.",
+      "reference_specs": {}
+    },
+    {
+      "key": "telescope_encoder",
+      "frame": "spreader",
+      "position_m": [
+        0,
+        0,
+        0
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 6,
+      "maximum": 13,
+      "fov_deg": 0,
+      "scan": false,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "자료에 없음",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "새 자료에 확정 수치가 없어 기존 시뮬레이션 가정을 유지.",
+      "reference_specs": {}
+    },
+    {
+      "key": "agv_position_lidar",
+      "frame": "gantry",
+      "position_m": [
+        32,
+        8,
+        20
+      ],
+      "rotation_deg": [
+        -85,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 100,
+      "fov_deg": 140,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "S08",
+      "model": "SICK LMS511 family · vehicle-positioning reference",
+      "installation_status": "ASSUMED",
+      "specification_status": "APPLICATION_ONLY",
+      "dgt_installation_confirmed": false,
+      "source_urls": [
+        "https://www.sick.com/us/en/anti-collision-systems-ensure-fail-safe-operation-of-container-terminals-at-dp-world/w/blog-anti-collision-systems-from-sick-ensure-fail-save-operation-of-container-terminals-at-dp-world/"
+      ],
+      "source_notes": "DP World의 LMS511 적용 사례를 참조. 인계 구역 양측 2대는 프로젝트 설계 가정. DGT 실장 모델/좌표와 AGV용 세부 모델 사양은 미확인으로 기존 거리·FOV 가정 유지. 2대 중 하나의 시야에 들면 범위 판정.",
+      "reference_specs": {},
+      "additional_positions_m": [
+        [
+          32,
+          -8,
+          20
+        ]
+      ]
+    },
+    {
+      "key": "gantry_collision",
+      "frame": "gantry",
+      "position_m": [
+        0,
+        10,
+        1
+      ],
+      "rotation_deg": [
+        0,
+        90,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 40,
+      "fov_deg": 60,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "자료에 없음",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "새 자료에 확정 수치가 없어 기존 시뮬레이션 가정을 유지.",
+      "reference_specs": {}
+    },
+    {
+      "key": "ship_profile",
+      "frame": "trolley",
+      "position_m": [
+        -2.3,
+        0,
+        0
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 100,
+      "fov_deg": 100,
+      "scan": true,
+      "provenance": "mixed_source_specs_and_unverified_installation",
+      "source_sensor_id": "자료에 없음",
+      "model": "미확인",
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "dgt_installation_confirmed": false,
+      "source_urls": [],
+      "source_notes": "새 자료에 확정 수치가 없어 기존 시뮬레이션 가정을 유지.",
+      "reference_specs": {}
+    }
+  ],
+  "sensor_reference_revision": "DGT-public-sensors-2026-09-24",
+  "sensor_reference_scope": "센서 제품 사양·설치 원칙을 기존 ZPMC 형상에 적용. DGT 실장 모델·절대 XYZ는 미확인. 현대 DGT의 크레인 치수와 Bromma 스프레더 질량은 적용하지 않음.",
+  "pickup_control": {
+    "kind": "unvalidated_simulation_assumptions",
+    "corner_tolerance_m": 0.02,
+    "vertical_tolerance_m": 0.02,
+    "relative_speed_mps": 0.03,
+    "yaw_tolerance_deg": 0.25,
+    "tilt_tolerance_deg": 0.5,
+    "seat_time_s": 0.7,
+    "lock_time_s": 0.3,
+    "lock_timeout_s": 2,
+    "alignment_timeout_s": 90,
+    "acquisition_radius_m": 1,
+    "trial_height_m": 0.3,
+    "trial_hold_s": 1,
+    "trial_timeout_s": 60,
+    "minimum_corner_fraction": 0.03,
+    "mass_stability_fraction": 0.02,
+    "max_attempts": 2,
+    "pose_bias_x_m": 0,
+    "pose_bias_y_m": 0,
+    "pose_bias_z_m": 0
+  }
+}

@@ -1,0 +1,443 @@
+# STS Crane Sensor Layout Reference
+# Purpose: AI-friendly structured reference for an Unreal Engine 5 port automation simulator
+# Scope: Ship-to-Shore (STS) crane sensor placement, purpose, input/output, and suggested simulation use
+# Note: Exact mounting positions differ by crane manufacturer and terminal. This file summarizes representative layouts from public industrial references discussed in the conversation.
+
+[PROJECT_CONTEXT]
+project_name=Port Container Automation Simulator
+engine=Unreal Engine 5
+focus=STS crane sensor layout and automation inputs
+simulation_flow=Ship -> STS -> AGV -> Yard Crane
+scale_policy=Use real-world scale
+implementation_goal=Connect sensor inputs to crane control logic, safety logic, sway/skew behavior, landing alignment, and equipment state
+
+[STS_MAJOR_STRUCTURE]
+parts=
+- Gantry frame
+- Waterside leg
+- Landside leg
+- Boom
+- Girder
+- Trolley
+- Hoist system
+- Wire rope
+- Headblock
+- Spreader
+- Twistlocks
+- Gantry bogies/wheels
+- Machinery house
+- Control/PLC system
+
+[SENSOR_01_WIND_SENSOR]
+name=Anemometer / Wind Sensor
+typical_location=Upper exposed structure of STS, such as apex/top frame where airflow is less obstructed
+measures=
+- Wind speed
+- Wind direction
+- Gust
+main_purpose=
+- Detect operating wind condition
+- Reduce crane speed under strong wind
+- Stop operation when wind exceeds configured limit
+simulation_inputs=
+- WindSpeed_mps
+- WindDirection_vector
+- WindGust_mps
+simulation_outputs=
+- SpeedLimitFactor
+- Sway disturbance
+- Skew disturbance
+- OperationStop flag
+implementation_priority=HIGH
+reference_note=Konecranes STS documentation includes operating/stowed wind design values, but actual terminal limits must be terminal-specific.
+
+[SENSOR_02_BOOM_ANTI_COLLISION_LIDAR]
+name=Boom Anti-Collision LiDAR
+typical_location=Both sides of boom, usually mounted to scan along/around the boom and ship-side obstacle zone
+quantity_typical=2
+measures=
+- Distance to ship superstructure
+- Distance to radar mast / antenna / protruding structures
+- Optional neighboring crane distance
+main_purpose=
+- Prevent boom-to-ship collision
+- Optional crane-to-crane collision monitoring
+simulation_inputs=
+- ObstacleDistance
+- ObstacleRelativePosition
+simulation_outputs=
+- Warning
+- Slowdown
+- EmergencyStop
+implementation_priority=HIGH
+reference_note=SICK AOS502 STS public material describes laser scanners used for boom anti-collision and object detection.
+
+[SENSOR_03_TROLLEY_POSITION_ENCODER]
+name=Trolley Position Encoder / Linear Position Sensor
+typical_location=On trolley or trolley drive system, reading a reference along the girder/rail
+measures=
+- Trolley position
+- Trolley speed
+- Trolley acceleration
+main_purpose=
+- Closed-loop trolley positioning
+- Determine horizontal container position
+- Support anti-sway control
+simulation_inputs=
+- TrueTrolleyPosition
+simulation_sensor_model=
+MeasuredTrolleyPosition=TrueTrolleyPosition+SensorNoise
+simulation_outputs=
+- Position feedback to PLC
+- Landing alignment state
+implementation_priority=VERY_HIGH
+reference_note=SICK public port automation material includes trolley positioning using linear encoder systems.
+
+[SENSOR_04_HOIST_ENCODER]
+name=Hoist Encoder
+typical_location=Hoist drum shaft, motor shaft, or hoist drive train in machinery house
+measures=
+- Drum rotation
+- Rope length
+- Hoist speed
+- Spreader height
+main_purpose=
+- Vertical positioning
+- Safe hoisting/lowering
+- Landing speed control
+simulation_inputs=
+- HoistDrumAngle
+- RopeLength
+- HoistVelocity
+simulation_outputs=
+- SpreaderHeight
+- RopeLengthForPendulumModel
+implementation_priority=VERY_HIGH
+reference_note=Exact hardware placement differs by manufacturer; position/height feedback is mandatory for automated hoist control.
+
+[SENSOR_05_LOAD_CELL]
+name=Load Cell / Twistlock Load Sensor
+typical_location=At or near each twistlock load path on spreader
+quantity_typical=4 for single container spreader
+measures=
+- Individual corner load
+- Total suspended load
+- Load imbalance
+- Estimated center-of-gravity eccentricity
+channels=
+- Load_FL
+- Load_FR
+- Load_RL
+- Load_RR
+calculation=
+TotalLoad=Load_FL+Load_FR+Load_RL+Load_RR
+main_purpose=
+- Overload detection
+- Weight measurement
+- Uneven load detection
+- CoG estimation
+simulation_outputs=
+- TotalLoad
+- LoadImbalance
+- EstimatedCoGX
+- EstimatedCoGY
+- Overload flag
+implementation_priority=VERY_HIGH
+reference_note=Bromma container weighing/load sensing documentation describes individual twistlock load measurement and eccentricity detection.
+
+[SENSOR_06_TWISTLOCK_STATE_SENSOR]
+name=Twistlock Locked/Unlocked Sensor
+typical_location=Directly at each twistlock mechanism on spreader corners
+quantity_typical=4
+states=
+- Unlocked
+- Inserted
+- Locked
+main_purpose=
+- Verify secure container attachment before hoisting
+safety_logic=
+HoistUpAllowed=true only if all required twistlocks report LOCKED
+simulation_outputs=
+- Twistlock_FL_State
+- Twistlock_FR_State
+- Twistlock_RL_State
+- Twistlock_RR_State
+- HoistPermission
+implementation_priority=VERY_HIGH
+reference_note=Bromma public material shows locked/unlocked sensing associated with twistlock mechanisms.
+
+[SENSOR_07_LANDED_SENSOR]
+name=Landed Sensor
+typical_location=Spreader/twistlock area
+measures=
+- Whether spreader is properly seated on container
+main_purpose=
+- Confirm contact before twistlock command
+control_logic=
+Landed=true -> allow TwistlockLock command
+Landed=false -> prohibit locking or request reposition
+simulation_outputs=
+- LandedState
+implementation_priority=HIGH
+reference_note=Bromma twistlock/container counting systems use locked/landed related signals.
+
+[SENSOR_08_SPREADER_CAMERA]
+name=Spreader Camera System
+typical_locations=
+- Spreader corners
+- Spreader sides
+- Spreader center
+quantity_typical=1 to 4 depending on system
+observes=
+- Corner casting alignment
+- Container top surface
+- Landing target
+- Twin-20 configuration
+- AGV/container alignment
+main_purpose=
+- Remote operation visibility
+- Landing assistance
+- Alignment verification
+simulation_outputs=
+- Camera feed
+- Visual alignment score
+- Optional CV detection data
+implementation_priority=HIGH
+reference_note=Bromma Hawkeye/LiveView public material shows camera configurations on spreaders.
+
+[SENSOR_09_TTDS]
+name=Twin-Twenty Detection System
+abbreviation=TTDS
+typical_location=Spreader central section, preferably inside/around main frame depending on implementation
+sensor_type=Photoelectric sensors
+example_quantity=7
+example_configuration=
+- 5 sensors for detecting gap between two 20ft containers
+- 2 sensors for container presence
+main_purpose=
+- Distinguish 1x40ft from 2x20ft configuration
+- Prevent incorrect twistlock mode
+simulation_outputs=
+- Twin20Detected
+- CenterGapDetected
+- ContainerPresence
+- LockModeAllowed
+implementation_priority=MEDIUM_HIGH
+reference_note=Bromma TTDS public material describes a 7-sensor configuration and mounting recommendations.
+
+[SENSOR_10_CONTAINER_LENGTH_LIDAR]
+name=Container Length / Gap Detection LiDAR
+typical_location=Spreader, looking downward toward container top
+sensor_type=2D/compact laser scanner
+measures=
+- Center gap between two 20ft containers
+- Container geometry/presence
+main_purpose=
+- Alternative to photoelectric TTDS
+- Determine container arrangement
+simulation_outputs=
+- EstimatedContainerLength
+- Twin20Detected
+implementation_priority=MEDIUM
+reference_note=SICK port automation material includes spreader-mounted LiDAR use for distinguishing container configurations.
+
+[SENSOR_11_TELESCOPE_POSITION_ENCODER]
+name=Spreader Telescope Position Encoder
+typical_location=Spreader telescopic beam drive/mechanism
+sensor_type=Absolute encoder
+measures=
+- Current spreader length
+- Telescope beam position
+main_purpose=
+- Set spreader to 20ft / 40ft / 45ft mode
+simulation_variables=
+- CurrentSpreaderLength
+- TargetSpreaderLength
+- TelescopeEncoderValue
+implementation_priority=HIGH
+reference_note=Bromma STS spreader documentation describes telescopic beam position control using absolute encoder feedback.
+
+[SENSOR_12_AGV_VEHICLE_POSITION_LIDAR]
+name=AGV/Truck Positioning LiDAR
+typical_location=STS landside / transfer area, mounted on fixed crane structure or surrounding transfer zone depending on system
+quantity=System dependent
+measures=
+- AGV X/Y position
+- AGV heading angle
+- Distance to target landing point
+main_purpose=
+- Verify AGV stop accuracy
+- Align container landing target
+simulation_outputs=
+- AGVPositionErrorX
+- AGVPositionErrorY
+- AGVHeadingError
+- LandingPermission
+implementation_priority=VERY_HIGH
+reference_note=SICK public DP World automation material includes laser scanner use for vehicle positioning.
+
+[SENSOR_13_GANTRY_ANTI_COLLISION_SENSOR]
+name=Gantry / Crane-to-Crane Anti-Collision Sensor
+typical_location=Gantry travel direction, often lower leg/bogie or side structure where neighboring crane/obstacle detection is effective
+sensor_type=LiDAR / distance sensor / radar depending on system
+measures=
+- Distance to neighboring STS
+- Distance to rail obstacle
+main_purpose=
+- Prevent crane-to-crane collision
+- Prevent gantry travel collision
+simulation_outputs=
+- GantryCollisionRisk
+- Slowdown
+- EmergencyStop
+implementation_priority=MEDIUM_HIGH
+reference_note=Konecranes STS smart-feature documentation includes gantry/bogie anti-collision functions.
+
+[SENSOR_14_SHIP_PROFILING_SCANNER]
+name=Ship Profiling Scanner
+typical_location=Boom/trolley area looking downward toward vessel/container stacks
+sensor_type=LiDAR / laser scanner
+measures=
+- Container stack profile
+- Hatch cover height
+- Ship superstructure profile
+main_purpose=
+- Compute safe trolley travel height
+- Optimize trolley path
+- Reduce collision risk
+simulation_calculation=
+SafeTravelHeight=HighestObstacleZ+SafetyMargin
+simulation_outputs=
+- ShipProfileMap
+- HighestObstacleZ
+- SafeTravelHeight
+implementation_priority=HIGH
+reference_note=Konecranes STS automation features include ship profiling/path optimization.
+
+[SENSOR_LAYOUT_SUMMARY]
+A=Wind Sensor -> STS upper exposed structure
+B=Boom Anti-Collision LiDAR -> left/right side of boom
+C=Trolley Position Encoder -> trolley/rail drive system
+D=Hoist Encoder -> hoist motor/drum system
+E=Spreader Camera -> spreader corners/sides/center
+F=TTDS or Container Length LiDAR -> spreader center
+G=Load Cell -> each twistlock load path
+H=Twistlock State Sensor -> each twistlock mechanism
+I=Landed Sensor -> spreader/twistlock area
+J=Telescope Position Encoder -> spreader telescope mechanism
+K=AGV Position LiDAR -> landside transfer area
+L=Gantry Anti-Collision Sensor -> gantry travel direction / bogie-side area
+M=Ship Profiling Scanner -> boom/trolley, downward toward vessel
+
+[ASCII_LAYOUT]
+                              [A] WIND SENSOR
+                                    *
+                                   /\
+                                  /  \
+          [B] LiDAR *==============================* [B] LiDAR
+                           BOOM / GIRDER
+                                |
+                           [C] TROLLEY
+                                |
+                         [D] HOIST ENCODER
+                                |
+                             WIRE ROPE
+                                |
+                           [HEADBLOCK]
+                                |
+        +------------------------------------------------+
+        |                   SPREADER                     |
+        |                                                |
+        | [E] CAMERA                          CAMERA [E]  |
+        |                                                |
+        |             [F] TTDS / LiDAR                  |
+        |                                                |
+        | [G][H][I]                          [G][H][I]   |
+        |  FL corner                            FR corner |
+        |                                                |
+        | [G][H][I]                          [G][H][I]   |
+        |  RL corner                            RR corner |
+        +------------------------------------------------+
+                                |
+                           [CONTAINER]
+                                |
+                                v
+=============================== QUAY ===============================
+                      [K] AGV POSITION LIDAR
+                                |
+                           +---------+
+                           |   AGV   |
+                           +---------+
+
+         [L] GANTRY SENSOR                         GANTRY SENSOR [L]
+               *                                          *
+              O O========================================O O
+                             GANTRY RAIL
+
+[M] SHIP PROFILING SCANNER:
+Mounted on boom/trolley area and directed downward toward vessel/container stacks.
+
+[RECOMMENDED_FIRST_IMPLEMENTATION]
+priority_1=
+- Load Cell x4
+- Twistlock State Sensor x4
+- Trolley Position Encoder
+- Hoist Encoder
+- Wind Sensor
+- AGV Position LiDAR
+- Spreader Camera
+- Boom Anti-Collision LiDAR
+
+priority_2=
+- Landed Sensor
+- Telescope Position Encoder
+- Ship Profiling Scanner
+- Gantry Anti-Collision Sensor
+- TTDS / Container Length LiDAR
+
+[CONTROL_LOGIC_EXAMPLE]
+1=Read container job
+2=Read container size/mass/target
+3=Set spreader telescope length
+4=Move trolley/hoist to target
+5=Use camera/profiling/alignment data
+6=Confirm landed
+7=Lock all twistlocks
+8=Validate 4/4 lock state
+9=Read 4 load cells
+10=Check total load and imbalance
+11=Hoist to safe travel height
+12=Use wind sensor and anti-sway control
+13=Move trolley to landside
+14=Read AGV position
+15=Wait until AGV stop/alignment is within tolerance
+16=Lower container at low speed
+17=Confirm landed on AGV
+18=Unlock twistlocks
+19=Verify spreader clear
+20=Complete transfer
+
+[FAULT_SCENARIOS_FOR_SIMULATION]
+- Wind sensor noise or failure
+- Trolley encoder offset
+- Hoist encoder drift
+- One load cell reading high/low
+- Uneven corner load
+- Twistlock lock failure at one corner
+- Landed sensor false positive
+- Camera unavailable
+- AGV position sensor error
+- Boom LiDAR obstacle detection
+- Gantry anti-collision warning
+- TTDS misdetection
+- Telescope encoder mismatch
+
+[AI_USAGE_HINT]
+Use this file as a component/sensor knowledge base.
+When generating Unreal Engine code or Blueprint logic:
+- Treat each sensor as an independent input source.
+- Separate true physical state from measured sensor state.
+- Allow sensor noise/failure injection.
+- Route sensor outputs into a central STS controller/PLC abstraction.
+- Do not hard-code exact manufacturer-specific mounting coordinates unless verified from a detailed GA/mounting drawing.
+- Use configurable DataAsset/DataTable values for thresholds, noise, and limits.

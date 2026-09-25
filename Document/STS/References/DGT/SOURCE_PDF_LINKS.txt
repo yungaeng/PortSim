@@ -1,0 +1,49 @@
+원문/제조사 자료 링크
+
+[DGT / 한국 기준]
+1. DGT 장비 소개
+https://info.dgtbusan.com/DGT/terminal/equipment
+
+2. DGT 터미널 특징
+https://www.dgtbusan.com/DGT/terminal/feature
+
+3. DGT/DPCT Busan 장비 자료
+https://job.pusan.ac.kr/attachment/download/1369694/DPCT%26%2BDGT%2BBusan_0623_%EB%8C%80%ED%95%99%EA%B5%90.pdf
+
+4. 일본 후생노동성 자료 - 부산신항 DGT STS 사양 포함
+https://www.mhlw.go.jp/content/11201250/001634736.pdf
+
+5. Hyundai Container Cranes brochure
+https://wpassets.porttechnology.org/wp-content/uploads/2021/08/02191138/Hyundai-Crane_Brochure-compressed.pdf
+
+6. HD Hyundai Samho Industrial Plant & Crane
+https://www.hd-samho.com/eng/PageLink.do?link=work%2Fequip
+
+[SICK 센서]
+7. AOS502 STS 설치/운영 매뉴얼
+https://cdn.sick.com/media/docs/6/46/346/addendum_to_operating_instructions_aos502_sts_objektdetektionssysteme_en_im0065346.pdf
+
+8. KH53 Linear Encoder 제품/치수 자료
+https://www.sick.com/media/docs/0/00/600/product_information_kh53_linear_encoders_en_im0011600.pdf
+
+9. SICK 항만 적용사례 (LMS511 vehicle positioning, KH53 trolley positioning)
+https://www.sick.com/us/en/anti-collision-systems-ensure-fail-safe-operation-of-container-terminals-at-dp-world/w/blog-anti-collision-systems-from-sick-ensure-fail-save-operation-of-container-terminals-at-dp-world/
+
+[Bromma spreader 센서/사양]
+10. Load Sensing
+https://bromma.com/products/container-weighing/
+https://bromma.com/wp-content/uploads/2019/03/Upgrade_Container_Weighing_LSS.pdf
+
+11. STS45 / STS spreader brochure
+https://bromma.com/wp-content/uploads/2024/01/Bromma_STS_revision_2024.pdf
+
+12. STS45E G2
+https://bromma.com/products/sts45e-g2/
+
+13. Hawkeye LiveView/OCR
+https://bromma.com/bromma-hawkeye-liveview/
+https://bromma.com/wp-content/uploads/2025/11/Hawkeye_Final-Web-1.pdf
+
+주의:
+DGT 실기기에 설치된 각 센서의 as-built XYZ 좌표와 OEM 전기/센서 설치도면은 공개자료에서 확인되지 않았다.
+CSV의 DGT/UE 좌표는 VERIFIED(공개실측)가 아니라 DERIVED 또는 ASSUMED로 구분한다.

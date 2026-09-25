@@ -5,6 +5,9 @@
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
+#include "Misc/Paths.h"
+#include "Misc/FileHelper.h"
+#include "HAL/FileManager.h"
 
 namespace SiteLogistics
 {
@@ -27,6 +30,7 @@ void APortSiteLogistics::AddShipCargo(FVector Position,int32 STS)
     auto* Cargo=GetWorld()->SpawnActor<APortContainerActor>(Position,FRotator::ZeroRotator,Params);
     check(Cargo);
     Cargo->InitializeContainer(Record.ID);
+    if(STSProfile.bReady) Cargo->SetPhysicalParameters(STSProfile.ContainerMassKg,STSProfile.ContainerCoG);
     // Secured aboard until pickup: real collidable actors, without 1,064 idle rigid bodies.
     Cargo->GetBody()->SetSimulatePhysics(false);
     Cargo->LocationOwner=ECargoOwner::Ship;
@@ -117,6 +121,8 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
     }
     TrafficVehicles=Vehicles;
     bReady=true;
+    BeginReport();
+    if(!STSProfile.bReady) Stop(TEXT("Site STS reference unavailable: ")+STSProfile.Error);
 #if WITH_EDITOR
     SetActorLabel(TEXT("DGT_STS_AGV_RMG_Dispatch"));
     SetFolderPath(TEXT("PortSim/Logistics"));
@@ -134,6 +140,8 @@ void APortSiteLogistics::PrepareNextCargo(int32 Lane)
         if (Next==INDEX_NONE) return;
         PreparedCargo[Lane]=Next; PreparedStarted[Lane]=false;
         Manifest[Next].State=1; ++Dispatched;
+        Manifest[Next].StartedAt=SimulationTime; Manifest[Next].PreparedPausedSeconds=0;
+        if(LaneCount==9 && VesselStarted[Lane/3]<0) VesselStarted[Lane/3]=SimulationTime;
         if (STSOwners[Lane]!=INDEX_NONE) ++PrefetchedJobs;
     }
     if (PreparedStarted[Lane] || Equipment[YardCraneCount+Lane]->IsBusy()) return;
@@ -142,7 +150,7 @@ void APortSiteLogistics::PrepareNextCargo(int32 Lane)
     const int32 Index=PreparedCargo[Lane];
     auto& Record=Manifest[Index];
     if (!Equipment[YardCraneCount+Lane]->AssignCargo(Record.Actor.Get(),Record.Transform.GetLocation(),QuayPark(Lane)+FVector(0,0,349.5f),false,false))
-    { Stop(TEXT("STS could not prepare its next ship container")); return; }
+    { Stop(TEXT("STS could not prepare its next ship container: ")+Equipment[YardCraneCount+Lane]->Fault); return; }
     Equipment[YardCraneCount+Lane]->SetDestinationReady(false);
     PreparedStarted[Lane]=true;
 }
@@ -151,7 +159,10 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
 {
     auto& Job=Jobs[Vehicle];
     Job.Cargo=PreparedCargo[STS]; Job.Actor=Manifest[Job.Cargo].Actor; Job.STS=STS;
-    Job.Stage=6; Job.Waypoint=0; Job.Time=0;
+    Job.Stage=6; Job.Waypoint=0;
+    Job.StartedAt=Manifest[Job.Cargo].StartedAt; Job.Time=SimulationTime-Job.StartedAt;
+    Job.PausedSeconds=Manifest[Job.Cargo].PreparedPausedSeconds;
+    Equipment[YardCraneCount+STS]->SetHandoverVehicle(Vehicles[Vehicle]);
     PreparedCargo[STS]=INDEX_NONE; PreparedStarted[STS]=false; STSOwners[STS]=Vehicle;
     const FVector Quay=QuayPark(STS);
     if (FromQueue)
@@ -171,8 +182,12 @@ void APortSiteLogistics::ScheduleFleet()
         int32 Best=INDEX_NONE; double Score=TNumericLimits<double>::Max();
         for (int32 I=0;I<Vehicles.Num();++I) if (Jobs[I].Stage==0)
         {
-            const double Cost=Vehicles[I]->CompletedJobs*1000.0+FVector::Dist2D(Vehicles[I]->GetActorLocation(),Target);
-            if (Cost<Score) { Best=I; Score=Cost; }
+            // Detailed STS cycles leave more AGVs idle. A small distance penalty
+            // can otherwise starve unused vehicles indefinitely at distant berths.
+            const double Cost=FVector::Dist2D(Vehicles[I]->GetActorLocation(),Target);
+            if (Best==INDEX_NONE || Vehicles[I]->CompletedJobs<Vehicles[Best]->CompletedJobs ||
+                (Vehicles[I]->CompletedJobs==Vehicles[Best]->CompletedJobs && Cost<Score))
+            { Best=I; Score=Cost; }
         }
         return Best;
     };
@@ -180,6 +195,7 @@ void APortSiteLogistics::ScheduleFleet()
     for (int32 S=0;S<LaneCount;++S)
     {
         PrepareNextCargo(S);
+        if(!Fault.IsEmpty()) return;
         if (STSOwners[S]!=INDEX_NONE || PreparedCargo[S]==INDEX_NONE || !PreparedStarted[S]) continue;
         if (NextVehicles[S]!=INDEX_NONE)
         {
@@ -190,6 +206,7 @@ void APortSiteLogistics::ScheduleFleet()
     for (int32 S=0;S<LaneCount;++S)
     {
         PrepareNextCargo(S);
+        if(!Fault.IsEmpty()) return;
         if (STSOwners[S]==INDEX_NONE || NextVehicles[S]!=INDEX_NONE || PreparedCargo[S]==INDEX_NONE) continue;
         const FVector Buffer(4500,QuayPark(S).Y+2000,0);
         const int32 V=Nearest(Buffer);
@@ -210,6 +227,7 @@ void APortSiteLogistics::Dispatch(int32 Lane)
         if (LaneCount==8 && S!=Lane) continue;
         if (STSOwners[S]!=INDEX_NONE) continue;
         PrepareNextCargo(S);
+        if(!Fault.IsEmpty()) return;
         if (PreparedCargo[S]==INDEX_NONE || !PreparedStarted[S]) continue;
         const float Distance=FVector::DistSquared2D(Vehicles[Lane]->GetActorLocation(),QuayPark(S));
         if (Distance<Best) { Best=Distance; STS=S; }
@@ -217,7 +235,10 @@ void APortSiteLogistics::Dispatch(int32 Lane)
     if (STS==INDEX_NONE) return;
     const int32 Index=PreparedCargo[STS];
     auto& Job=Jobs[Lane];
-    Job.Cargo=Index; Job.Actor=Manifest[Index].Actor; Job.STS=STS; Job.Stage=6; Job.Time=0;
+    Job.Cargo=Index; Job.Actor=Manifest[Index].Actor; Job.STS=STS; Job.Stage=6;
+    Job.StartedAt=Manifest[Index].StartedAt; Job.Time=SimulationTime-Job.StartedAt;
+    Job.PausedSeconds=Manifest[Index].PreparedPausedSeconds;
+    Equipment[YardCraneCount+STS]->SetHandoverVehicle(Vehicles[Lane]);
     PreparedCargo[STS]=INDEX_NONE; PreparedStarted[STS]=false; STSOwners[STS]=Lane;
     const FVector Quay=QuayPark(STS);
     if (LaneCount==9 && !Vehicles[Lane]->GetActorLocation().Equals(Quay,1.f))
@@ -437,8 +458,13 @@ void APortSiteLogistics::Stop(const FString& Reason)
 void APortSiteLogistics::Advance(float Dt,bool Paused)
 {
     if (!bReady) return;
+    SimulationTime+=Dt;
+    ExportDashboard(Paused);
+    if(Paused) for(int32 Index:PreparedCargo) if(Index!=INDEX_NONE) Manifest[Index].PreparedPausedSeconds+=Dt;
+    for(auto& Job:Jobs) if(Job.Stage) { Job.Time+=Dt; if(Paused) Job.PausedSeconds+=Dt; }
     Freeze(Paused || !Fault.IsEmpty());
-    if (Paused || !Fault.IsEmpty()) return;
+    if (Paused || !Fault.IsEmpty())
+    { for(const auto& Crane:Equipment) Crane->Advance(Dt,true); return; }
     if (LastProgressDelivered!=Delivered) { NoProgressTime=0; LastProgressDelivered=Delivered; }
     else NoProgressTime+=Dt;
     if (NoProgressTime>500)
@@ -462,6 +488,7 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
     for (const auto& Vehicle:Vehicles) Moving+=Vehicle->Speed>1.f;
     PeakMovingVehicles=FMath::Max(PeakMovingVehicles,Moving);
     if (LaneCount==9) ScheduleFleet();
+    if(!Fault.IsEmpty()) return;
     // Vehicles with fewer completed jobs get first refusal, so every AGV participates.
     TArray<int32> Order;
     for (int32 I=0;I<Jobs.Num();++I) Order.Add(I);
@@ -469,8 +496,7 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
     for (int32 Lane:Order)
     {
         auto& Job=Jobs[Lane]; auto* Vehicle=Vehicles[Lane].Get();
-        if (Job.Stage==0) { if (LaneCount==8) Dispatch(Lane); continue; }
-        Job.Time+=Dt;
+        if (Job.Stage==0) { if (LaneCount==8) Dispatch(Lane); if(!Fault.IsEmpty()) return; continue; }
         if (Job.LastStage!=Job.Stage || !Job.LastPosition.Equals(Vehicle->GetActorLocation(),10.f)) Job.StationaryTime=0;
         else Job.StationaryTime+=Dt;
         Job.LastStage=Job.Stage; Job.LastPosition=Vehicle->GetActorLocation();
@@ -507,6 +533,9 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
             Cargo->AttachToComponent(Vehicle->GetRootComponent(),FAttachmentTransformRules::KeepWorldTransform);
             Cargo->LocationOwner=ECargoOwner::AGV;
             Manifest[Job.Cargo].HandoverMask|=1;
+            RecordVesselEvent(Job.Cargo,false);
+            Job.HandoverAt=SimulationTime;
+            Job.STSSeconds=Equipment[YardCraneCount+Job.STS]->LastJobSeconds;
             UE_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d STS -> AGV%d"),Manifest[Job.Cargo].ID,100+Lane);
             Job.Stage=2;
             PrepareNextCargo(Job.STS);
@@ -532,6 +561,11 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
             PlacedContainers.Add(Cargo);
             Manifest[Job.Cargo].HandoverMask|=4;
             Manifest[Job.Cargo].State=2; ++Delivered; ++Vehicle->CompletedJobs;
+            RecordVesselEvent(Job.Cargo,true);
+            ResultsCsv+=FString::Printf(TEXT("C%d,%d,%d,%d,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.1f\n"),
+                Manifest[Job.Cargo].ID,Job.STS+1,100+Lane,Job.RMG+1,Job.StartedAt,Job.HandoverAt,SimulationTime,
+                Job.Time,Job.STSSeconds,Job.PausedSeconds,Cargo->MassKg);
+            if(!SaveReports()) { Stop(TEXT("Could not save site STS shipment report")); return; }
             UE_LOG(LogTemp,Display,TEXT("SITE_DELIVERED: C%d via AGV%d -> RMG%d; total=%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1,Delivered);
             Job.Actor=nullptr;
             PrepareRoute(Lane,true); Job.Stage=5; break;
@@ -569,6 +603,8 @@ void APortSiteLogistics::ResetLogistics()
     BlocksBusy.Init(false,18); RMGBusy.Init(false,YardCraneCount); PreparedCargo.Init(INDEX_NONE,LaneCount); SlotAssigned.Init(false,Yard.Num());
     CentralReservation=CentralPending=INDEX_NONE;
     RoadReservations.Reset(); RoadTargets.Reset(); FinishedRoadSegments.Reset(); PeakMovingVehicles=PrefetchedJobs=Dispatched=Delivered=0; Fault.Empty(); bWasPaused=false;
+    BeginReport();
+    if(!STSProfile.bReady) Stop(TEXT("Site STS reference unavailable"));
 }
 
 int32 APortSiteLogistics::ShipRemaining() const
@@ -746,6 +782,26 @@ TArray<FVector> APortSiteLogistics::Snapshot() const
     for (const auto& Cargo:ShipContainers) Positions.Add(Cargo->GetActorLocation());
     for (const auto& Crane:Equipment) { Positions.Add(Crane->GetActorLocation()); Positions.Add(Crane->HeadPosition()); }
     return Positions;
+}
+
+void APortSiteLogistics::BeginReport()
+{
+    SimulationTime=0;
+    NextDashboardWall=0;
+    for(int32 I=0;I<3;++I) VesselStarted[I]=VesselUnloaded[I]=VesselPlaced[I]=-1;
+    ReportBase=FPaths::ProjectSavedDir()/TEXT("Results")/TEXT("Site_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
+    ResultsCsv=TEXT("ContainerID,STSLane,AGVID,RMGID,StartedAtSeconds,STSHandoverAtSeconds,FinalPlacementAtSeconds,ShipmentSeconds,STSSeconds,PausedSeconds,PayloadKg\n");
+    if(!SaveReports()) Stop(TEXT("Could not initialize site shipment report"));
+}
+
+bool APortSiteLogistics::SaveReports() const
+{
+    if(ReportBase.IsEmpty()) return false;
+    IFileManager::Get().MakeDirectory(*FPaths::GetPath(ReportBase),true);
+    const FString Snapshot=TEXT("{\"site_suspension_model\":\"reduced-order sway/yaw; assumed mounts; taut-rope tension; hoist shaft torque\",\"sts_profile\":")+
+        (STSProfile.SnapshotJson.IsEmpty()?TEXT("{}"):STSProfile.SnapshotJson)+TEXT("}");
+    return FFileHelper::SaveStringToFile(ResultsCsv,*(ReportBase+TEXT(".csv")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM) &&
+        FFileHelper::SaveStringToFile(Snapshot,*(ReportBase+TEXT("_profile.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM);
 }
 FVector APortSiteLogistics::CentralSlot(int32 Index) const
 { return Yard[CentralSlots[Index]].Position; }

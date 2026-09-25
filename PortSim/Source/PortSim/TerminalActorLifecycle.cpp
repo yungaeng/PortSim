@@ -14,6 +14,7 @@ APortContainerActor* AQuayCrane::SpawnContainer(int32 Number,FVector Position)
     auto* Container=GetWorld()->SpawnActor<APortContainerActor>(Position,FRotator::ZeroRotator,Params);
     check(Container);
     Container->InitializeContainer(Number);
+    if(STSProfile.bReady) Container->SetPhysicalParameters(STSProfile.ContainerMassKg,STSProfile.ContainerCoG);
     ContainerActors.Add(Container);
     return Container;
 }

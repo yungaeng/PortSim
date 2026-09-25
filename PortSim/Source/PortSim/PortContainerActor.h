@@ -20,9 +20,12 @@ public:
     void InitializeContainer(int32 Number);
     void ResetCargo(FVector Position);
     void ApplyContainerAppearance();
+    void SetPhysicalParameters(float Mass, FVector CoGOffset);
     UStaticMeshComponent* GetBody() const { return Body; }
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") FName ContainerID;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Container", meta=(ClampMin="1")) float MassKg=12000.f;
+    UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Container") FVector CoGOffsetCm=FVector::ZeroVector;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") ECargoOwner LocationOwner=ECargoOwner::Ship;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") TObjectPtr<UStaticMeshComponent> Body;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") TObjectPtr<UStaticMeshComponent> Visual;

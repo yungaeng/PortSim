@@ -1,0 +1,277 @@
+{
+  "source_files": [
+    "DGT_Hyundai_STS_Sensor_Installation_Reference.pdf",
+    "DGT_STS_Sensor_Coordinates.csv",
+    "SOURCE_PDF_LINKS.txt",
+    "STS_Sensor_Model_Specifications.csv"
+  ],
+  "specifications": [
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Total weight",
+      "Value": "2,281 t",
+      "Notes": "DGT Korean reference"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Rail span",
+      "Value": "35 m",
+      "Notes": "DGT Korean reference"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Lifting height",
+      "Value": "59 m (12 tiers)",
+      "Notes": "Some DGT pages state 53 m; source/version discrepancy"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Outreach",
+      "Value": "71.5 m",
+      "Notes": "Current DGT feature page also states 72.5 m; source/version discrepancy"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Overall height",
+      "Value": "93 m",
+      "Notes": "DGT reference"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Boom length",
+      "Value": "82 m",
+      "Notes": "DGT reference"
+    },
+    {
+      "Category": "Crane",
+      "Model/System": "DGT / Hyundai-origin Double Trolley STS",
+      "Parameter": "Rows",
+      "Value": "24 rows class",
+      "Notes": "24k-25k TEU class"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK AOS502 STS / LMS511-10100S04",
+      "Parameter": "Quantity",
+      "Value": "2",
+      "Notes": "Left/right boom"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK LMS511-10100S04",
+      "Parameter": "Scan angle",
+      "Value": "190°",
+      "Notes": "AOS502 STS manual"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK LMS511-10100S04",
+      "Parameter": "Monitoring range",
+      "Value": "80 m / 38 m @10% remission",
+      "Notes": "AOS502 STS manual"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK AOS502 STS",
+      "Parameter": "Boom stop field",
+      "Value": "3.5 m depth x 50 m width",
+      "Notes": "Default field"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK AOS502 STS",
+      "Parameter": "Boom warning field",
+      "Value": "7.5 m depth x 50 m width",
+      "Notes": "Default field"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK KH53",
+      "Parameter": "Resolution",
+      "Value": "0.1 mm",
+      "Notes": "Product information"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK KH53",
+      "Parameter": "Repeatability",
+      "Value": "0.3 mm",
+      "Notes": "Standard KH53"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK KH53",
+      "Parameter": "Max traversing speed",
+      "Value": "6.6 m/s",
+      "Notes": "Product information"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK KH53",
+      "Parameter": "Read-head distance",
+      "Value": "25 mm or 55 mm; 55±20 mm possible",
+      "Notes": "Product information"
+    },
+    {
+      "Category": "Sensor",
+      "Model/System": "SICK KH53",
+      "Parameter": "Measuring range",
+      "Value": "up to 1,700 m",
+      "Notes": "Variant dependent"
+    },
+    {
+      "Category": "Spreader",
+      "Model/System": "Bromma STS45E G2",
+      "Parameter": "Single lift",
+      "Value": "51 t",
+      "Notes": "Even load / ±10% eccentric rating listed"
+    },
+    {
+      "Category": "Spreader",
+      "Model/System": "Bromma STS45E G2",
+      "Parameter": "Twin 20",
+      "Value": "2 x 32.5 t",
+      "Notes": "Even load"
+    },
+    {
+      "Category": "Spreader",
+      "Model/System": "Bromma STS45E G2",
+      "Parameter": "Weight",
+      "Value": "12.6 t",
+      "Notes": "Without extras"
+    },
+    {
+      "Category": "Spreader",
+      "Model/System": "Bromma STS45E G2",
+      "Parameter": "20->40 telescopic",
+      "Value": "~18 s",
+      "Notes": "Product spec"
+    },
+    {
+      "Category": "Spreader",
+      "Model/System": "Bromma STS45E G2",
+      "Parameter": "20->45 telescopic",
+      "Value": "~21 s",
+      "Notes": "Product spec"
+    },
+    {
+      "Category": "Camera",
+      "Model/System": "Bromma Hawkeye",
+      "Parameter": "Configuration",
+      "Value": "Up to 4 cameras",
+      "Notes": "Central/side/corner/end"
+    }
+  ],
+  "installation_references": [
+    {
+      "Sensor_ID": "S01",
+      "System": "SICK AOS502 STS / LMS511 pair",
+      "Function": "Boom-to-ship / crane-to-crane anti-collision",
+      "Public_mounting_position": "Boom 좌/우. SICK는 작업범위 중앙 설치 권장. Full-travel trolley 구조면 trolley rail 위에 설치.",
+      "Public_exact_coordinate": "공개되지 않음",
+      "Direction": "Scan plane은 boom과 평행. Boom 하단을 감시하도록 약간 전방/하방 tilt. 장착점이 하단에서 멀수록 tilt 증가.",
+      "Measured_items": "감시영역 내 장애물 존재/거리, 오염 진단",
+      "Verified_numeric_data": "2 x LMS511-10100S04; scan angle 190°; range 80 m / 38 m @10% remission; stop field 3.5 m x 50 m; warning field 7.5 m x 50 m; crane-to-crane field는 crane body에서 >=0.5 m 권장",
+      "Coordinate_basis": "원점 O=(waterside rail CL, crane centerline, quay surface), +X=해측, +Y=안벽방향, +Z=상향",
+      "DGT_or_UE_coordinate": "DGT outreach 71.5 m의 중앙값을 쓸 경우 X≈35.75 m는 '시뮬레이션 파생값'. Y=±boom side offset, Z=boom scanner bracket elevation은 OEM GA 필요.",
+      "Confidence": "설치 원칙 HIGH / DGT 절대 XYZ 미공개"
+    },
+    {
+      "Sensor_ID": "S02",
+      "System": "SICK KH53 linear encoder",
+      "Function": "Trolley 절대 위치",
+      "Public_mounting_position": "Read head는 이동 trolley에, measuring element는 trolley 주행로를 따라 연속 설치.",
+      "Public_exact_coordinate": "글로벌 XYZ 미공개; 상대 간격은 공개",
+      "Direction": "Read head가 measuring element와 평행하게 통과.",
+      "Measured_items": "Trolley 절대 위치/속도 피드백",
+      "Verified_numeric_data": "Read-head distance 25 mm 또는 55 mm; 55±20 mm 가능; resolution 0.1 mm; repeatability 0.3 mm; max 6.6 m/s; range up to 1700 m",
+      "Coordinate_basis": "Trolley local frame",
+      "DGT_or_UE_coordinate": "센서 로컬 N 간격 55 mm nominal 사용 가능. 글로벌 XYZ는 trolley Transform을 따라감.",
+      "Confidence": "상대 설치치수 HIGH"
+    },
+    {
+      "Sensor_ID": "S03",
+      "System": "Bromma Load Sensing System",
+      "Function": "컨테이너 총중량/코너하중/편심",
+      "Public_mounting_position": "Spreader 각 twistlock load path에 load sensor 1개.",
+      "Public_exact_coordinate": "Spreader 모델별 GA 필요",
+      "Direction": "Twistlock 수직 하중 경로 측정.",
+      "Measured_items": "개별 twistlock load, total weight, eccentricity",
+      "Verified_numeric_data": "Load sensor 1 per twistlock",
+      "Coordinate_basis": "Spreader local frame",
+      "DGT_or_UE_coordinate": "20/40/45 ft 모드의 실제 ISO corner fitting 위치와 일치하도록 4점 배치.",
+      "Confidence": "배치 원칙 HIGH / DGT spreader model 미확인"
+    },
+    {
+      "Sensor_ID": "S04",
+      "System": "Bromma twistlock state + landed sensing",
+      "Function": "Landed / locked / unlocked 확인",
+      "Public_mounting_position": "각 twistlock/end-beam mechanism",
+      "Public_exact_coordinate": "모델별 도면 필요",
+      "Direction": "Twistlock 기구 상태를 local switch/proximity로 감지",
+      "Measured_items": "Landed, Locked, Unlocked",
+      "Verified_numeric_data": "Bromma 시스템에서 locked/landed signal 사용",
+      "Coordinate_basis": "Spreader corner local frame",
+      "DGT_or_UE_coordinate": "각 twistlock actor/mesh와 동위치 처리",
+      "Confidence": "배치 HIGH / 치수 모델 종속"
+    },
+    {
+      "Sensor_ID": "S05",
+      "System": "Bromma Hawkeye camera",
+      "Function": "Landing/OCR/Twin-20 영상",
+      "Public_mounting_position": "Spreader frame. Central / side / corner / end placement. OCR은 main beam 아래 또는 frame ends의 대칭 카메라 구성 공개.",
+      "Public_exact_coordinate": "mm 좌표 미공개",
+      "Direction": "컨테이너 roof/corner/ID를 향한 하방 또는 사선 방향",
+      "Measured_items": "Video, OCR, landing view, twin-20 visibility",
+      "Verified_numeric_data": "최대 4 cameras",
+      "Coordinate_basis": "Spreader local frame",
+      "DGT_or_UE_coordinate": "Central: spreader center underside에서 -Z. Corner: 4개 모서리에서 아래/안쪽. 시뮬레이션용 배치.",
+      "Confidence": "패턴 HIGH / 절대 좌표 미공개"
+    },
+    {
+      "Sensor_ID": "S06",
+      "System": "Bromma TTDS",
+      "Function": "Twin-20 gap/presence",
+      "Public_mounting_position": "Spreader 중앙 main beam 영역, 5 gap sensors staggered rows + presence sensors 계열",
+      "Public_exact_coordinate": "일부 모델 상대치수만 공개",
+      "Direction": "컨테이너 상면/중앙 gap을 향해 하방",
+      "Measured_items": "20ft 2개 사이 gap, presence",
+      "Verified_numeric_data": "기존 가이드: minimum gap 38 mm. STS45-family standard gable 참고값 inner 425 mm / outer 730 mm from bottom of main beam",
+      "Coordinate_basis": "Spreader main beam local frame",
+      "DGT_or_UE_coordinate": "STS45 계열을 모델링할 때만 425/730 mm를 참조. 최신 DGT 실제 spreader에는 검증 필요.",
+      "Confidence": "구형/참조자료이므로 MEDIUM"
+    },
+    {
+      "Sensor_ID": "S07",
+      "System": "Wind sensor / anemometer",
+      "Function": "풍속/풍향",
+      "Public_mounting_position": "상부 개방 위치가 일반적이나 DGT 정확 위치/모델 미공개",
+      "Public_exact_coordinate": "미공개",
+      "Direction": "자유 유동을 받는 방향",
+      "Measured_items": "Wind speed/direction/gust",
+      "Verified_numeric_data": "DGT sensor model/location 미확인",
+      "Coordinate_basis": "Crane local frame",
+      "DGT_or_UE_coordinate": "UE에서는 apex/top frame에 두되 ASSUMED로 표시",
+      "Confidence": "DGT-specific LOW"
+    },
+    {
+      "Sensor_ID": "S08",
+      "System": "SICK LMS511 family vehicle-positioning example",
+      "Function": "AGV/Truck 위치",
+      "Public_mounting_position": "Transfer zone을 바라보는 crane/fixed structure. DP World 실사례에서 LMS511 사용.",
+      "Public_exact_coordinate": "프로젝트별",
+      "Direction": "AGV stop zone을 가로지르는 수평/사선 scan",
+      "Measured_items": "Vehicle X/Y/heading/presence",
+      "Verified_numeric_data": "실사례 존재, 정확 mount 좌표는 project-specific",
+      "Coordinate_basis": "Landside transfer zone",
+      "DGT_or_UE_coordinate": "UE에서는 AGV handover lane 양측 고정 scanner 2개를 설계값으로 둘 수 있음.",
+      "Confidence": "응용 HIGH / DGT 위치 미공개"
+    }
+  ]
+}

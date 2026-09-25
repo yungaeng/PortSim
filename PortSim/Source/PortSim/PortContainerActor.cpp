@@ -31,8 +31,15 @@ APortContainerActor::APortContainerActor()
 void APortContainerActor::BeginPlay()
 {
     Super::BeginPlay();
-    Body->SetMassOverrideInKg(NAME_None,12000.f);
+    SetPhysicalParameters(MassKg,CoGOffsetCm);
     ApplyContainerAppearance();
+}
+
+void APortContainerActor::SetPhysicalParameters(float Mass,FVector CoGOffset)
+{
+    MassKg=Mass; CoGOffsetCm=CoGOffset;
+    Body->SetMassOverrideInKg(NAME_None,MassKg);
+    Body->SetCenterOfMass(CoGOffsetCm);
 }
 
 void APortContainerActor::InitializeContainer(int32 Number)

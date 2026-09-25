@@ -35,6 +35,7 @@ Thumbs.db
 Desktop.ini
 
 # Personal Unreal content and collections
+/Content/STS/STS_ReferenceData.json
 /Content/Developers/
 /Content/Collections/
 

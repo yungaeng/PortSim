@@ -5,6 +5,7 @@
 #include "GameFramework/GameModeBase.h"
 #include "GameFramework/HUD.h"
 #include "TerminalActors.h"
+#include "STSOperatingProfile.h"
 #include "QuayCrane.generated.h"
 
 class APortWorkingCrane;
@@ -108,6 +109,8 @@ public:
     const TCHAR* GetAutoStageName() const;
     float GetSwayDegrees() const;
     float GetLoadHeight() const;
+    FString GetSTSStatus() const;
+    float GetCargoMassKg() const;
 
     bool bTerminalMode = false;
     bool bUnifiedTerminal = false;
@@ -116,9 +119,32 @@ public:
     bool bAutoLoading = false;
     int32 AutoCompleted = 0;
     int32 ActiveCargoIndex = 0;
-    float AutoElapsed = 0.f;
+    double AutoElapsed = 0;
 
 private:
+    FSTSOperatingProfile STSProfile;
+    FSTSObservation STSObservation;
+    double STSSimulationTime = 0;
+    double NextSTSSample = 0;
+    bool bSTSStartPending = false;
+    bool bSTSSensorFault = false;
+    int32 STSLockFault = -1;
+    bool STSCornerLocked[4] = {false,false,false,false};
+    double JobSTSSeconds = 0, JobPrepareSeconds = 0, JobDeliverySeconds = 0, JobPausedSeconds = 0;
+    double JobHandoverAt = -1, JobPlacementAt = -1;
+    FString StageEventsCsv;
+    void InitializeSTSProfile();
+    void ApplySTSGeometry();
+    void SampleSTSSensors(bool Force = false);
+    bool IsCargoSupported() const;
+    bool SaveSTSReports() const;
+    void RecordSTSStage(const TCHAR* Outcome);
+    float CurrentHoistLimit() const;
+    float AutomaticHoistLimit() const;
+    float STSBeamHeight() const;
+    float STSTransferHeight() const;
+    float STSGantrySpeed() const;
+    bool STSLoadedHoistAllowed() const;
     UPROPERTY(VisibleInstanceOnly, Category="Terminal|Actors") TArray<TObjectPtr<APortContainerActor>> ContainerActors;
     UPROPERTY(VisibleInstanceOnly, Category="Terminal|Actors") TArray<TObjectPtr<APortAGVActor>> AGVActors;
     UPROPERTY(VisibleInstanceOnly, Category="Terminal|Actors") TObjectPtr<APortWorkingCrane> RMGActor;
@@ -165,6 +191,12 @@ private:
     void TickFreeCamera(float WallDt);
     void MoveFreeCamera(FVector Input, FVector2D Look, float WallDt, bool Fast);
     void TestEquipmentAndCamera();
+    bool bPickupTest=false, bPickupSawTrial=false;
+    double PickupTestSeconds=0;
+    FString PickupTestCase;
+    UPROPERTY() TObjectPtr<APortWorkingCrane> PickupTestCrane;
+    void BeginPickupTest();
+    void TickPickupTest(float Dt);
     void FollowLoadedAGV();
     bool bFollowAGV=false;
     TWeakObjectPtr<APortAGVActor> FollowedAGV;
@@ -228,9 +260,9 @@ private:
     TArray<int32> AutoQueue;
     ETerminalStage AutoStage = ETerminalStage::Idle;
     int32 AutoCursor = 0;
-    float AutoStageTime = 0.f;
+    double AutoStageTime = 0;
     float AutoStableTime = 0.f;
-    float JobElapsed = 0.f;
+    double JobElapsed = 0;
     FVector AutoDriveTarget = FVector::ZeroVector;
     bool bAutoDriveTarget=false;
     FVector AutoSource = FVector::ZeroVector;
@@ -254,7 +286,7 @@ private:
     void TickPlaybackRateTest();
     int32 PlaybackRateTestStep=-1;
     double PlaybackRateTestWall=0;
-    float PlaybackRateTestSimulation=0;
+    double PlaybackRateTestSimulation=0;
     bool bPlaybackSweep=false;
     bool bHUDMouseReady = false;
     float HUDTestElapsed = 0.f;

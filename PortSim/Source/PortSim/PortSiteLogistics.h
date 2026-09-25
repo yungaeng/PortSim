@@ -1,6 +1,7 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "STSOperatingProfile.h"
 #include "PortSiteLogistics.generated.h"
 
 class APortWorkingCrane;
@@ -23,11 +24,12 @@ struct FSiteShipCargo
     TWeakObjectPtr<APortContainerActor> Actor;
     int32 STS=0, ID=0, State=0; // same actor: 0 aboard, 1 transfer, 2 yard
     uint8 HandoverMask=0; // STS->AGV, AGV->RMG, RMG->yard
+    double StartedAt=0, PreparedPausedSeconds=0;
 };
 struct FSiteTransfer
 {
     int32 Cargo=INDEX_NONE, Slot=INDEX_NONE, RMG=INDEX_NONE, STS=INDEX_NONE, Stage=0, Waypoint=0;
-    float Time=0;
+    double Time=0, StartedAt=0, PausedSeconds=0, HandoverAt=-1, STSSeconds=0;
     float StationaryTime=0;
     FVector LastPosition=FVector::ZeroVector;
     int32 LastStage=-1;
@@ -43,6 +45,7 @@ class PORTSIM_API APortSiteLogistics : public AActor
     GENERATED_BODY()
 public:
     APortSiteLogistics();
+    void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }
     void AddShipCargo(FVector Position,int32 STS);
     void Initialize(const TArray<TObjectPtr<APortWorkingCrane>>& Cranes,TArray<FSiteYardSlot> Slots,
         const TArray<UHierarchicalInstancedStaticMeshComponent*>& Palette,int32 CentralCargo,int32 FixedYard);
@@ -57,6 +60,7 @@ public:
     bool MoveVehicle(APortAGVActor* Vehicle,FVector Target,float Dt);
     void Advance(float Dt,bool Paused);
     void ResetLogistics();
+    void ExportDashboard(bool Paused, bool Force=false);
     bool Validate(FString& Error) const;
     int32 ShipRemaining() const;
     int32 InTransit() const;
@@ -82,6 +86,14 @@ public:
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TArray<TObjectPtr<APortContainerActor>> PlacedContainers;
     UPROPERTY() TArray<TObjectPtr<APortWorkingCrane>> Equipment;
 private:
+    FSTSOperatingProfile STSProfile;
+    double SimulationTime=0;
+    double NextDashboardWall=0;
+    double VesselStarted[3]={-1,-1,-1}, VesselUnloaded[3]={-1,-1,-1}, VesselPlaced[3]={-1,-1,-1};
+    void RecordVesselEvent(int32 CargoIndex, bool Placed);
+    FString ReportBase, ResultsCsv;
+    bool SaveReports() const;
+    void BeginReport();
     TArray<FSiteShipCargo> Manifest;
     TArray<FSiteYardSlot> Yard;
     TArray<int32> CentralSlots;

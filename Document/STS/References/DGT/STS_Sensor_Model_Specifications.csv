@@ -1,0 +1,24 @@
+﻿Category,Model/System,Parameter,Value,Notes
+Crane,DGT / Hyundai-origin Double Trolley STS,Total weight,"2,281 t",DGT Korean reference
+Crane,DGT / Hyundai-origin Double Trolley STS,Rail span,35 m,DGT Korean reference
+Crane,DGT / Hyundai-origin Double Trolley STS,Lifting height,59 m (12 tiers),Some DGT pages state 53 m; source/version discrepancy
+Crane,DGT / Hyundai-origin Double Trolley STS,Outreach,71.5 m,Current DGT feature page also states 72.5 m; source/version discrepancy
+Crane,DGT / Hyundai-origin Double Trolley STS,Overall height,93 m,DGT reference
+Crane,DGT / Hyundai-origin Double Trolley STS,Boom length,82 m,DGT reference
+Crane,DGT / Hyundai-origin Double Trolley STS,Rows,24 rows class,24k-25k TEU class
+Sensor,SICK AOS502 STS / LMS511-10100S04,Quantity,2,Left/right boom
+Sensor,SICK LMS511-10100S04,Scan angle,190°,AOS502 STS manual
+Sensor,SICK LMS511-10100S04,Monitoring range,80 m / 38 m @10% remission,AOS502 STS manual
+Sensor,SICK AOS502 STS,Boom stop field,3.5 m depth x 50 m width,Default field
+Sensor,SICK AOS502 STS,Boom warning field,7.5 m depth x 50 m width,Default field
+Sensor,SICK KH53,Resolution,0.1 mm,Product information
+Sensor,SICK KH53,Repeatability,0.3 mm,Standard KH53
+Sensor,SICK KH53,Max traversing speed,6.6 m/s,Product information
+Sensor,SICK KH53,Read-head distance,25 mm or 55 mm; 55±20 mm possible,Product information
+Sensor,SICK KH53,Measuring range,"up to 1,700 m",Variant dependent
+Spreader,Bromma STS45E G2,Single lift,51 t,Even load / ±10% eccentric rating listed
+Spreader,Bromma STS45E G2,Twin 20,2 x 32.5 t,Even load
+Spreader,Bromma STS45E G2,Weight,12.6 t,Without extras
+Spreader,Bromma STS45E G2,20->40 telescopic,~18 s,Product spec
+Spreader,Bromma STS45E G2,20->45 telescopic,~21 s,Product spec
+Camera,Bromma Hawkeye,Configuration,Up to 4 cameras,Central/side/corner/end

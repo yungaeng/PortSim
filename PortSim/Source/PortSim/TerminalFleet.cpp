@@ -200,7 +200,7 @@ void AQuayCrane::TickFleet(float Dt)
             const FVector Destination=TerminalSlot(ActiveCargoIndex,false);
             const bool Stable=FVector::Dist(Cargo->GetComponentLocation(),Destination)<20.f && Cargo->GetPhysicsLinearVelocity().Size()<8.f && Cargo->GetUpVector().Z>.99f;
             FleetSettle=Stable?FleetSettle+Dt:0;
-            if (FleetSettle>1.f) { ContainerActors[ActiveCargoIndex]->LocationOwner=ECargoOwner::Yard; FleetStep=3; }
+            if (FleetSettle>1.f) { ContainerActors[ActiveCargoIndex]->LocationOwner=ECargoOwner::Yard; JobPlacementAt=AutoElapsed; FleetStep=3; }
         }
         else if (FleetStep==3 && MoveAGV(EFleetDestination::Park,Dt)) CompleteAutomaticJob();
     }

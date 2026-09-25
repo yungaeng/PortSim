@@ -15,6 +15,7 @@ void AQuayCrane::BuildTerminalSite()
     FActorSpawnParameters Params;
     Params.Owner=this;
     SiteLogistics=GetWorld()->SpawnActor<APortSiteLogistics>(FVector::ZeroVector,FRotator::ZeroRotator,Params);
+    SiteLogistics->SetSTSProfile(STSProfile);
     TArray<FSiteYardSlot> YardSlots;
     int32 FixedYard=0;
     SiteActor=GetWorld()->SpawnActor<AActor>(FVector::ZeroVector,FRotator::ZeroRotator,Params);
@@ -134,6 +135,7 @@ void AQuayCrane::BuildTerminalSite()
         }
         auto* Crane=GetWorld()->SpawnActor<APortWorkingCrane>(FVector(1200,Y*100,0),FRotator::ZeroRotator,Params);
         WorkingCranes.Add(Crane);
+    Crane->SetSTSProfile(STSProfile);
         const float ShipDeck=(!bUnifiedTerminal && FMath::Abs(Y)<200.f)?200.f:440.f;
         Crane->Configure(WorkingCranes.Num(),true,FVector(-1600,(Y-8)*100,ShipDeck+129.5f),FVector(4500,(Y+8)*100,149.5f),false);
         const FVector Position(-1600,(Y-8)*100,ShipDeck+129.5f);
