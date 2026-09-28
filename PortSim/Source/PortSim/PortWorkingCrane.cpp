@@ -203,6 +203,16 @@ void APortWorkingCrane::Stop(const FString& Reason)
 
 void APortWorkingCrane::Advance(float Dt,bool bGlobalPaused)
 {
+    if(!FMath::IsFinite(Dt) || Dt<=0) { if(Dt==0)AdvanceStep(0,bGlobalPaused);return; }
+    // A render frame can cover a large simulation interval at low FPS/high speed.
+    // Substep observations and the state machine too, not just the physical plant.
+    const int32 Steps=bSTS?FMath::Max(1,FMath::CeilToInt(double(Dt)*60.)):1;
+    const float Step=Dt/Steps;
+    for(int32 I=0;I<Steps;++I)AdvanceStep(Step,bGlobalPaused);
+}
+
+void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
+{
     if (!bConfigured) return;
     SimulationTime+=Dt;
     if(bJobActive) { JobSeconds+=Dt; if(bGlobalPaused || !bEnabled || !Fault.IsEmpty()) PausedSeconds+=Dt; }

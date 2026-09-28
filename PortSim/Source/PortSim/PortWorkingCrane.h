@@ -45,6 +45,7 @@ public:
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Operation") FString Fault;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Operation") TObjectPtr<APortContainerActor> CargoActor;
 private:
+    void AdvanceStep(float Dt, bool bGlobalPaused);
     FSTSSuspension SuspensionState;
     FSTSPickupController Pickup;
     double LockProgress[4]={0,0,0,0};

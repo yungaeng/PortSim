@@ -37,6 +37,15 @@ bool FSTSPickupTest::RunTest(const FString& Parameters)
     TestEqual(TEXT("Repeated samples cannot accumulate proof time"),P.StableTime,Before);
     for(int I=0;I<4;++I)Tick(false);
     TestTrue(TEXT("Stale sample faults rather than succeeds"),!P.Fault.IsEmpty()&&!P.EstimateValid);
+
+    FSTSPickupController Rate;FSTSObservation Sample=O;Sample.Timestamp=0;
+    for(bool& Lock:Sample.Locked)Lock=false;
+    for(int I=1;I<=54;++I)
+    {
+        const double Time=I/60.;if(I%3==0)Sample.Timestamp=Time;
+        Rate.Update(C,Sample,Time,1./60.,.15,FVector::ZeroVector,65000);
+    }
+    TestTrue(TEXT("20 Hz sensor dwell retains seconds under 60 Hz control"),Rate.Phase==ESTSPickupPhase::Lock);
     return true;
 }
 #endif

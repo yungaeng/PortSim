@@ -1,6 +1,8 @@
 param(
     [string]$Engine = 'C:\Program Files\Epic Games\UE_5.6',
-    [ValidateSet('All','offset','eccentric','bias','yaw','seat','pose','lock')][string]$Case = 'All'
+    [ValidateSet('All','offset','eccentric','bias','yaw','seat','pose','lock')][string]$Case = 'All',
+    [ValidateRange(1,120)][int]$FixedFPS = 10,
+    [ValidateRange(0,2)][double]$SimulationFrameSeconds = 0
 )
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
@@ -8,8 +10,9 @@ $editor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 $cases = if ($Case -eq 'All') { @('offset','eccentric','bias','yaw','seat','pose','lock') } else { @($Case) }
 foreach ($name in $cases) {
     $log = Join-Path $root "Saved\Logs\Pickup_$name.log"
-    $arguments = @("`"$(Join-Path $root 'PortSim.uproject')`"",'/Engine/Maps/Entry','-game','-nullrhi','-nosound','-unattended','-nosplash','-nop4','-benchmark','-fps=10','-PortSimPickupTest',"-PortSimPickupCase=$name","`"-abslog=$log`"")
+    $arguments = @("`"$(Join-Path $root 'PortSim.uproject')`"",'/Engine/Maps/Entry','-game','-nullrhi','-nosound','-unattended','-nosplash','-nop4','-benchmark',"-fps=$FixedFPS",'-PortSimPickupTest',"-PortSimPickupCase=$name","`"-abslog=$log`"")
     if ($name -eq 'seat') { $arguments += '-PortSimSTSSeatFault=2' }
+    if ($SimulationFrameSeconds -gt 0) { $arguments += ('-PortSimPickupFrameSeconds=' + $SimulationFrameSeconds.ToString([Globalization.CultureInfo]::InvariantCulture)) }
     if ($name -eq 'pose') { $arguments += '-PortSimSTSPoseFault' }
     if ($name -eq 'lock') { $arguments += '-PortSimSTSLockFault=0' }
     Write-Output "RUN pickup $name"

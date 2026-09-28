@@ -41,9 +41,12 @@ void APortWorkingCrane::AdvancePickup(float Dt)
         if(!Observation.AllLocked()){Stop(TEXT("Pickup attachment requires four lock feedback signals"));return;}
         if(bDestinationReady&&!DestinationClear()){Stop(TEXT("Destination slot occupied"));return;}
         // Mechanical coupling preserves the achieved pose; never snap a misaligned box onto the head.
+        const FVector BeforeAttachment=CargoActor->GetActorLocation();
         CargoActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
         CargoActor->GetBody()->SetSimulatePhysics(false);
         CargoActor->AttachToComponent(Spreader,FAttachmentTransformRules::KeepWorldTransform);
+        if(!BeforeAttachment.Equals(CargoActor->GetActorLocation(),.01))
+        {Stop(TEXT("Pickup attachment changed the achieved cargo position"));return;}
         LockedCargoTransform=CargoActor->GetActorTransform().GetRelativeTransform(Spreader->GetComponentTransform());
         CargoActor->LocationOwner=ECargoOwner::STS;bCarrying=true;
         Pickup.Attached(Observation.SpreaderPosition);SampleSTS(true);return;

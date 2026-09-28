@@ -37,6 +37,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method !== 'GET') { res.writeHead(405).end(); return; }
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    if (url.pathname === '/api/health') {
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({application: 'PortSim Observatory', repository: repo})); return;
+    }
     if (url.pathname === '/api/state') {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify(await readState())); return;

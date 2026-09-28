@@ -1,3 +1,11 @@
+## Windows 실행
+
+- `StartPortSim.cmd` 더블클릭: UE **5.6** 에디터와 웹 서버를 함께 실행합니다. 에디터에서 플레이를 누르면 됩니다.
+- `StartDashboard.cmd` 더블클릭: 웹 서버만 켜고 브라우저를 엽니다. 주소는 `http://127.0.0.1:4173`입니다.
+- 웹 서버는 PC를 재시작하면 다시 켜야 합니다. 서버가 이미 실행 중이면 재사용합니다.
+- `.uproject`의 엔진 연결은 공통 버전 `5.6`을 사용합니다. PC마다 다른 엔진 GUID를 저장소에 커밋하지 마세요.
+- UE 설치 경로가 다르면 `PortSim/Scripts/LaunchPortSim.ps1 -Engine "설치 경로"`를 사용하세요. Node.js는 PATH/표준 설치 경로/사용 가능한 Codex 런타임 순으로 찾으며 `-NodePath`로 직접 지정할 수도 있습니다.
+
 ## 웹 관제 대시보드
 
 `PortSim/Scripts/LaunchDashboard.ps1` 실행 후 `http://127.0.0.1:4173`에서 장비·화물·센서·시간 비교를 조회할 수 있습니다. 언리얼 시뮬레이션의 실제 액터 데이터와 연결됩니다. 실행 방법과 데이터 범위는 [Dashboard/README.md](Dashboard/README.md)를 참고하세요.
