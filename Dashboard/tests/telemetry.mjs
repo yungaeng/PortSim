@@ -3,13 +3,17 @@ import {readFile} from 'node:fs/promises';
 import assert from 'node:assert/strict';
 const state=JSON.parse(await readFile(new URL('../../PortSim/Saved/Dashboard/state.json',import.meta.url),'utf8'));
 assert.equal(state.schema_version,1);assert.equal(state.unified,true);
+assert.equal(state.handover_policy,'cargo_aligned_quay');
 assert.equal(new Set(state.actors.map(a=>a.id)).size,state.actors.length);
 const byType=t=>state.actors.filter(a=>a.type===t);
-assert.equal(byType('sts').length,9);assert.equal(byType('agv').length,60);assert.equal(byType('rmg').length,46);assert.equal(byType('container').length,1584);
-assert.equal(state.vessels.length,3);assert.equal(state.vessels.reduce((n,v)=>n+v.initial_count,0),1584);
+assert.equal(byType('sts').length,9);assert.equal(byType('agv').length,60);assert.equal(byType('rmg').length,46);assert.equal(byType('container').length,600);
+assert.equal(state.vessels.length,3);assert.equal(state.vessels.reduce((n,v)=>n+v.initial_count,0),600);
+for(const v of state.vessels)assert.equal(v.initial_count,200);
+assert.equal(state.receiving_capacity,600);
 for(const a of state.actors)assert(a.position_m.every(Number.isFinite));
 for(const [i,a] of byType('sts').sort((a,b)=>a.name.localeCompare(b.name)).entries()){
  assert.equal(a.name,`STS-${String(i+1).padStart(2,'0')}`);
+ if(a.busy) assert(Math.abs(a.source_m[1]-a.destination_m[1])<.00001,'Loaded STS transfer must retain the cargo bay coordinate');
  assert.equal(a.mounted_sensors.length,14);
  assert.equal(a.components.filter(c=>c.name.startsWith('Sensor_')).length,25);
  for(const mount of a.mounted_sensors){
@@ -44,6 +48,13 @@ for(const [i,a] of byType('sts').sort((a,b)=>a.name.localeCompare(b.name)).entri
 for(const a of byType('agv')){
  if(a.sts)assert(byType('sts').some(s=>s.id===a.sts));
  if(a.stage>0&&!state.paused&&!state.fault)assert.equal(a.state,'working');
+ if(a.stage===6||a.stage===1){
+  const crane=byType('sts').find(s=>s.id===a.sts);assert(crane);
+  assert(a.handover_position_m.every(Number.isFinite));
+  for(let i=0;i<2;i++)assert(Math.abs(a.handover_position_m[i]-crane.destination_m[i])<.00001);
+  if(a.stage===6){assert(a.route.length>0);assert.deepEqual(a.route.at(-1).position_m,a.handover_position_m);}
+  if(a.stage===1){assert.equal(a.speed_mps,0);for(let i=0;i<3;i++)assert(Math.abs(a.position_m[i]-a.handover_position_m[i])<.001);}
+ }
 }
 for(const a of byType('rmg')){
  assert.equal(a.rated_payload_kg,40000);assert.equal(a.trolley_limit_mps,2);assert.equal(a.gantry_limit_mps,2);

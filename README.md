@@ -8,7 +8,7 @@
 
 ## 웹 관제 대시보드
 
-`PortSim/Scripts/LaunchDashboard.ps1` 실행 후 `http://127.0.0.1:4173`에서 장비·화물·센서·시간 비교를 조회할 수 있습니다. 언리얼 시뮬레이션의 실제 액터 데이터와 연결됩니다. 실행 방법과 데이터 범위는 [Dashboard/README.md](Dashboard/README.md)를 참고하세요.
+`PortSim/Scripts/LaunchDashboard.ps1` 실행 후 `http://127.0.0.1:4173`에서 장비·화물·센서·시간 비교를 조회할 수 있습니다. 언리얼 시뮬레이션의 실제 액터 데이[...]
 
 통합 터미널의 RMG도 센서 관측에 따른 정렬·잠금·시험 인양·야드 지지면 확인을 사용합니다. Konecranes 문서에서 선택한 사양과 미확인 설치 가정은 `PortSim/Config/RMG_Simulation.json`에 분리되어 있습니다. 웹에서 RMG를 선택하면 픽업·센서·하중·물리 상태를 볼 수 있습니다. 자료 해석, 모델 범위와 시험 방법은 [RMG 센서 제어](Document/RMG/SensorControl.md)를 참고하세요.
 
@@ -43,3 +43,7 @@
 | ARMG 높이 참고      	|                         약 **34m** 		|
 | 컨테이너            	| **40ft, 12.192 × 2.438 × 2.591m** 	|
 | AGV / STS 운영 기준 	|                      **약 5대/STS** 		|
+
+5. STS, AGV, RMG 개선
+5-1 STS, RMG : 하역/적재 시, 흔들림으로 인한 속도 저하 개선
+5-2 AGV : 이동 시, 병목 현상 개선, 바퀴 구현

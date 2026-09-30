@@ -1,4 +1,5 @@
 #include "PortSiteLogistics.h"
+#include "Async/Async.h"
 #include "PortWorkingCrane.h"
 #include "PortContainerActor.h"
 #include "PortAGVActor.h"
@@ -26,7 +27,8 @@ namespace Dashboard
         for(int32 I=0;I<3;++I) A.Add(MakeShared<FJsonValueNumber>(V[I]*Scale));
         O->SetArrayField(Key,A);
     }
-    FObject Actor(AActor* A,const FString& Type,const FString& Label)
+    FObject Actor(AActor* A,const FString& Type,const FString& Label,
+        TMap<TWeakObjectPtr<UClass>,TArray<TFieldPath<FProperty>>>& Cache)
     {
         auto O=Object();
         O->SetStringField(TEXT("id"),A->GetName());
@@ -39,16 +41,24 @@ namespace Dashboard
         O->SetStringField(TEXT("state"),TEXT("available"));
         // Only project-declared scalar reflected values; never traverse UObject graphs.
         auto Properties=Object();
-        for(TFieldIterator<FProperty> It(A->GetClass());It;++It)
+        const TWeakObjectPtr<UClass> Class=A->GetClass();
+        auto* Fields=Cache.Find(Class);
+        if (!Fields)
         {
-            const FProperty* P=*It;
-            if(!P->GetOwnerStruct()->GetName().StartsWith(TEXT("Port"))) continue;
-            if(P->IsA<FNumericProperty>() || P->IsA<FBoolProperty>() || P->IsA<FStrProperty>() || P->IsA<FNameProperty>() || P->IsA<FEnumProperty>())
+            Fields=&Cache.Add(Class);
+            for(TFieldIterator<FProperty> It(A->GetClass());It;++It)
             {
-                FString Text;
-                P->ExportText_InContainer(0,Text,A,A,A,PPF_None);
-                Properties->SetStringField(P->GetName(),Text);
+                FProperty* P=*It;
+                if(!P->GetOwnerStruct()->GetName().StartsWith(TEXT("Port"))) continue;
+                if(P->IsA<FNumericProperty>() || P->IsA<FBoolProperty>() || P->IsA<FStrProperty>() || P->IsA<FNameProperty>() || P->IsA<FEnumProperty>())
+                    Fields->Add(TFieldPath<FProperty>(P));
             }
+        }
+        for (const auto& Field:*Fields) if (const FProperty* P=Field.Get())
+        {
+            FString Text;
+            P->ExportText_InContainer(0,Text,A,A,A,PPF_None);
+            Properties->SetStringField(P->GetName(),Text);
         }
         O->SetObjectField(TEXT("properties"),Properties);
         TArray<TSharedPtr<FJsonValue>> Components;
@@ -139,7 +149,12 @@ TSharedRef<FJsonObject> APortWorkingCrane::DashboardState() const
             const auto& M=C.Mounts[I];const auto* Marker=SensorMarkers[I].Get();auto Sensor=Object();
             Sensor->SetStringField(TEXT("key"),M.Key); Sensor->SetStringField(TEXT("frame"),M.Frame);
             Sensor->SetStringField(TEXT("unit"),M.Unit);Sensor->SetStringField(TEXT("provenance"),TEXT("mixed_source_specs_and_unverified_installation"));
-            if(M.Reference.IsValid()) Sensor->SetObjectField(TEXT("reference"),M.Reference);
+            if(M.Reference.IsValid())
+            {
+                TSharedPtr<FJsonObject> Reference=MakeShared<FJsonObject>();
+                FJsonObject::Duplicate(M.Reference,Reference);
+                Sensor->SetObjectField(TEXT("reference"),Reference);
+            }
             Vector(Sensor,TEXT("mount_position_m"),M.Position);
             Vector(Sensor,TEXT("world_position_m"),Marker->GetComponentLocation(),.01f);
             Vector(Sensor,TEXT("forward"),Marker->GetForwardVector());
@@ -270,7 +285,39 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
 {
     using namespace Dashboard;
     if(!bReady || (!Force && FPlatformTime::Seconds()<NextDashboardWall)) return;
+    // Bound work to one snapshot: slow storage must not create a growing queue.
+    if (DashboardWrite.IsValid())
+    {
+        if (!Force && !DashboardWrite.IsReady()) return;
+        DashboardWrite.Wait();
+    }
     NextDashboardWall=FPlatformTime::Seconds()+1.;
+    auto Snapshot=CaptureDashboard(Paused);
+    const FString Directory=FPaths::ProjectSavedDir()/TEXT("Dashboard");
+    DashboardWrite=Async(EAsyncExecution::ThreadPool,[Snapshot=MoveTemp(Snapshot),Directory]() mutable
+    {
+        // The entire JSON graph belongs to this task. No UObject access or shared
+        // non-thread-safe JSON references survive on the game thread.
+        const TSharedRef<FJsonObject> Root=MakeShareable(Snapshot.Release());
+        FString Json;
+        if (!FJsonSerializer::Serialize(Root,TJsonWriterFactory<TCHAR,TCondensedJsonPrintPolicy<TCHAR>>::Create(&Json))) return;
+        IFileManager::Get().MakeDirectory(*Directory,true);
+        const FString Temporary=Directory/(TEXT("state-")+FGuid::NewGuid().ToString()+TEXT(".tmp"));
+        const FString Final=Directory/TEXT("state.json");
+        if (!FFileHelper::SaveStringToFile(Json,*Temporary,FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM) ||
+            !IFileManager::Get().Move(*Final,*Temporary,true,true))
+        {
+            UE_LOG(LogTemp,Warning,TEXT("Dashboard snapshot publication failed: %s"),*Final);
+            IFileManager::Get().Delete(*Temporary);
+        }
+    });
+    if (Force) DashboardWrite.Wait();
+}
+
+TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
+{
+    using namespace Dashboard;
+    for (auto It=DashboardProperties.CreateIterator();It;++It) if (!It.Key().IsValid()) It.RemoveCurrent();
     auto Root=Object();
     Root->SetNumberField(TEXT("schema_version"),1);
     Root->SetStringField(TEXT("generated_at"),FDateTime::UtcNow().ToIso8601());
@@ -278,19 +325,24 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
     Root->SetNumberField(TEXT("simulation_seconds"),SimulationTime);
     Root->SetBoolField(TEXT("paused"),Paused);
     Root->SetBoolField(TEXT("unified"),LaneCount==9);
+    Root->SetStringField(TEXT("handover_policy"),UsesCargoAlignedHandover()?TEXT("cargo_aligned_quay"):TEXT("fixed_quay"));
     Root->SetStringField(TEXT("fault"),Fault);
     Root->SetNumberField(TEXT("delivered"),Delivered);
     Root->SetNumberField(TEXT("initial_ship"),InitialShipCount());
     Root->SetNumberField(TEXT("initial_yard"),InitialYard);
+    Root->SetNumberField(TEXT("receiving_capacity"),ReceivingCapacity);
     Root->SetNumberField(TEXT("peak_moving_agvs"),PeakMovingVehicles);
     Root->SetNumberField(TEXT("prefetched_jobs"),PrefetchedJobs);
     TSharedPtr<FJsonObject> Profile;
     if(FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(STSProfile.SnapshotJson),Profile)) Root->SetObjectField(TEXT("applied_profile"),Profile);
+    TMap<AActor*,APortContainerActor*> AttachedCargo;
+    for (const auto& Cargo:ShipContainers)
+        if (IsValid(Cargo)) if (auto* Parent=Cargo->GetAttachParentActor()) AttachedCargo.Add(Parent,Cargo);
     TArray<TSharedPtr<FJsonValue>> Actors;
     for(TActorIterator<AActor> It(GetWorld());It;++It)
     {
         auto* A=*It;
-        auto O=Actor(A,TEXT("other"),A->GetName());
+        auto O=Actor(A,TEXT("other"),A->GetName(),DashboardProperties);
         if(auto* Crane=Cast<APortWorkingCrane>(A))
         {
             const bool STS=Crane->bSTS;
@@ -309,13 +361,16 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
             O->SetNumberField(TEXT("completed"),V->CompletedJobs);
             O->SetStringField(TEXT("state"),V->Speed>0?TEXT("working"):TEXT("idle"));
             O->SetNumberField(TEXT("payload_kg"),0);
-            for(const auto& C:ShipContainers) if(C->GetAttachParentActor()==V)
-            { O->SetStringField(TEXT("cargo"),C->GetName()); O->SetNumberField(TEXT("payload_kg"),C->MassKg); }
+            if (auto* const* C=AttachedCargo.Find(V))
+            { O->SetStringField(TEXT("cargo"),(*C)->GetName()); O->SetNumberField(TEXT("payload_kg"),(*C)->MassKg); }
             const int32 Lane=Vehicles.IndexOfByKey(V);
             if(Jobs.IsValidIndex(Lane))
             {
                 const auto& J=Jobs[Lane];
                 O->SetNumberField(TEXT("stage"),J.Stage);
+                const int32 CargoIndex=J.Cargo!=INDEX_NONE?J.Cargo:
+                    (PreparedCargo.IsValidIndex(J.STS)?PreparedCargo[J.STS]:INDEX_NONE);
+                if (Manifest.IsValidIndex(CargoIndex)) Vector(O,TEXT("handover_position_m"),CargoQuay(CargoIndex),.01f);
                 O->SetStringField(TEXT("state"),!Fault.IsEmpty()?TEXT("fault"):(Paused?TEXT("paused"):(J.Stage?TEXT("working"):TEXT("idle"))));
                 if(J.STS!=INDEX_NONE) O->SetStringField(TEXT("sts"),Equipment[YardCraneCount+J.STS]->GetName());
                 O->SetNumberField(TEXT("job_seconds"),J.Time);
@@ -357,10 +412,12 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
         O->SetStringField(TEXT("state"),Unloaded==Total?TEXT("complete"):TEXT("working"));
         Vessels.Add(Value(O)); Actors.Add(Value(O));
     }
+    int32 YardTotals[18]={}, YardOccupied[18]={};
+    for (const auto& Slot:Yard) if (Slot.Block>=0 && Slot.Block<18)
+    { ++YardTotals[Slot.Block]; YardOccupied[Slot.Block]+=Slot.Occupied; }
     for(int32 B=0;B<18;++B)
     {
-        auto O=Object(); int32 Total=0,Occupied=0;
-        for(const auto& S:Yard) if(S.Block==B) { ++Total; Occupied+=S.Occupied; }
+        auto O=Object(); const int32 Total=YardTotals[B], Occupied=YardOccupied[B];
         O->SetStringField(TEXT("id"),FString::Printf(TEXT("yard-%d"),B+1));
         O->SetStringField(TEXT("name"),FString::Printf(TEXT("YARD-%02d"),B+1));
         O->SetStringField(TEXT("type"),TEXT("yard"));
@@ -370,12 +427,8 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
         O->SetStringField(TEXT("state"),TEXT("available")); Actors.Add(Value(O));
     }
     Root->SetArrayField(TEXT("actors"),Actors); Root->SetArrayField(TEXT("vessels"),Vessels);
-    FString Json;
-    FJsonSerializer::Serialize(Root,TJsonWriterFactory<TCHAR,TCondensedJsonPrintPolicy<TCHAR>>::Create(&Json));
-    const FString Directory=FPaths::ProjectSavedDir()/TEXT("Dashboard");
-    IFileManager::Get().MakeDirectory(*Directory,true);
-    // Publish by rename so HTTP readers cannot observe a half-written snapshot.
-    const FString Temporary=Directory/TEXT("state.tmp"), Final=Directory/TEXT("state.json");
-    if(FFileHelper::SaveStringToFile(Json,*Temporary,FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM))
-        IFileManager::Get().Move(*Final,*Temporary,true,true);
+    auto Snapshot=MakeUnique<FJsonObject>();
+    Snapshot->Values=MoveTemp(Root->Values);
+    // All local aliases (Actors, Vessels, Profile) die before the worker is launched.
+    return Snapshot;
 }

@@ -7,7 +7,7 @@ $root = Split-Path $PSScriptRoot -Parent
 $editor = Join-Path $Engine 'Engine\Binaries\Win64\UnrealEditor-Cmd.exe'
 $log = Join-Path $root 'Saved\Logs\FullUnloadTest.log'
 & $editor (Join-Path $root 'PortSim.uproject') /Engine/Maps/Entry -game -nullrhi -nosound -unattended -nosplash -benchmark "-fps=$FixedFPS" -PortSimFullUnloadTest "-abslog=$log"
-if ($LASTEXITCODE -ne 0 -or -not (Select-String -LiteralPath $log -Pattern 'PORTSIM_SITE_PASS:.*1584 complete' -Quiet)) {
+if ($LASTEXITCODE -ne 0 -or -not (Select-String -LiteralPath $log -Pattern 'PORTSIM_SITE_PASS:.*600 complete' -Quiet)) {
     throw "Full unloading did not pass. See $log"
 }
 Select-String -LiteralPath $log -Pattern 'RECEIVING_METRICS:|DISPATCH_METRICS:|PORTSIM_SITE_PASS:'

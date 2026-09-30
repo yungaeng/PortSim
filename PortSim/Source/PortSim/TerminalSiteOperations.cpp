@@ -19,7 +19,27 @@ void AQuayCrane::TickSiteOperations(float Dt)
     const bool Full=FParse::Param(FCommandLine::Get(),TEXT("PortSimFullUnloadTest"));
     const bool Testing=Full || FParse::Param(FCommandLine::Get(),TEXT("PortSimSiteTest"));
     if (Testing) SiteLogistics->DispatchLimit=Full?SiteLogistics->InitialShipCount():SiteLogistics->Vehicles.Num()*2;
+    const bool FirstWave=FParse::Param(FCommandLine::Get(),TEXT("PortSimFirstWaveTest"));
+    if (FirstWave) SiteLogistics->DispatchLimit=9;
     SiteLogistics->Advance(Dt,bAutoPaused || bEmergencyStop);
+    if (FirstWave)
+    {
+        SiteTestTime+=Dt;
+        FString Error;
+        if (!SiteLogistics->Validate(Error) || SiteTestTime>5000)
+        {
+            UE_LOG(LogTemp,Error,TEXT("PORTSIM_FIRST_WAVE_FAIL: %s"),*Error);
+            FPlatformMisc::RequestExitWithStatus(false,1);
+        }
+        else if (SiteLogistics->Delivered==9)
+        {
+            SiteLogistics->ExportDashboard(false,true);
+            UE_LOG(LogTemp,Display,TEXT("PORTSIM_FIRST_WAVE_PASS: policy=%s delivered=9 simulation_seconds=%.6f step=%.6f"),
+                SiteLogistics->UsesCargoAlignedHandover()?TEXT("cargo_aligned"):TEXT("fixed"),SiteTestTime,Dt);
+            FPlatformMisc::RequestExitWithStatus(false,0);
+        }
+        return;
+    }
     if (Testing) TickSiteTest(Dt);
 }
 void AQuayCrane::TickSiteTest(float Dt)
@@ -65,7 +85,7 @@ void AQuayCrane::TickSiteTest(float Dt)
         const auto Current=SiteLogistics->Snapshot();
         if (Current.Num()!=SiteTestPositions.Num()) { Finish(false,TEXT("Pause changed actors")); return; }
         for (int32 I=0;I<Current.Num();++I)
-            if (!Current[I].Equals(SiteTestPositions[I],.1f)) { Finish(false,TEXT("Pause/E-stop moved AGV, crane or cargo")); return; }
+            if (!Current[I].Equals(SiteTestPositions[I],.1f)) { Finish(false,FString::Printf(TEXT("Pause/E-stop moved AGV, crane or cargo: index=%d before=%s after=%s"),I,*SiteTestPositions[I].ToString(),*Current[I].ToString())); return; }
         bAutoPaused=bEmergencyStop=false; ++SiteTestStage;
     }
     else if (SiteTestStage==2 && Moving) { Freeze(true); SiteTestStage=3; }

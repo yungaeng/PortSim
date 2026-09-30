@@ -237,6 +237,9 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
         SettleTime=0;
         if(AGVAlignmentWait>STSProfile.Pickup.AlignmentTimeout)
         {
+            UE_LOG(LogTemp,Error,TEXT("CRANE_ALIGNMENT_TIMEOUT: crane=%d kind=%s stage=%d ready=%d agv=%s observed=%d destination=%s wait=%.2f"),
+                CraneID,bSTS?TEXT("STS"):TEXT("RMG"),Stage,bDestinationReady,*GetNameSafe(HandoverAGV),
+                Observation.bAGVAligned,*Slots[bSTS?1-SourceSlot:SourceSlot].ToString(),AGVAlignmentWait);
             Stop(bSTS?TEXT("AGV alignment recovery timed out during STS handover"):
                 TEXT("AGV alignment recovery timed out during RMG pickup"));
             return;

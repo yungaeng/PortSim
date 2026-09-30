@@ -3,6 +3,10 @@
 // Centimeters. Expand inland from the quay-side rail; ship/AGV handovers stay fixed.
 namespace TerminalLayout
 {
+    constexpr int VesselCount = 3;
+    constexpr int VesselRows = 10, VesselBays = 10, VesselTiers = 2;
+    constexpr int ContainersPerVessel = VesselRows * VesselBays * VesselTiers;
+    constexpr int TotalVesselContainers = VesselCount * ContainersPerVessel;
     constexpr float YardScale = 1.f;
     constexpr float NearRailX = 5500.f;
     constexpr float FarRailX = NearRailX + 4500.f * YardScale;

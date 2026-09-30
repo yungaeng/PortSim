@@ -2,8 +2,12 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "STSOperatingProfile.h"
+#include "Async/Future.h"
+#include "UObject/UnrealType.h"
+#include "TrafficSpatialIndex.h"
 #include "PortSiteLogistics.generated.h"
 
+class FJsonObject;
 class APortWorkingCrane;
 class APortAGVActor;
 class APortContainerActor;
@@ -69,6 +73,7 @@ public:
     FString VehicleStatus() const;
     TArray<FVector> Snapshot() const;
     int32 InitialShipCount() const { return Manifest.Num()+CentralCount; }
+    bool UsesCargoAlignedHandover() const { return bCargoAlignedHandover; }
     virtual void EndPlay(const EEndPlayReason::Type Reason) override;
 
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) int32 BaselineYard=0;
@@ -89,6 +94,12 @@ private:
     FSTSOperatingProfile STSProfile;
     double SimulationTime=0;
     double NextDashboardWall=0;
+    TFuture<void> DashboardWrite;
+    TMap<TWeakObjectPtr<UClass>,TArray<TFieldPath<FProperty>>> DashboardProperties;
+    TUniquePtr<FJsonObject> CaptureDashboard(bool Paused);
+    FTrafficSpatialIndex ReservationIndex, VehicleIndex;
+    bool bTrafficIndexReady=false;
+    void IndexTrafficVehicle(int32 Index);
     double VesselStarted[3]={-1,-1,-1}, VesselUnloaded[3]={-1,-1,-1}, VesselPlaced[3]={-1,-1,-1};
     void RecordVesselEvent(int32 CargoIndex, bool Placed);
     FString ReportBase, ResultsCsv;
@@ -114,6 +125,7 @@ private:
     TArray<bool> SlotAssigned;
     int32 CentralCount=0, Dispatched=0, LaneCount=8, YardCraneCount=36;
     bool bReady=false, bWasPaused=false;
+    bool bCargoAlignedHandover=true;
     void Dispatch(int32 Lane);
     void ScheduleFleet();
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
@@ -124,6 +136,8 @@ private:
     void Freeze(bool Paused);
     void Stop(const FString& Reason);
     FVector QuayPark(int32 Lane) const;
+    FVector CargoQuay(int32 CargoIndex) const;
+    FVector QueueQuay(int32 STS) const;
     FVector FleetPark(int32 Vehicle) const;
     FVector YardHandover(const FSiteYardSlot& Slot) const;
 };

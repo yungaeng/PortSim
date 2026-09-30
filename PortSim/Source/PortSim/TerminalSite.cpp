@@ -131,7 +131,7 @@ void AQuayCrane::BuildTerminalSite()
         {
             Box(Roads,FVector(55,Y+28,.25),FVector(4.2,15,.06));
             for (float Side:{-1.f,1.f}) Box(White,FVector(55+Side*2.1f,Y+28,.31),FVector(.12,15,.02));
-            Label(TEXT("NEXT AGV"),FVector(55,Y+28,.4),1.f);
+            Label(TEXT("AGV APPROACH"),FVector(55,Y+28,.4),1.f);
         }
         auto* Crane=GetWorld()->SpawnActor<APortWorkingCrane>(FVector(1200,Y*100,0),FRotator::ZeroRotator,Params);
         WorkingCranes.Add(Crane);
@@ -142,7 +142,11 @@ void AQuayCrane::BuildTerminalSite()
         if (!bUnifiedTerminal) SiteLogistics->AddShipCargo(Position,STSIndex);
         ++STSIndex;
     }
-    // Identical hull, deck and 11 x 16 x 3 container arrangement at every berth.
+    // Fast-test fleet: 10 rows x 10 bays x 2 tiers = 200 per vessel.
+    // Spread bays over the hull so all three STSs on each vessel still participate.
+    const int32 ShipRows=bUnifiedTerminal?TerminalLayout::VesselRows:11;
+    const int32 ShipBays=bUnifiedTerminal?TerminalLayout::VesselBays:16;
+    const int32 ShipTiers=bUnifiedTerminal?TerminalLayout::VesselTiers:3;
     const TArray<float> ShipPositions=bUnifiedTerminal?TArray<float>{-350,0,350}:TArray<float>{-350,350};
     int32 VesselIndex=0;
     for (float Y:ShipPositions)
@@ -151,11 +155,12 @@ void AQuayCrane::BuildTerminalSite()
         Box(Blue,FVector(-32,Y,4.2),FVector(43,285,.4));
         Box(Roads,FVector(-32,Y+146,-1),FVector(29,7,10));
         Box(Buildings,FVector(-32,Y-125,14),FVector(38,18,20));
-        for (int32 Row=0;Row<11;++Row)
-            for (int32 Bay=0;Bay<16;++Bay)
-                for (int32 Tier=0;Tier<3;++Tier)
+        for (int32 Row=0;Row<ShipRows;++Row)
+            for (int32 Bay=0;Bay<ShipBays;++Bay)
+                for (int32 Tier=0;Tier<ShipTiers;++Tier)
                 {
-                    const FVector Position(-49+Row*3,Y-99+Bay*13,5.695+Tier*2.59);
+                    const float BayY=bUnifiedTerminal?-117.f+Bay*26.f:-99.f+Bay*13.f;
+                    const FVector Position(-49+Row*3,Y+BayY,5.695+Tier*2.59);
                     const int32 Nearest=FMath::Clamp(FMath::RoundToInt((Position.Y-(Y-100))/100.f),0,2)+(bUnifiedTerminal?VesselIndex*3:(Y<0?0:5));
                     SiteLogistics->AddShipCargo(Position*100.,Nearest);
                 }

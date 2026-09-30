@@ -48,7 +48,9 @@ void FSTSPickupController::Update(const FSTSPickupConfig& C,const FSTSObservatio
     PhaseTime+=Dt;
     if(!O.IsFresh(Now,MaxAge)){Fail(TEXT("Required STS sensor observation invalid/stale"));return;}
     const bool Fresh=O.Timestamp>LastSample;
-    const double SampleDt=Fresh&&LastSample>=0?FMath::Clamp(O.Timestamp-LastSample,0.,MaxAge):0;
+    // Hold time comes from fresh sensor intervals, not the shorter control step.
+    // Never credit time from before entering this phase.
+    const double SampleDt=Fresh&&LastSample>=0?FMath::Clamp(O.Timestamp-LastSample,0.,PhaseTime):0;
     if(Fresh)LastSample=O.Timestamp;
     const bool Trial=Phase==ESTSPickupPhase::TrialLift||Phase==ESTSPickupPhase::TrialHold;
     if(!Trial)

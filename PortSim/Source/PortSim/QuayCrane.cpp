@@ -257,7 +257,7 @@ void AQuayCrane::BeginPlay()
     { SiteCameraIndex=FocusIndex-1; FocusNextSiteCrane(); }
     float RequestedPlayback=1.f;
     const bool ExplicitPlayback=FParse::Value(FCommandLine::Get(),TEXT("PortSimPlayback="),RequestedPlayback);
-    if ((!bSmokeTest && !bTerminalTest && !FParse::Param(FCommandLine::Get(),TEXT("PortSimSiteTest")) && !FParse::Param(FCommandLine::Get(),TEXT("PortSimFullUnloadTest"))) || ExplicitPlayback)
+    if ((!bSmokeTest && !bTerminalTest && !FParse::Param(FCommandLine::Get(),TEXT("PortSimSiteTest")) && !FParse::Param(FCommandLine::Get(),TEXT("PortSimFullUnloadTest")) && !FParse::Param(FCommandLine::Get(),TEXT("PortSimFirstWaveTest"))) || ExplicitPlayback)
     {
         InstallPlaybackClock();
         while (SimulationSpeed<RequestedPlayback && GetSimulationSpeedStep()<Crane::SpeedLevelCount-1) IncreaseSimulationSpeed();
