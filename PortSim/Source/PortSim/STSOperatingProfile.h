@@ -32,6 +32,9 @@ struct FSTSOperatingProfile
     FSTSPickupConfig Pickup;
 
     bool Load(const FString& ReferenceFile, const FString& SettingsFile);
+    // Shared crane controller units; RMG resolves its own reference and assumptions.
+    bool LoadRMG(const FString& SettingsFile);
+    float CollisionMargin=0, StackHeightTolerance=0;
     float HoistLimit(float PayloadKg, bool bLoaded) const;
     float MinTrolley() const { return WatersideRailX - Outreach; }
     float MaxTrolley() const { return WatersideRailX + RailGauge + Backreach; }
@@ -55,6 +58,8 @@ struct FSTSObservation
     FVector CornerError[4]={FVector::ZeroVector,FVector::ZeroVector,FVector::ZeroVector,FVector::ZeroVector};
     FVector2D SwayRate=FVector2D::ZeroVector;
     float RelativeYawDegrees=0, TargetTiltDegrees=0, SkewDegrees=0, HoistAcceleration=0;
+    bool bStackProfileValid=false, bCraneClear=true;
+    float StackTopZ=0, CraneDistance=-1;
 
     bool IsFresh(double Now, float MaxAge) const { return bValid && Now >= Timestamp && Now - Timestamp <= MaxAge; }
     bool AllLocked() const { return Locked[0] && Locked[1] && Locked[2] && Locked[3]; }

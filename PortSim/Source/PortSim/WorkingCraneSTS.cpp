@@ -14,6 +14,17 @@ void APortWorkingCrane::SetHandoverVehicle(APortAGVActor* Vehicle)
     SampleSTS(true);
 }
 
+void APortWorkingCrane::SetDestinationReady(bool Ready)
+{
+    if(bDestinationReady==Ready) return;
+    bDestinationReady=Ready;
+    AGVAlignmentWait=0;
+    // Fleet movement is updated after cranes.  Refresh immediately when the
+    // dispatcher reports arrival so the first handover step cannot consume the
+    // previous sensor sample from while the AGV was still approaching.
+    if(Ready && bSTS && bJobActive) SampleSTS(true);
+}
+
 APortAGVActor* APortWorkingCrane::GetHandoverVehicle() const { return HandoverAGV.Get(); }
 
 void APortWorkingCrane::ClearSTSState()
@@ -23,6 +34,7 @@ void APortWorkingCrane::ClearSTSState()
     for(int32 I=0;I<4;++I){LockProgress[I]=0;PhysicalSeating[I]=false;}
     Observation=FSTSObservation(); NextSample=0;
     JobSeconds=PausedSeconds=LastJobSeconds=LastPausedSeconds=0;
+    AGVAlignmentWait=0;
     HandoverAGV=nullptr;
     for(bool& Locked:CornerLocked) Locked=false;
 }
@@ -31,8 +43,8 @@ bool APortWorkingCrane::AGVAligned() const
 {
     if(!bExternalJobs) return true;
     return IsValid(HandoverAGV) && HandoverAGV->Speed<=0.1f &&
-        HandoverAGV->CargoPosition().Equals(Slots[1-SourceSlot],STSProfile.AGVTolerance) &&
-        (Stage<5 || STSSensorContains(TEXT("agv_position_lidar"),HandoverAGV->CargoPosition())) &&
+        HandoverAGV->CargoPosition().Equals(Slots[bSTS?1-SourceSlot:SourceSlot],STSProfile.AGVTolerance) &&
+        ((bSTS?Stage<5:Stage<2) || STSSensorContains(TEXT("agv_position_lidar"),HandoverAGV->CargoPosition())) &&
         FMath::Abs(FMath::FindDeltaAngleDegrees(HandoverAGV->GetActorRotation().Yaw,Orientation.Rotator().Yaw))<=STSProfile.AGVHeadingTolerance;
 }
 
@@ -40,13 +52,15 @@ bool APortWorkingCrane::CargoSupported() const
 {
     if(!IsValid(CargoActor)) return false;
     FCollisionQueryParams Query(SCENE_QUERY_STAT(SiteSTSSupport),false);
-    Query.AddIgnoredActor(this); Query.AddIgnoredActor(CargoActor);
+    // RMG's fixed reservation pads are support surfaces owned by this actor.
+    if(bSTS)Query.AddIgnoredActor(this);
+    Query.AddIgnoredActor(CargoActor);
     for(int32 I=0;I<4;++I)
     {
         const FVector P=CargoActor->GetActorLocation()+Orientation.RotateVector(FVector((I&1)?100:-100,(I&2)?520:-520,0));
         FHitResult Hit;
         if(!GetWorld()->LineTraceSingleByChannel(Hit,P,P-FVector(0,0,129.5f+STSProfile.SupportTolerance),ECC_Visibility,Query) || Hit.ImpactNormal.Z<.8f) return false;
-        if(bExternalJobs && Stage==5 && Hit.GetActor()!=HandoverAGV) return false;
+        if(bSTS && bExternalJobs && Stage==5 && Hit.GetActor()!=HandoverAGV) return false;
     }
     return true;
 }
@@ -82,6 +96,7 @@ void APortWorkingCrane::SampleSTS(bool Force)
     S.SwayRate=SuspensionState.Rate; S.SkewDegrees=FMath::RadiansToDegrees(SuspensionState.Yaw);
     S.HoistAcceleration=PlantAcceleration.Z;
     SamplePickupGeometry();
+    if(!bSTS)SampleRMGEnvironment();
     for(const auto& Mount:STSProfile.Dynamics.Mounts)
     {
         double Value=0; bool Required=true;
@@ -91,6 +106,8 @@ void APortWorkingCrane::SampleSTS(bool Force)
             S.DrivePosition.X=(Value+Mount.MeasurementOrigin)*100;
             if(Mount.MaxTraversingSpeed>0 && FMath::Abs(S.DriveVelocity.X)*.01>Mount.MaxTraversingSpeed) S.bValid=false;
         }
+        else if(Mount.Key==TEXT("gantry_encoder")) Value=S.DrivePosition.Y*.01;
+        else if(Mount.Key==TEXT("sway_sensor")) Value=S.SwayDegrees;
         else if(Mount.Key==TEXT("hoist_encoder")) Value=(BeamZ-Head.Z)*.01;
         else if(Mount.Key==TEXT("twistlock_load")) for(double Load:S.CornerLoadsN) {if(Load<Mount.Minimum || Load>Mount.Maximum) S.bValid=false;}
         else Required=false;
@@ -117,7 +134,14 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
     // True mass/CoG below belong only to the actuator/suspension plant. Position feedback comes from sensors.
     const double Payload=bCarrying?CargoActor->MassKg:0, Mass=STSProfile.SpreaderMassKg+Payload;
     const FVector MeasuredPosition=Local(Observation.SpreaderPosition);
-    const FVector MeasuredVelocity=Orientation.UnrotateVector(Observation.SpreaderVelocity);
+    FVector ControlledPosition=MeasuredPosition;
+    // The trolley/gantry encoders close the travel loop.  Spreader cameras and
+    // sway sensors independently decide final target completion.  Feeding the
+    // entire suspended offset back as trolley position created a slow,
+    // non-collocated loop that lingered near the target.
+    const FVector MeasuredDrivePosition=Observation.DrivePosition;
+    ControlledPosition.X=MeasuredDrivePosition.X;
+    ControlledPosition.Y=MeasuredDrivePosition.Y;
     const double Age=FMath::Max(0.,SimulationTime-Observation.Timestamp);
     const FVector CoG=bCarrying?CargoActor->CoGOffsetCm*.01*(Payload/Mass):FVector::ZeroVector;
     // Equal slices avoid a nanosecond remainder from float tick durations.
@@ -131,7 +155,7 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
         const double Length=FMath::Max(.1,(BeamZ-Head.Z)*.01);
         for(int32 I=0;I<3;++I)
         {
-            const double Error=Target[I]-(MeasuredPosition[I]+MeasuredVelocity[I]*(Age+Substep*Step));
+            const double Error=Target[I]-(ControlledPosition[I]+Observation.DriveVelocity[I]*(Age+Substep*Step));
             double Desired=.8*Error-.8*Observation.DriveVelocity[I];
 
             double Acceleration=Accelerations[I];
@@ -161,8 +185,18 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
     Head.X=FMath::Clamp(Head.X,double(STSProfile.MinTrolley()),double(STSProfile.MaxTrolley()));
     Head.Z=FMath::Clamp(Head.Z,-double(STSProfile.LiftBelowRail),double(STSProfile.LiftAboveRail));
     UpdateParts();
-    const float PositionTolerance=(Stage==2 || Stage==5)?.5f:5.f;
-    return MeasuredPosition.Equals(Target,PositionTolerance) && Observation.SpreaderVelocity.Size()<PositionTolerance &&
+    // Completion thresholds follow the virtual sensor/control limits.  The old
+    // 0.5 cm / 0.5 cm/s gate was much tighter than either pickup or landing
+    // observations and made the controller spend tens of seconds asymptotically
+    // approaching an accuracy that the simulated sensor did not require.
+    // STS cargo becomes rigidly attached to a moving AGV after handover, so its
+    // final placement must satisfy the fleet's 1 cm ownership/alignment check.
+    // RMG placement remains governed by the yard landing tolerance.
+    const float PositionTolerance=Stage==2?STSProfile.Pickup.CornerTolerance:
+        (Stage==5?FMath::Min(STSProfile.LandingTolerance,bSTS?1.f:5.f):5.f);
+    const float VelocityTolerance=Stage==2?STSProfile.Pickup.RelativeSpeed:
+        (Stage==5?FMath::Min(STSProfile.SettleSpeed,5.f):5.f);
+    return MeasuredPosition.Equals(Target,PositionTolerance) && Observation.SpreaderVelocity.Size()<VelocityTolerance &&
         Observation.SwayDegrees<STSProfile.SwayLimitDegrees && FMath::Abs(Observation.SkewDegrees)<C.SkewLimit;
 }
 

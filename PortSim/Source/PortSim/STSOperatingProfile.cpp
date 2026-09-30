@@ -144,6 +144,7 @@ bool FSTSOperatingProfile::Load(const FString& ReferenceFile, const FString& Set
         if(!SensorKeys.Contains(Required)) {Error=FString(TEXT("Required sensor missing: "))+Required;return false;}
 
     if(!Pickup.Load(Settings,Error) || !Dynamics.Load(Settings,Error)) return false;
+    if(Dynamics.Mounts.Num()!=SensorKeys.Num()) {Error=TEXT("STS sensor installation does not cover reference families");return false;}
     for(const auto& Mount:Dynamics.Mounts) if(!SensorKeys.Contains(Mount.Key)) {Error=TEXT("Unknown configured sensor mount");return false;}
     auto Snapshot=MakeShared<FJsonObject>();
     Snapshot->SetObjectField(TEXT("reference"),Ref); Snapshot->SetObjectField(TEXT("simulation_assumptions"),Settings);

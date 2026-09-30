@@ -80,6 +80,7 @@ TSharedRef<FJsonObject> APortWorkingCrane::DashboardState() const
     O->SetNumberField(TEXT("completed"),CompletedJobs);
     O->SetNumberField(TEXT("job_seconds"),JobSeconds);
     O->SetNumberField(TEXT("stage_seconds"),StageTime);
+    O->SetNumberField(TEXT("agv_alignment_wait_seconds"),AGVAlignmentWait);
     O->SetNumberField(TEXT("paused_seconds"),PausedSeconds);
     O->SetNumberField(TEXT("last_job_seconds"),LastJobSeconds);
     O->SetStringField(TEXT("cargo"),GetNameSafe(CargoActor));
@@ -93,9 +94,14 @@ TSharedRef<FJsonObject> APortWorkingCrane::DashboardState() const
     O->SetNumberField(TEXT("beam_height_m"),BeamZ*.01);
     O->SetNumberField(TEXT("safe_height_m"),SafeZ*.01);
     O->SetStringField(TEXT("model"),TEXT("kinematic_level_spreader"));
-    if(bSTS)
+    if(STSProfile.bReady)
     {
         O->SetStringField(TEXT("model"),TEXT("reduced_order_taut_rope_sway_yaw"));
+        if(!bSTS)
+        {
+            TSharedPtr<FJsonObject> Profile;
+            if(FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(STSProfile.SnapshotJson),Profile))O->SetObjectField(TEXT("applied_crane_profile"),Profile.ToSharedRef());
+        }
         const auto& C=STSProfile.Dynamics;
         const auto& D=SuspensionState;
         auto Physics=Object();
@@ -150,6 +156,11 @@ TSharedRef<FJsonObject> APortWorkingCrane::DashboardState() const
             }
             if(M.Key==TEXT("wind"))Sensor->SetNumberField(TEXT("value"),C.Wind.Size());
             if(M.Key==TEXT("trolley_encoder"))Sensor->SetNumberField(TEXT("value"),M.ReadPosition(Observation.DrivePosition.X*.01));
+            if(M.Key==TEXT("gantry_encoder"))Sensor->SetNumberField(TEXT("value"),Observation.DrivePosition.Y*.01);
+            if(M.Key==TEXT("sway_sensor"))Sensor->SetNumberField(TEXT("value"),Observation.SwayDegrees);
+            if(M.Key==TEXT("stack_profile"))Sensor->SetBoolField(TEXT("value"),Observation.bStackProfileValid);
+            if(M.Key.StartsWith(TEXT("crane_collision_")))Sensor->SetBoolField(TEXT("value"),Observation.bCraneClear);
+            if(M.Key==TEXT("spreader_camera"))Sensor->SetBoolField(TEXT("value"),Observation.bTargetVisible);
             if(M.Key==TEXT("hoist_encoder"))Sensor->SetNumberField(TEXT("value"),(BeamZ-Head.Z)*.01);
             if(M.Key==TEXT("telescope_encoder"))Sensor->SetNumberField(TEXT("value"),12.192);
             if(M.Key==TEXT("landed"))Sensor->SetBoolField(TEXT("value"),Observation.bLanded);
@@ -194,6 +205,13 @@ TSharedRef<FJsonObject> APortWorkingCrane::DashboardState() const
         S->SetBoolField(TEXT("landed"),Observation.bLanded);
         S->SetBoolField(TEXT("agv_aligned"),Observation.bAGVAligned);
         S->SetBoolField(TEXT("cargo_supported"),Observation.bCargoSupported);
+        if(!bSTS)
+        {
+            S->SetBoolField(TEXT("stack_profile_valid"),Observation.bStackProfileValid);
+            S->SetNumberField(TEXT("stack_top_m"),Observation.StackTopZ*.01);
+            S->SetBoolField(TEXT("crane_clear"),Observation.bCraneClear);
+            if(Observation.CraneDistance>=0)S->SetNumberField(TEXT("crane_distance_m"),Observation.CraneDistance*.01);
+        }
         Vector(S,TEXT("drive_position_m"),Observation.DrivePosition,.01f);
         Vector(S,TEXT("drive_velocity_mps"),Observation.DriveVelocity,.01f);
         S->SetNumberField(TEXT("sway_deg"),Observation.SwayDegrees);

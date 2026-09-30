@@ -546,7 +546,7 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
         case 3:
             if (!Drive(Lane,Dt)) break;
             // Keep the twist locks engaged until the RMG actually picks up the box.
-            if (!Equipment[Job.RMG]->AssignCargo(Cargo,Vehicle->CargoPosition(),Yard[Job.Slot].Position,false,true))
+            if (!Equipment[Job.RMG]->AssignCargo(Cargo,Vehicle->CargoPosition(),Yard[Job.Slot].Position,false,true,Vehicle))
             { Stop(TEXT("AGV / RMG reservation handover")); return; }
             Manifest[Job.Cargo].HandoverMask|=2;
             UE_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d AGV%d -> RMG%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1);

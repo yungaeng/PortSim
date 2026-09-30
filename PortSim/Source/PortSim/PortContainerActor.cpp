@@ -39,7 +39,9 @@ void APortContainerActor::SetPhysicalParameters(float Mass,FVector CoGOffset)
 {
     MassKg=Mass; CoGOffsetCm=CoGOffset;
     Body->SetMassOverrideInKg(NAME_None,MassKg);
-    Body->SetCenterOfMass(CoGOffsetCm);
+    // Chaos scales COMNudge by the body scale. CoGOffsetCm is already a physical
+    // centimetre offset; compensate so a 40ft mesh does not multiply it again.
+    Body->SetCenterOfMass(CoGOffsetCm/Body->GetComponentScale());
 }
 
 void APortContainerActor::InitializeContainer(int32 Number)

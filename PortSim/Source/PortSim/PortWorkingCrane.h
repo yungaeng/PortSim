@@ -22,10 +22,11 @@ public:
     void Advance(float Dt, bool bGlobalPaused);
     bool AssignCargo(APortContainerActor* Cargo, FVector Source, FVector Destination, bool SourceSupport, bool DestinationSupport, APortAGVActor* HandoverVehicle=nullptr);
     void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }
-    bool HasSTSProfile() const { return STSProfile.bReady; }
+    bool HasSTSProfile() const { return bSTS && STSProfile.bReady; }
+    bool HasRMGProfile() const { return !bSTS && STSProfile.bReady; }
     double LastJobSeconds=0, LastPausedSeconds=0;
     FSTSObservation Observation;
-    void SetDestinationReady(bool Ready) { bDestinationReady=Ready; }
+    void SetDestinationReady(bool Ready);
     void SetHandoverVehicle(APortAGVActor* Vehicle);
     APortAGVActor* GetHandoverVehicle() const;
     bool IsBusy() const { return bJobActive; }
@@ -54,6 +55,7 @@ private:
     FTransform LockedCargoTransform;
     void AdvancePickup(float Dt);
     void SamplePickupGeometry();
+    void SampleRMGEnvironment();
 
     FVector SuspendedOffset=FVector::ZeroVector;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SensorMarkers;
@@ -64,6 +66,7 @@ private:
     UPROPERTY() TObjectPtr<APortAGVActor> HandoverAGV;
     FVector AxisVelocity=FVector::ZeroVector;
     double SimulationTime=0, NextSample=0, JobSeconds=0, PausedSeconds=0;
+    double AGVAlignmentWait=0;
     bool CornerLocked[4]={false,false,false,false};
     bool bSensorFault=false;
     int32 LockFault=INDEX_NONE;

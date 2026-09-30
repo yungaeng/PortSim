@@ -8,8 +8,17 @@ void APortWorkingCrane::SamplePickupGeometry()
 {
     // Virtual geometric pose/contact sensors. No image recognition or manufacturer accuracy claim.
     auto& O=Observation;const auto& C=STSProfile.Pickup;
-    O.bTargetVisible=STSSensorContains(TEXT("spreader_camera"),CargoActor->GetActorLocation()) &&
-        !FParse::Param(FCommandLine::Get(),TEXT("PortSimSTSPoseFault"));
+    O.bTargetVisible=STSSensorContains(TEXT("spreader_camera"),CargoActor->GetActorLocation());
+    if(!bSTS)
+    {
+        // Four corner-mounted cameras observe corner targets, not the box centre
+        // which leaves their downward cones during the final descent.
+        O.bTargetVisible=true;
+        for(int32 I=0;I<4;++I)
+            O.bTargetVisible &= STSSensorContains(TEXT("spreader_camera"),CargoActor->GetActorLocation()+
+                CargoActor->GetActorQuat().RotateVector(FVector((I&1)?100:-100,(I&2)?520:-520,0)));
+    }
+    O.bTargetVisible &= !FParse::Param(FCommandLine::Get(),bSTS?TEXT("PortSimSTSPoseFault"):TEXT("PortSimRMGPoseFault"));
     const FQuat SpreaderRotation=Spreader->GetComponentQuat(), CargoRotation=CargoActor->GetActorQuat();
     O.RelativeYawDegrees=FMath::FindDeltaAngleDegrees(CargoRotation.Rotator().Yaw,SpreaderRotation.Rotator().Yaw);
     O.TargetTiltDegrees=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(CargoActor->GetActorUpVector().Z,-1.,1.)));
@@ -21,7 +30,7 @@ void APortWorkingCrane::SamplePickupGeometry()
         const FVector ActualError=Orientation.UnrotateVector(HeadPosition()-CargoActor->GetActorLocation()+RotationGap);
         PhysicalSeating[I]=ActualError.Size2D()<=C.CornerTolerance && FMath::Abs(ActualError.Z)<=C.VerticalTolerance && O.TargetTiltDegrees<=C.TiltTolerance;
         O.CornerError[I]=Orientation.UnrotateVector(O.SpreaderPosition-O.CargoPosition+RotationGap);
-        int32 Missing=INDEX_NONE;FParse::Value(FCommandLine::Get(),TEXT("PortSimSTSSeatFault="),Missing);
+        int32 Missing=INDEX_NONE;FParse::Value(FCommandLine::Get(),bSTS?TEXT("PortSimSTSSeatFault="):TEXT("PortSimRMGSeatFault="),Missing);
         O.CornerSeated[I]=PhysicalSeating[I]&&I!=Missing; All &= O.CornerSeated[I];
     }
     O.bLanded=All&&(O.SpreaderVelocity-O.CargoVelocity).Size()<=C.RelativeSpeed;
@@ -33,7 +42,7 @@ void APortWorkingCrane::AdvancePickup(float Dt)
     if(!Pickup.Fault.IsEmpty()){Stop(Pickup.Fault);return;}
     if(Pickup.Phase==ESTSPickupPhase::Complete)
     {
-        UE_LOG(LogTemp,Display,TEXT("STS_PICKUP_VERIFIED: crane=%d measured_kg=%.2f cog_cm=%s attempts=%d"),CraneID,Pickup.EstimatedMass,*Pickup.EstimatedCoG.ToCompactString(),Pickup.Attempts);
+        UE_LOG(LogTemp,Display,TEXT("%s_PICKUP_VERIFIED: crane=%d measured_kg=%.2f cog_cm=%s attempts=%d"),bSTS?TEXT("STS"):TEXT("RMG"),CraneID,Pickup.EstimatedMass,*Pickup.EstimatedCoG.ToCompactString(),Pickup.Attempts);
         Stage=3;StageTime=SettleTime=0;return;
     }
     if(Pickup.Phase==ESTSPickupPhase::Attach)
@@ -48,7 +57,7 @@ void APortWorkingCrane::AdvancePickup(float Dt)
         if(!BeforeAttachment.Equals(CargoActor->GetActorLocation(),.01))
         {Stop(TEXT("Pickup attachment changed the achieved cargo position"));return;}
         LockedCargoTransform=CargoActor->GetActorTransform().GetRelativeTransform(Spreader->GetComponentTransform());
-        CargoActor->LocationOwner=ECargoOwner::STS;bCarrying=true;
+        CargoActor->LocationOwner=bSTS?ECargoOwner::STS:ECargoOwner::RMG;bCarrying=true;
         Pickup.Attached(Observation.SpreaderPosition);SampleSTS(true);return;
     }
     MoveSTS(Local(Pickup.Target),Dt);

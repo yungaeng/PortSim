@@ -10,6 +10,7 @@ bool FSTSDynamicsConfig::Load(TSharedPtr<FJsonObject> Root,FString& Error)
     { if(!O->TryGetNumberField(Key,V) || !FMath::IsFinite(V) || V<0 || (!Zero && V==0)) {Error=FString(TEXT("Invalid dynamics field: "))+Key;return false;} return true; };
     if(!O->TryGetBoolField(TEXT("anti_sway"),AntiSway) || !O->TryGetBoolField(TEXT("anti_skew"),AntiSkew) ||
         !N(TEXT("passive_damping_per_s"),Damping,true) || !N(TEXT("anti_sway_velocity_gain"),SwayGain) ||
+        !N(TEXT("horizontal_position_gain_per_s2"),PositionGain) || !N(TEXT("horizontal_velocity_gain_per_s"),VelocityGain) ||
         !N(TEXT("skew_kp_nm_per_rad"),SkewKp) || !N(TEXT("skew_kd_nms_per_rad"),SkewKd) || !N(TEXT("skew_max_torque_nm"),SkewMaxTorque) ||
         !N(TEXT("drum_radius_m"),DrumRadius) || !N(TEXT("gear_ratio"),GearRatio) || !N(TEXT("efficiency"),Efficiency) ||
         !N(TEXT("reeving_parts_per_corner"),Parts) || !N(TEXT("motor_count"),MotorCount) || !N(TEXT("motor_max_torque_nm"),MotorMaxTorque) ||
@@ -18,10 +19,11 @@ bool FSTSDynamicsConfig::Load(TSharedPtr<FJsonObject> Root,FString& Error)
         !N(TEXT("wind_area_m2"),WindArea) || !N(TEXT("wind_drag_coefficient"),WindDrag)) return false;
     if(!O->TryGetNumberField(TEXT("wind_x_mps"),Wind.X) || !O->TryGetNumberField(TEXT("wind_y_mps"),Wind.Y) ||
         !O->TryGetNumberField(TEXT("wind_yaw_moment_nm"),WindMoment) || Wind.ContainsNaN() || !FMath::IsFinite(WindMoment) ||
-        Efficiency>1 || Parts!=FMath::FloorToDouble(Parts) || MotorCount!=2 || SkewLimit>=10 || GearRatio>1000 || DrumRadius>10 || Damping>10 || Wind.Size()>50)
+        Efficiency>1 || Parts!=FMath::FloorToDouble(Parts) || MotorCount!=2 || SkewLimit>=10 || GearRatio>1000 || DrumRadius>10 ||
+        Damping>10 || PositionGain>2 || VelocityGain>5 || Wind.Size()>50)
     { Error=TEXT("Inconsistent dynamics assumptions"); return false; }
     const TArray<TSharedPtr<FJsonValue>>* Sensors=nullptr;
-    if(!Root->TryGetArrayField(TEXT("sensor_mounts"),Sensors) || Sensors->Num()!=14) {Error=TEXT("Expected 14 sensor mounts");return false;}
+    if(!Root->TryGetArrayField(TEXT("sensor_mounts"),Sensors) || Sensors->Num()<1 || Sensors->Num()>32) {Error=TEXT("Expected 1 to 32 sensor mounts");return false;}
     TSet<FString> Keys;
     for(const auto& V:*Sensors)
     {

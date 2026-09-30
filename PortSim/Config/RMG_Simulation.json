@@ -1,0 +1,560 @@
+{
+  "kind": "rmg_reference_selection_and_simulation_assumptions",
+  "transfer_spreader_height_m": 19,
+  "trolley_acceleration_mps2": 0.5,
+  "gantry_acceleration_mps2": 0.5,
+  "hoist_acceleration_mps2": 0.5,
+  "default_container_mass_kg": 12000,
+  "spreader_mass_kg": 5000,
+  "container_cog_x_m": 0,
+  "container_cog_y_m": 0,
+  "container_cog_z_m": 0,
+  "sensor_sample_hz": 20,
+  "sensor_max_age_s": 0.15,
+  "position_sensor_bias_m": 0,
+  "load_estimate_bias_kg": 0,
+  "landing_tolerance_m": 0.18,
+  "seating_vertical_tolerance_m": 0.12,
+  "settle_speed_mps": 0.15,
+  "settle_time_s": 0.7,
+  "agv_position_tolerance_m": 0.05,
+  "agv_heading_tolerance_deg": 1,
+  "support_tolerance_m": 0.08,
+  "landing_speed_mps": 0.4,
+  "landing_slowdown_distance_m": 1.0,
+  "stage_timeout_s": 300,
+  "landing_sway_limit_deg": 1,
+  "auto_start_unload": true,
+  "dynamics": {
+    "kind": "unvalidated_simulation_assumptions",
+    "anti_sway": true,
+    "anti_skew": true,
+    "passive_damping_per_s": 0.15,
+    "anti_sway_velocity_gain": 0.15,
+    "horizontal_position_gain_per_s2": 0.4,
+    "horizontal_velocity_gain_per_s": 1.5,
+    "skew_kp_nm_per_rad": 200000,
+    "skew_kd_nms_per_rad": 100000,
+    "skew_max_torque_nm": 50000,
+    "drum_radius_m": 0.6,
+    "gear_ratio": 30,
+    "efficiency": 0.9,
+    "reeving_parts_per_corner": 4,
+    "motor_count": 2,
+    "motor_max_torque_nm": 1800,
+    "motor_max_rpm": 1800,
+    "motor_inertia_kgm2": 5,
+    "rope_axial_rigidity_n": 80000000,
+    "rope_tension_limit_n": 250000,
+    "landing_skew_limit_deg": 0.5,
+    "wind_x_mps": 0,
+    "wind_y_mps": 0,
+    "wind_yaw_moment_nm": 0,
+    "wind_area_m2": 30,
+    "wind_drag_coefficient": 1.2
+  },
+  "pickup_control": {
+    "kind": "unvalidated_simulation_assumptions",
+    "corner_tolerance_m": 0.02,
+    "vertical_tolerance_m": 0.02,
+    "relative_speed_mps": 0.03,
+    "yaw_tolerance_deg": 0.25,
+    "tilt_tolerance_deg": 0.5,
+    "seat_time_s": 0.7,
+    "lock_time_s": 0.3,
+    "lock_timeout_s": 2,
+    "alignment_timeout_s": 90,
+    "acquisition_radius_m": 1,
+    "trial_height_m": 0.3,
+    "trial_hold_s": 1,
+    "trial_timeout_s": 60,
+    "minimum_corner_fraction": 0.03,
+    "mass_stability_fraction": 0.02,
+    "max_attempts": 2,
+    "pose_bias_x_m": 0,
+    "pose_bias_y_m": 0,
+    "pose_bias_z_m": 0
+  },
+  "notes": [
+    "Manufacturer ranges and mounting regions: Konecranes RMG Technical Information, November 2023, pages 3-6. Selected single-lift configuration is a simulation choice, not an as-built crane.",
+    "Exact sensor XYZ/FOV/range, control gains, drive internals, load cells and contact tolerances are unvalidated assumptions. RTG diagram is conceptual only; magnetic auto-steering is not used on this rail-mounted crane.",
+    "Reduced-order common crane suspension/controller; not a reproduction of proprietary Konecranes ALC. Fixed 40ft equivalent corner geometry."
+  ],
+  "reference": {
+    "document": "Document/RMG/konecranes_rmg_tech_document_final_nov_2023.pdf",
+    "pages": [
+      3,
+      4,
+      5,
+      6
+    ],
+    "capacity_std_t": [
+      40,
+      50
+    ],
+    "span_max_m": 48,
+    "cantilever_each_max_m": 18,
+    "lift_height_max_m": 19,
+    "loaded_hoist_m_min": [
+      30,
+      45
+    ],
+    "empty_hoist_m_min": [
+      60,
+      90
+    ],
+    "trolley_m_min": [
+      120,
+      150
+    ],
+    "gantry_m_min": [
+      120,
+      150
+    ],
+    "alc_fine_position_diameter_mm": 500,
+    "alc_skew_deg": 5,
+    "slewing_rpm": [
+      1.6,
+      2
+    ],
+    "slewing_angle_deg": 310,
+    "av_locations": [
+      "PTZ on trolley",
+      "4 fixed cameras on spreader",
+      "4 fixed cameras on bogies",
+      "crane-to-crane anti-collision lasers in bogies"
+    ],
+    "not_implemented": [
+      "proprietary ALC",
+      "slewing drive",
+      "spreader trim",
+      "video recognition"
+    ]
+  },
+  "rated_payload_kg": 40000,
+  "rail_span_m": 32,
+  "cantilever_each_m": 0,
+  "lift_height_m": 19,
+  "beam_height_m": 26,
+  "loaded_hoist_m_min": 30,
+  "empty_hoist_m_min": 60,
+  "trolley_m_min": 120,
+  "gantry_m_min": 120,
+  "assumed_hoist_power_kw": 200,
+  "collision_margin_m": 2,
+  "stack_height_tolerance_m": 0.1,
+  "sensor_mounts": [
+    {
+      "key": "trolley_encoder",
+      "name": "트롤리 위치 엔코더",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        0.8
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": -16,
+      "maximum": 16,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "hoist_encoder",
+      "name": "권상 길이 엔코더",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        0.6
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 30,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "gantry_encoder",
+      "name": "레일 주행 / 베이 위치 엔코더",
+      "frame": "gantry",
+      "position_m": [
+        -16,
+        8.2,
+        1
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": -1000,
+      "maximum": 1000,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "sway_sensor",
+      "name": "흔들림·스큐 관측",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        -0.6
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "deg",
+      "minimum": -10,
+      "maximum": 10,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "spreader_camera",
+      "name": "스프레더 카메라 4대",
+      "frame": "spreader",
+      "position_m": [
+        -1,
+        -5.2,
+        0
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 30,
+      "fov_deg": 100,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p6: four fixed spreader cameras; exact XYZ, FOV and measurement capability assumed",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": [],
+      "additional_positions_m": [
+        [
+          1,
+          -5.2,
+          0
+        ],
+        [
+          -1,
+          5.2,
+          0
+        ],
+        [
+          1,
+          5.2,
+          0
+        ]
+      ]
+    },
+    {
+      "key": "trolley_camera",
+      "name": "트롤리 PTZ 카메라",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        -1
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 40,
+      "fov_deg": 100,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p6: trolley PTZ mounting; diagnostic rays only, no PTZ/video processing",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "bogie_camera",
+      "name": "보기 카메라 4대",
+      "frame": "gantry",
+      "position_m": [
+        -16,
+        -8.2,
+        1.5
+      ],
+      "rotation_deg": [
+        -45,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 30,
+      "fov_deg": 100,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p6: four fixed bogie cameras; diagnostic visualization only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": [],
+      "additional_positions_m": [
+        [
+          16,
+          -8.2,
+          1.5
+        ],
+        [
+          -16,
+          8.2,
+          1.5
+        ],
+        [
+          16,
+          8.2,
+          1.5
+        ]
+      ]
+    },
+    {
+      "key": "twistlock_load",
+      "name": "코너 하중 센서",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        0
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "N",
+      "minimum": 0,
+      "maximum": 250000,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p4 weight verification; four-corner load-cell implementation assumed",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "twistlock_state",
+      "name": "코너 잠금 피드백",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        -0.1
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "bool",
+      "minimum": 0,
+      "maximum": 1,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "landed",
+      "name": "코너 착좌 감지",
+      "frame": "spreader",
+      "position_m": [
+        1,
+        5.2,
+        -0.2
+      ],
+      "rotation_deg": [
+        0,
+        0,
+        0
+      ],
+      "unit": "bool",
+      "minimum": 0,
+      "maximum": 1,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "agv_position_lidar",
+      "name": "AGV 인계 위치 관측",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        -1
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 40,
+      "fov_deg": 100,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "stack_profile",
+      "name": "야드 적재면 프로파일",
+      "frame": "trolley",
+      "position_m": [
+        0,
+        0,
+        -1
+      ],
+      "rotation_deg": [
+        -90,
+        0,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.1,
+      "maximum": 40,
+      "fov_deg": 100,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "Simulation assumption; RTG conceptual layout only",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": []
+    },
+    {
+      "key": "crane_collision_front",
+      "name": "전방 크레인 충돌 레이저",
+      "frame": "gantry",
+      "position_m": [
+        -16,
+        9.81,
+        1
+      ],
+      "rotation_deg": [
+        0,
+        90,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.05,
+      "maximum": 40,
+      "fov_deg": 10,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p4/p6: crane-to-crane anti-collision lasers in bogies; geometry and stopping margin assumed",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": [],
+      "additional_positions_m": [
+        [
+          16,
+          9.81,
+          1
+        ]
+      ]
+    },
+    {
+      "key": "crane_collision_rear",
+      "name": "후방 크레인 충돌 레이저",
+      "frame": "gantry",
+      "position_m": [
+        -16,
+        -9.81,
+        1
+      ],
+      "rotation_deg": [
+        0,
+        -90,
+        0
+      ],
+      "unit": "m",
+      "minimum": 0.05,
+      "maximum": 40,
+      "fov_deg": 10,
+      "scan": true,
+      "installation_status": "ASSUMED",
+      "specification_status": "ASSUMED",
+      "source_notes": "PDF p4/p6: crane-to-crane anti-collision lasers in bogies; geometry and stopping margin assumed",
+      "model": "Unspecified synthetic sensor",
+      "provenance": "unvalidated_rmg_installation",
+      "controller_decisions": [],
+      "additional_positions_m": [
+        [
+          16,
+          -9.81,
+          1
+        ]
+      ]
+    }
+  ]
+}

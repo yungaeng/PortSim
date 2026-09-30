@@ -37,9 +37,10 @@ void AQuayCrane::TickSiteTest(float Dt)
     for(const auto& Crane:WorkingCranes)
     {
         if(Crane->bSTS && !Crane->HasSTSProfile()) { Finish(false,TEXT("Site STS missing reference profile")); return; }
-        if(Crane->bSTS && Crane->bCarrying && !Crane->Observation.AllLocked())
-        { Finish(false,TEXT("Site STS carried cargo without four locks")); return; }
+        if(Crane->bCarrying && !Crane->Observation.AllLocked())
+        { Finish(false,TEXT("Site crane carried cargo without four locks")); return; }
         if(!Crane->bSTS && Crane->HasSTSProfile()) { Finish(false,TEXT("STS reference incorrectly assigned to RMG")); return; }
+        if(!Crane->bSTS && !Crane->HasRMGProfile()) { Finish(false,TEXT("Site RMG missing independent reference profile")); return; }
     }
     for(const auto& Container:SiteLogistics->ShipContainers)
         if(!FMath::IsNearlyEqual(Container->MassKg,STSProfile.ContainerMassKg,1.f) || !Container->CoGOffsetCm.Equals(STSProfile.ContainerCoG))

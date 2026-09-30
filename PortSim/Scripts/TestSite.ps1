@@ -1,6 +1,7 @@
 param([string]$Engine = 'C:\Program Files\Epic Games\UE_5.6',
     [ValidateSet('All','Normal','Faults','SensorFault','LockFault','Overload','AGVFault')][string]$Mode = 'All',
-    [ValidateRange(5,60)][int]$FixedFPS = 10)
+    [ValidateRange(1,60)][int]$FixedFPS = 10,
+    [ValidateRange(1,120)][int]$TimeoutMinutes = 30)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $project = Join-Path $root 'PortSim.uproject'
@@ -14,7 +15,7 @@ foreach ($case in $cases) {
     $expected = $null
     if ($case -eq 'SensorFault') { $arguments += '-PortSimSTSSensorFault'; $expected = 'Required STS sensor observation invalid/stale' }
     if ($case -eq 'LockFault') { $arguments += '-PortSimSTSLockFault=0'; $expected = 'Twist lock alignment failed' }
-    if ($case -eq 'AGVFault') { $arguments += '-PortSimSTSAGVFault'; $expected = 'AGV alignment lost during STS handover' }
+    if ($case -eq 'AGVFault') { $arguments += '-PortSimSTSAGVFault'; $expected = 'AGV alignment recovery timed out during STS handover' }
     if ($case -eq 'Overload') {
         $settings = Get-Content -LiteralPath (Join-Path $root 'Config\STS_Simulation.json') -Raw | ConvertFrom-Json
         $settings.default_container_mass_kg = 100000
@@ -28,7 +29,7 @@ foreach ($case in $cases) {
     Write-Output "RUN Site $case"
     $process = Start-Process -FilePath $editor -ArgumentList $arguments -WindowStyle Hidden -PassThru
     $null = $process.Handle
-    $timeoutMs = if ($case -eq 'Normal') { 1800000 } else { 900000 }
+    $timeoutMs = if ($case -eq 'Normal') { $TimeoutMinutes*60000 } else { 900000 }
     if (-not $process.WaitForExit($timeoutMs)) { $process.Kill(); throw "Site $case timed out" }
     $process.Refresh()
     $text = Get-Content -LiteralPath $testLog -Raw

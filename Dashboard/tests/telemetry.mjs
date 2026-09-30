@@ -45,5 +45,19 @@ for(const a of byType('agv')){
  if(a.sts)assert(byType('sts').some(s=>s.id===a.sts));
  if(a.stage>0&&!state.paused&&!state.fault)assert.equal(a.state,'working');
 }
-for(const a of byType('rmg'))assert.equal(a.observation,undefined);
+for(const a of byType('rmg')){
+ assert.equal(a.rated_payload_kg,40000);assert.equal(a.trolley_limit_mps,2);assert.equal(a.gantry_limit_mps,2);
+ assert.equal(a.applied_crane_profile.simulation_assumptions.kind,'rmg_reference_selection_and_simulation_assumptions');
+ assert.equal(a.mounted_sensors.find(m=>m.key==='spreader_camera').instances.length,4);
+ assert(a.mounted_sensors.some(m=>m.key==='stack_profile'));
+ assert(a.mounted_sensors.some(m=>m.key==='crane_collision_front'));
+ assert.equal(a.pickup.corners.length,4);assert.equal(a.observation.corner_loads_n.length,4);
+ assert.equal(a.dynamics.wires.length,4);
+ for(const m of a.mounted_sensors){
+  assert(m.world_position_m.every(Number.isFinite));assert(m.minimum<m.maximum);
+  const component=a.components.find(c=>c.name===`Sensor_${m.key}`);assert(component);
+  for(let i=0;i<3;i++)assert(Math.abs(component.world_position_m[i]-m.world_position_m[i])<.00001);
+ }
+ if(a.carrying){assert(a.observation.locks.every(Boolean));if(a.stage>=3)assert.equal(a.pickup.verified,true);}
+}
 console.log(`PASS real telemetry: ${state.actors.length} entities, ${state.initial_ship} cargo, 9 STS / 60 AGV / 46 RMG`);
