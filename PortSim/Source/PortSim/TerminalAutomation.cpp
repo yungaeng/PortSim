@@ -63,8 +63,8 @@ void AQuayCrane::BuildTerminal()
     };
     if (bUnifiedTerminal)
     {
-        // One continuous polygon follows the BPA plan's straight yard edge,
-        // swept transition and tapered gate wing.
+        // Approved curved/polygonal plan outline, with 1050 m frontage.
+        // Plan proportions determine depth; published area is reference data only.
         auto* SiteMesh=NewObject<UProceduralMeshComponent>(this,TEXT("DGT_SitePolygon"));
         AddInstanceComponent(SiteMesh);
         SiteMesh->SetupAttachment(RootComponent);
@@ -76,7 +76,7 @@ void AQuayCrane::BuildTerminal()
         TArray<FLinearColor> Colors;
         for (int32 I=0;I<TerminalLayout::SiteBoundaryPointCount;++I)
         {
-            const float BackX=TerminalLayout::SiteBoundaryProfile[I][0]*100.f;
+            const float BackX=TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[I][0])*100.f;
             const float Y=TerminalLayout::SiteBoundaryProfile[I][1]*100.f;
             // Match the +20 cm top surface of the former 1 m-thick quay cube.
             Vertices.Add(FVector(TerminalLayout::QuayLeftX,Y,20.f));

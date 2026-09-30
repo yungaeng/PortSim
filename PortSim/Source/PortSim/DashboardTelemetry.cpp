@@ -1,3 +1,4 @@
+#include "TerminalLayout.h"
 #include "PortSiteLogistics.h"
 #include "Async/Async.h"
 #include "PortWorkingCrane.h"
@@ -403,7 +404,7 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         O->SetStringField(TEXT("name"),FString::Printf(TEXT("VESSEL-%02d"),V+1));
         O->SetStringField(TEXT("type"),TEXT("vessel"));
         O->SetStringField(TEXT("class"),TEXT("Logical vessel / manifest group"));
-        Vector(O,TEXT("position_m"),FVector(-34,-350+V*350,0));
+        Vector(O,TEXT("position_m"),FVector(-34,TerminalLayout::VesselCenterY(V),0));
         O->SetNumberField(TEXT("initial_count"),Total);
         O->SetNumberField(TEXT("unloaded"),Unloaded); O->SetNumberField(TEXT("placed"),Placed);
         O->SetNumberField(TEXT("started_at"),VesselStarted[V]);
@@ -422,7 +423,7 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         O->SetStringField(TEXT("name"),FString::Printf(TEXT("YARD-%02d"),B+1));
         O->SetStringField(TEXT("type"),TEXT("yard"));
         O->SetStringField(TEXT("class"),TEXT("Instanced yard block"));
-        Vector(O,TEXT("position_m"),FVector(300,-460+B*44,0));
+        Vector(O,TEXT("position_m"),FVector(TerminalLayout::SiteX(300),TerminalLayout::BlockY(B),0));
         O->SetNumberField(TEXT("slots"),Total); O->SetNumberField(TEXT("occupied"),Occupied);
         O->SetStringField(TEXT("state"),TEXT("available")); Actors.Add(Value(O));
     }

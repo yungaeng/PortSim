@@ -23,7 +23,7 @@ bool AQuayCrane::ValidateTerminalActors(FString& Error) const
 {
     if (bUnifiedTerminal)
     {
-        if (!IsValid(SiteLogistics) || WorkingCranes.Num()!=55 || SupportFleet.Num()!=105 || ContainerActors.Num()!=0 || AGVActors.Num()!=0 || ShipActor)
+        if (!IsValid(SiteLogistics) || WorkingCranes.Num()!=45 || SupportFleet.Num()!=105 || ContainerActors.Num()!=0 || AGVActors.Num()!=0 || ShipActor)
         { Error=TEXT("Legacy central berth still exists or unified equipment count is wrong"); return false; }
         return SiteLogistics->Validate(Error);
     }

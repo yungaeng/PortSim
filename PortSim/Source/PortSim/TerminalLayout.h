@@ -7,6 +7,12 @@ namespace TerminalLayout
     constexpr int VesselRows = 10, VesselBays = 10, VesselTiers = 2;
     constexpr int ContainersPerVessel = VesselRows * VesselBays * VesselTiers;
     constexpr int TotalVesselContainers = VesselCount * ContainersPerVessel;
+    // Three 210 m vessels stop before the worker-rest building (Y=247..333 m).
+    constexpr float VesselLengthM=210.f;
+    constexpr float VesselCenterY(int Index) { return -390.f+Index*230.f; }
+    constexpr float STSCenterY(int Index) { return VesselCenterY(Index/3)+(Index%3-1)*70.f; }
+    static_assert(VesselCenterY(2)+VesselLengthM*.5f+7.f<247.f,"Ships must stop before worker rest");
+    static_assert(VesselCenterY(0)-VesselLengthM*.5f>-525.f,"Ships must stay inside quay extent");
     constexpr float YardScale = 1.f;
     constexpr float NearRailX = 5500.f;
     constexpr float FarRailX = NearRailX + 4500.f * YardScale;
@@ -15,17 +21,25 @@ namespace TerminalLayout
     constexpr float BridgeWidth = FarRailX - NearRailX + 200.f;
     constexpr float QuayLeftX = -700.f;
     // DGT published area / quay length; rectangular equivalent, not a cadastral outline.
-    constexpr float SiteAreaM2 = 837201.f;
+    constexpr float SiteAreaM2 = 837000.f;
     constexpr float QuayRightX = QuayLeftX + (SiteAreaM2 / 1050.f) * 100.f;
     constexpr float QuayLength = 105000.f;
 
-    // DGT concept-plan back boundary in metres: {inland X, along-quay Y}.
-    // The straight western yard transitions through a multi-segment curve to
-    // the deeper gate wing instead of using an axis-aligned L footprint.
+    // Approved plan's SITE bounds (excluding sea, labels and legend):
+    // 1358 px wide x 672 px deep. Preserve the 1050 m quay, not 800 m depth.
+    constexpr float PlanWidthPixels=1358.f, PlanDepthPixels=672.f;
+    constexpr float PlanDepthM=1050.f*PlanDepthPixels/PlanWidthPixels;
+    constexpr float PlanDepthScale=(PlanDepthM+QuayLeftX/100.f)/925.f;
+    // Convert authored inland positions/footprints; physical equipment and ISO
+    // containers are never scaled. Seaward ship geometry remains unchanged.
+    constexpr float SiteX(float Metres) { return Metres>0?Metres*PlanDepthScale:Metres; }
+    constexpr float SiteCmX(float Cm) { return SiteX(Cm/100.f)*100.f; }
     constexpr float SiteBoundaryProfile[][2] = {
-        {732.f,-525.f},{732.f,50.f},{739.f,80.f},{759.f,110.f},
-        {794.f,140.f},{844.f,170.f},{889.f,200.f},{894.f,280.f},
-        {896.f,360.f},{894.f,440.f},{889.f,500.f},{879.f,525.f}
+        {705.f,-525.f},{705.f,-90.f},{725.f,-90.f},{725.f,50.f},
+        {729.f,58.f},{742.f,68.f},{762.f,78.f},{789.f,90.f},
+        {816.f,102.f},{840.f,112.f},{852.f,118.f},{855.f,125.f},
+        {855.f,250.f},{860.f,265.f},{875.f,287.f},{898.f,312.f},
+        {918.f,332.f},{925.f,347.f},{925.f,525.f}
     };
     constexpr int SiteBoundaryPointCount = sizeof(SiteBoundaryProfile)/sizeof(SiteBoundaryProfile[0]);
     constexpr float SiteHalfLengthY = QuayLength * .5f;
@@ -36,34 +50,44 @@ namespace TerminalLayout
         for (int I=0;I<SiteBoundaryPointCount-1;++I)
         {
             const float Span=SiteBoundaryProfile[I+1][1]-SiteBoundaryProfile[I][1];
-            const float DepthA=SiteBoundaryProfile[I][0]-QuayLeftX/100.f;
-            const float DepthB=SiteBoundaryProfile[I+1][0]-QuayLeftX/100.f;
+            const float DepthA=SiteX(SiteBoundaryProfile[I][0])-QuayLeftX/100.f;
+            const float DepthB=SiteX(SiteBoundaryProfile[I+1][0])-QuayLeftX/100.f;
             Area+=Span*(DepthA+DepthB)*.5f;
         }
         return Area;
     }
-    static_assert(ConceptSiteAreaM2()>830000.f && ConceptSiteAreaM2()<840000.f,
-        "DGT concept footprint must remain within the published 830-840k m2 range");
+    static_assert(PlanDepthM>519.f && PlanDepthM<521.f && ConceptSiteAreaM2()>400000.f,
+        "Approved plan aspect ratio and nondegenerate polygon");
 
     // Readable metre anchors used by the site blockout.
     constexpr float QuayApronX = 95.f;
     constexpr float YardRoadX = 145.f;
     constexpr float MainInlandRoadX = 620.f;
-    constexpr float WingRoadX = 820.f;
+    constexpr float WingRoadX = 710.f;
     constexpr float EastServiceY = 300.f;
-    constexpr float GateX = 860.f;
+    constexpr float GateX = 730.f;
     constexpr float GateY = 480.f;
 
-    // Original BPA yard-map zones, expressed in metres. Both zones are part
-    // of the main operational yard; zone 9 is not a detached service pad.
+    // Shared block coordinates drive scenery, route planning and telemetry.
+    constexpr float YardFirstY = -480.f;
+    constexpr float YardBlockPitch = 38.f;
+    constexpr float BlockY(int Index) { return YardFirstY+Index*YardBlockPitch; }
     constexpr float ReeferZoneX = 395.f;
-    constexpr float ReeferZoneY = -245.f;
-    constexpr float ReeferZoneDepth = 390.f;
-    constexpr float ReeferZoneLength = 430.f;
-    constexpr float EmptyZoneX = 395.f;
-    constexpr float EmptyZoneY = 155.f;
-    constexpr float EmptyZoneDepth = 390.f;
-    constexpr float EmptyZoneLength = 310.f;
+    constexpr float ReeferZoneY = -150.f;
+    constexpr float ReeferZoneDepth = 430.f;
+    constexpr float ReeferZoneLength = 666.f;
+    // Facility 9 is a separate vacant hardstand east of the occupied yard.
+    constexpr float EmptyZoneX = 400.f;
+    constexpr float EmptyZoneY = 246.f;
+    constexpr float EmptyZoneDepth = 430.f;
+    constexpr float EmptyZoneLength = 110.f;
+    constexpr bool ContainerOverlapsEmptyZone(float X,float Y)
+    {
+        return X+6.096f>SiteX(EmptyZoneX-EmptyZoneDepth*.5f) &&
+            X-6.096f<SiteX(EmptyZoneX+EmptyZoneDepth*.5f) &&
+            Y+1.219f>EmptyZoneY-EmptyZoneLength*.5f &&
+            Y-1.219f<EmptyZoneY+EmptyZoneLength*.5f;
+    }
 
     constexpr float YardSlotX(int Index)
     {

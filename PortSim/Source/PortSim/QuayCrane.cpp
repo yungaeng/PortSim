@@ -252,6 +252,20 @@ void AQuayCrane::BeginPlay()
             Pass?TEXT("Terminal actor ownership, vessel inventory, equipment counts and reset verified"):*Error);
         FPlatformMisc::RequestExitWithStatus(false,Pass?0:1);
     }
+    // Orthographic review view matches the approved plan: inland up, gate right.
+    if(FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
+    {
+        bFreeCamera=false; bFollowAGV=false;
+        CameraArm->SetRelativeLocation(FVector(25000,0,0));
+        CameraArm->SetRelativeRotation(FRotator(-90,0,0));
+        CameraArm->TargetArmLength=150000;
+        Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+                Camera->SetOrthoWidth(130000);
+        Camera->SetAutoCalculateOrthoPlanes(false);
+        Camera->SetUpdateOrthoPlanes(false);
+        Camera->SetOrthoNearClipPlane(1);
+        Camera->SetOrthoFarClipPlane(300000);
+    }
     int32 FocusIndex=-1;
     if (bTerminalMode && FParse::Value(FCommandLine::Get(),TEXT("PortSimSiteFocus="),FocusIndex) && FocusIndex>=0 && FocusIndex<WorkingCranes.Num())
     { SiteCameraIndex=FocusIndex-1; FocusNextSiteCrane(); }
@@ -424,7 +438,7 @@ void AQuayCrane::Tick(float DeltaSeconds)
         CaptureElapsed += WallDt;
         if (!bCaptureRequested && CaptureElapsed > 8.f)
         {
-            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / (bHUDVisible?TEXT("Screenshots/CraneLab.png"):TEXT("Screenshots/CraneLab_HUDHidden.png")), true, false);
+            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / (FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView"))?TEXT("Screenshots/TerminalPlanV3.png"):(bHUDVisible?TEXT("Screenshots/CraneLab.png"):TEXT("Screenshots/CraneLab_HUDHidden.png"))), true, false);
             bCaptureRequested = true;
         }
         if (CaptureElapsed > 12.f) FPlatformMisc::RequestExit(false);
@@ -483,7 +497,7 @@ void AQuayCrane::Tick(float DeltaSeconds)
         { bFollowAGV=false; bFreeCamera=false; CameraArm->SetRelativeLocation(FVector(12000,0,500)); CameraArm->TargetArmLength=bUnifiedTerminal?65000.f:22000.f; }
         if (bTerminalMode && PC->WasInputKeyJustPressed(EKeys::Tab)) FocusNextSiteCrane();
         TickFreeCamera(WallDt);
-        if (!bFreeCamera)
+        if (!bFreeCamera && !FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
         {
         const float Orbit = Axis(EKeys::Right, EKeys::Left);
         const float Pitch = Axis(EKeys::Up, EKeys::Down);
@@ -749,7 +763,7 @@ void APortSimHUD::DrawHUD()
     {
         Line(CranePawn->GetFleetStatus(),FLinearColor(0.3f,0.8f,1.f));
         Line(CranePawn->GetAGVStatus(),FLinearColor(1.f,.85f,.25f));
-        Line(TEXT("CC 9 (24-row) | TC 46 | AGV 60 | RS 4 | YT 18 | EH 2 | FL 7 | YC 74"),FLinearColor::White);
+        Line(TEXT("CC 9 (24-row) | TC 36 | AGV 60 | RS 4 | YT 18 | EH 2 | FL 7 | YC 74"),FLinearColor::White);
         Line(TEXT("WASD move | Q/E down/up | RMB look | Shift boost"),FLinearColor::White);
         Line(TEXT("P pause/resume | Space E-stop | R reset | U resume unloading"),FLinearColor(0.3f,1.f,0.7f));
         Line(TEXT("Home overview | End middle berth | Tab next crane"),FLinearColor::White);
