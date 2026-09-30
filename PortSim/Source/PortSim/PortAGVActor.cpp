@@ -7,7 +7,7 @@
 
 APortAGVActor::APortAGVActor()
 {
-    Box(TEXT("AGV_Deck"),RootComponent,FVector(0,0,170),FVector(340,1380,100),true);
+    Box(TEXT("AGV_Deck"),RootComponent,FVector(0,0,170),FVector(300,1380,100),true);
     for (int32 Side:{-1,1}) for (int32 Axle:{-1,0,1})
         Box(*FString::Printf(TEXT("Bogie_AGV_%d_%d"),Side,Axle),RootComponent,FVector(Side*170,Axle*480,75),FVector(75,160,110));
     Box(TEXT("AGV_Sensor"),RootComponent,FVector(0,670,265),FVector(110,45,90));

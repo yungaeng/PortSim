@@ -25,7 +25,7 @@ void AQuayCrane::BuildTerminalSite()
     Root->RegisterComponent();
     SiteActor->Tags.Add(TEXT("PortSim.DGT.SiteBlockout"));
 #if WITH_EDITOR
-    SiteActor->SetActorLabel(TEXT("DGT_7_Site_1050m_837201m2"));
+    SiteActor->SetActorLabel(TEXT("DGT_7_Site_1050m_836755m2"));
     SiteActor->SetFolderPath(TEXT("PortSim/Site"));
 #endif
     auto* Cube=LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube"));
@@ -48,10 +48,50 @@ void AQuayCrane::BuildTerminalSite()
     auto* Yellow=Group(TEXT("Site_Cranes"),TEXT("SiteOrange"));
     auto* Red=Group(TEXT("Site_Red"),TEXT("SiteRed"));
     auto* Green=Group(TEXT("Site_Green"),TEXT("SiteGreen"));
+    auto* TreeCanopies=NewObject<UHierarchicalInstancedStaticMeshComponent>(SiteActor,TEXT("Site_TreeCanopies"));
+    SiteActor->AddInstanceComponent(TreeCanopies);
+    TreeCanopies->SetupAttachment(Root);
+    TreeCanopies->SetStaticMesh(LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Sphere.Sphere")));
+    TreeCanopies->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+    if (auto* Mat=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_SiteGreen.M_SiteGreen")))
+        TreeCanopies->SetMaterial(0,Mat);
+    TreeCanopies->RegisterComponent();
     UHierarchicalInstancedStaticMeshComponent* Containers[]={Blue,Yellow,Red,Green};
     auto Box=[](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector Position,FVector Size)
     {
         return Mesh->AddInstance(FTransform(FQuat::Identity,Position*100.,Size));
+    };
+    auto OrientedBox=[](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector Position,FVector Size,float Yaw)
+    {
+        return Mesh->AddInstance(FTransform(FRotator(0,Yaw,0),Position*100.,Size));
+    };
+    auto RoadSegment=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector2D A,FVector2D B,float Width)
+    {
+        const FVector2D Delta=B-A;
+        const float Yaw=FMath::RadiansToDegrees(FMath::Atan2(Delta.Y,Delta.X));
+        OrientedBox(Mesh,FVector((A.X+B.X)*.5f,(A.Y+B.Y)*.5f,.24f),
+            FVector(Delta.Size(),Width,.06f),Yaw);
+    };
+    auto ZoneOutline=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector2D Center,FVector2D Size)
+    {
+        constexpr float LineWidth=1.2f;
+        constexpr float LineZ=.38f;
+        Box(Mesh,FVector(Center.X,Center.Y-Size.Y*.5f,LineZ),FVector(Size.X,LineWidth,.08f));
+        Box(Mesh,FVector(Center.X,Center.Y+Size.Y*.5f,LineZ),FVector(Size.X,LineWidth,.08f));
+        Box(Mesh,FVector(Center.X-Size.X*.5f,Center.Y,LineZ),FVector(LineWidth,Size.Y,.08f));
+        Box(Mesh,FVector(Center.X+Size.X*.5f,Center.Y,LineZ),FVector(LineWidth,Size.Y,.08f));
+    };
+    auto Tree=[&](float X,float Y,float Scale=1.f)
+    {
+        Box(Buildings,FVector(X,Y,2.1f*Scale),FVector(.7f*Scale,.7f*Scale,4.2f*Scale));
+        Box(TreeCanopies,FVector(X,Y,5.4f*Scale),FVector(5.2f*Scale,5.2f*Scale,5.2f*Scale));
+    };
+    auto Parking=[&](FVector2D Center,FVector2D Size,int32 Spaces)
+    {
+        Box(Roads,FVector(Center.X,Center.Y,.22),FVector(Size.X,Size.Y,.04));
+        const float Step=Size.Y/Spaces;
+        for (int32 I=0;I<=Spaces;++I)
+            Box(White,FVector(Center.X,Center.Y-Size.Y*.5f+I*Step,.29),FVector(Size.X*.42f,.12f,.02f));
     };
     auto Label=[&](const FString& Name,FVector Position,float Size=4.f)
     {
@@ -66,17 +106,54 @@ void AQuayCrane::BuildTerminalSite()
         Text->SetText(FText::FromString(Name));
         Text->RegisterComponent();
     };
-    // Perimeter and cross-yard roads, with open access at the inland gate.
-    for (float X:{145.f,650.f,775.f})
+    // The apron road spans the full berth.  The inland yard road ends where
+    // the reference plan opens into the curved service/gate wing.
+    Box(Roads,FVector(TerminalLayout::YardRoadX,0,.24),FVector(60,1020,.06));
+    for (int32 I=0;I<85;++I)
+        Box(White,FVector(TerminalLayout::YardRoadX,-500+I*12,.28),FVector(.15,5,.02));
+    Box(Roads,FVector(TerminalLayout::MainInlandRoadX,-105,.24),FVector(18,790,.06));
+    for (int32 I=0;I<66;++I)
+        Box(White,FVector(TerminalLayout::MainInlandRoadX,-494+I*12,.28),FVector(.15,5,.02));
+    // Rear perimeter road follows the same segmented curve as the site mesh.
+    for (int32 I=0;I<TerminalLayout::SiteBoundaryPointCount-1;++I)
     {
-        Box(Roads,FVector(X,0,.24),FVector(X==145.f?60.f:18.f,1020,.06));
-        for (int32 I=0;I<85;++I) Box(White,FVector(X,-500+I*12,.28),FVector(.15,5,.02));
+        RoadSegment(Roads,
+            FVector2D(TerminalLayout::SiteBoundaryProfile[I][0],TerminalLayout::SiteBoundaryProfile[I][1]),
+            FVector2D(TerminalLayout::SiteBoundaryProfile[I+1][0],TerminalLayout::SiteBoundaryProfile[I+1][1]),18.f);
+        RoadSegment(Green,
+            FVector2D(TerminalLayout::SiteBoundaryProfile[I][0]-10.f,TerminalLayout::SiteBoundaryProfile[I][1]),
+            FVector2D(TerminalLayout::SiteBoundaryProfile[I+1][0]-10.f,TerminalLayout::SiteBoundaryProfile[I+1][1]),4.f);
+        const FVector2D A(TerminalLayout::SiteBoundaryProfile[I][0],TerminalLayout::SiteBoundaryProfile[I][1]);
+        const FVector2D B(TerminalLayout::SiteBoundaryProfile[I+1][0],TerminalLayout::SiteBoundaryProfile[I+1][1]);
+        const int32 TreeCount=FMath::FloorToInt((B-A).Size()/28.f);
+        for (int32 TreeIndex=0;TreeIndex<TreeCount;++TreeIndex)
+        {
+            const float T=(TreeIndex+.5f)/TreeCount;
+            const FVector2D P=FMath::Lerp(A,B,T);
+            Tree(P.X-23.f,P.Y,.9f+(TreeIndex%3)*.08f);
+        }
     }
-    for (float Y:{-505.f,325.f,505.f})
+    // The drawing has a second landscaped edge down the gate-side boundary.
+    for (int32 I=0;I<9;++I) Tree(660.f+I*25.f,514.f,.92f+(I%2)*.1f);
+    // The east wing rises inland and carries CIS, non-standard cargo and gate.
+    Box(Roads,FVector(TerminalLayout::WingRoadX,350.f,.24),FVector(20,300,.06));
+    for (int32 I=0;I<25;++I)
+        Box(White,FVector(TerminalLayout::WingRoadX,206+I*12,.28),FVector(.15,5,.02));
+    Box(Roads,FVector(325,-505,.24),FVector(630,18,.06));
+    auto CrossRoad=[&](float Y,float EndX)
     {
-        Box(Roads,FVector(390,Y,.24),FVector(760,18,.06));
-        for (int32 I=0;I<63;++I) Box(White,FVector(16+I*12,Y,.28),FVector(5,.15,.02));
-    }
+        Box(Roads,FVector(EndX*.5f,Y,.24),FVector(EndX-20.f,18,.06));
+        for (int32 I=0;I<FMath::FloorToInt((EndX-20.f)/12.f);++I)
+            Box(White,FVector(15+I*12,Y,.28),FVector(5,.15,.02));
+    };
+    CrossRoad(TerminalLayout::EastServiceY,880.f);
+    CrossRoad(505.f,865.f);
+    // Angled gate approach reproduces the bend visible on the reference plan.
+    OrientedBox(Roads,FVector(706,382,.24),FVector(150,22,.06),-42.f);
+    OrientedBox(Roads,FVector(825,433,.24),FVector(125,22,.06),28.f);
+    RoadSegment(Roads,FVector2D(790,441),FVector2D(TerminalLayout::GateX,TerminalLayout::GateY),44.f);
+    for (int32 I=0;I<8;++I)
+        Box(Green,FVector(720,-470+I*70,.45),FVector(7,30,.5));
     // Eighteen blocks: 40 ft boxes retain their physical ISO-sized envelope.
     // HISM batches avoid thousands of ticking/physics actors for the context yard.
     for (int32 Block=0;Block<18;++Block)
@@ -119,8 +196,21 @@ void AQuayCrane::BuildTerminalSite()
             for (float Side:{-1.f,1.f})
                 Box(White,FVector(HX,Y+13.2f+Side*1.8f,.30),FVector(15,.12,.02));
         }
-        Label(FString::Printf(TEXT("%s %02d"),Block<3?TEXT("REEFER"):TEXT("CY"),Block+1),FVector(177,Y,.4),2.5f);
+        const TCHAR* ZoneCode=Block<10?TEXT("RF"):Block>=11?TEXT("MTY"):TEXT("CY");
+        Label(FString::Printf(TEXT("%s %02d"),ZoneCode,Block+1),FVector(177,Y,.4),2.5f);
     }
+    // Match the original BPA map: reefer storage occupies the inland/western
+    // yard blocks, while empty-container storage is integrated into the
+    // quay-side central/eastern blocks. These outlines are planning overlays;
+    // the underlying operational slots and crane reservations remain shared.
+    ZoneOutline(Green,FVector2D(TerminalLayout::ReeferZoneX,TerminalLayout::ReeferZoneY),
+        FVector2D(TerminalLayout::ReeferZoneDepth,TerminalLayout::ReeferZoneLength));
+    ZoneOutline(Yellow,FVector2D(TerminalLayout::EmptyZoneX,TerminalLayout::EmptyZoneY),
+        FVector2D(TerminalLayout::EmptyZoneDepth,TerminalLayout::EmptyZoneLength));
+    Label(TEXT("7 REEFER YARD | 430 x 390 m"),
+        FVector(TerminalLayout::ReeferZoneX,TerminalLayout::ReeferZoneY,32.f),3.4f);
+    Label(TEXT("9 EMPTY CONTAINER YARD | 310 x 390 m"),
+        FVector(TerminalLayout::EmptyZoneX,TerminalLayout::EmptyZoneY,32.f),3.4f);
     int32 STSIndex=0;
     const TArray<float> STSPositions=bUnifiedTerminal?
         TArray<float>{-450,-350,-250,-100,0,100,250,350,450}:
@@ -172,28 +262,53 @@ void AQuayCrane::BuildTerminalSite()
         Box(Blue,FVector(X,Y,.4+Size.Z),FVector(Size.X+2,Size.Y+2,.5));
         Label(Name,FVector(X,Y,Size.Z+1),3.f);
     };
-    Building(TEXT("1 OPERATIONS"),714,-190,FVector(45,65,28));
-    Building(TEXT("2 WORKER REST"),714,-290,FVector(24,45,7));
-    Building(TEXT("3 MAINTENANCE"),210,425,FVector(65,90,14));
-    Building(TEXT("5 CIS"),710,20,FVector(40,40,9));
-    Building(TEXT("6 SUBSTATION"),710,-400,FVector(30,45,8));
-    Building(TEXT("10 WASH / REPAIR"),350,425,FVector(55,80,12));
-    Box(Roads,FVector(708,175,.24),FVector(90,160,.06));
-    Label(TEXT("8 NON-STANDARD CARGO"),FVector(708,175,.4),3.f);
-    for (int32 I=0;I<8;++I) Box(Yellow,FVector(685+(I%2)*35,125+(I/2)*30,2.2),FVector(20,10,4));
-    Label(TEXT("9 EMPTY CONTAINERS"),FVector(500,355,.4),3.f);
-    for (int32 Row=0;Row<11;++Row)
-        for (int32 Bay=0;Bay<8;++Bay)
-            for (int32 Tier=0;Tier<3;++Tier)
-                { Box(Containers[(Row+Bay)%4],FVector(440+Bay*13,375+Row*3,1.495+Tier*2.59),FVector(12.192,2.438,2.59)); ++FixedYard; }
+    // Facility pads and footprints are scaled from the 1,050 m berth in the
+    // concept drawing.  Pads intentionally include the visible parking/service
+    // apron instead of inflating the building mesh itself.
+    Box(Roads,FVector(650,-55,.22),FVector(92,112,.04));
+    Box(Roads,FVector(72,285,.22),FVector(60,108,.04));
+    Box(Roads,FVector(155,445,.22),FVector(112,86,.04));
+    Box(Roads,FVector(735,235,.22),FVector(92,92,.04));
+    Box(Roads,FVector(650,-300,.22),FVector(68,136,.04));
+    Box(Roads,FVector(350,365,.22),FVector(132,112,.04));
+    Building(TEXT("1 OPERATIONS"),650,-55,FVector(55,70,18));
+    Building(TEXT("2 WORKER REST"),72,285,FVector(38,82,8));
+    Building(TEXT("3 MAINTENANCE"),155,445,FVector(82,65,16));
+    Building(TEXT("5 CIS"),735,235,FVector(62,62,12));
+    Building(TEXT("6 SUBSTATION"),650,-300,FVector(44,112,9));
+    Building(TEXT("10 WASH / REPAIR"),350,365,FVector(100,72,14));
+    // Small structures shown between the yard exit and the main gate.
+    Box(Roads,FVector(702,325,.22),FVector(92,54,.04));
+    Building(TEXT("GATE CONTROL"),680,325,FVector(18,28,7));
+    Building(TEXT("INSPECTION"),724,325,FVector(18,28,7));
+    Parking(FVector2D(605,-55),FVector2D(28,72),12);
+    Parking(FVector2D(700,235),FVector2D(24,64),10);
+    Parking(FVector2D(105,445),FVector2D(24,58),9);
+    Parking(FVector2D(292,365),FVector2D(24,72),11);
+    // Transformer banks and repair-yard service bays are visible as detached
+    // equipment in the source plan rather than as part of the roof footprint.
+    for (int32 I=0;I<4;++I)
+        Box(Yellow,FVector(672,-340+I*24,2.0),FVector(12,8,3.2));
+    for (int32 I=0;I<3;++I)
+        Box(Blue,FVector(405,338+I*25,2.5),FVector(14,9,4.2));
+    Box(Roads,FVector(825,395,.24),FVector(140,118,.06));
+    Label(TEXT("8 NON-STANDARD CARGO"),FVector(825,395,.4),3.f);
+    for (int32 I=0;I<8;++I) Box(Yellow,FVector(795+(I%2)*42,355+(I/2)*27,2.2),FVector(24,11,4));
     // Ten 4 m gate lanes, canopy and booths aligned to the inland access road.
-    Box(Blue,FVector(760,420,8),FVector(22,44,1));
+    Box(Blue,FVector(TerminalLayout::GateX,TerminalLayout::GateY,10),FVector(30,58,1));
     for (int32 Lane=0;Lane<11;++Lane)
     {
-        Box(White,FVector(760,400+Lane*4,.3),FVector(45,.15,.1));
-        Box(Buildings,FVector(760,400+Lane*4,3.9),FVector(1,1,7.4));
+        const float LaneY=TerminalLayout::GateY-24.2f+Lane*4.4f;
+        Box(White,FVector(TerminalLayout::GateX,LaneY,.3),FVector(62,.15,.1));
+        Box(Buildings,FVector(TerminalLayout::GateX,LaneY,4.5),FVector(1.2,1.2,8.5));
     }
-    Label(TEXT("4 GATE"),FVector(760,420,9),4.f);
+    // Paired weighbridges and guard booths at the lane merge.
+    for (float LaneY:{TerminalLayout::GateY-11.f,TerminalLayout::GateY+11.f})
+    {
+        Box(White,FVector(835,LaneY,.34),FVector(26,3.2,.16));
+        Box(Buildings,FVector(848,LaneY+3.3f,2.2),FVector(4.5,3.2,4));
+    }
+    Label(TEXT("4 GATE"),FVector(TerminalLayout::GateX,TerminalLayout::GateY,11),4.f);
     Label(TEXT("DGT | BUSAN NEW PORT 7 | 1,050 m"),FVector(72,-200,.4),5.f);
     SiteLogistics->Initialize(WorkingCranes,MoveTemp(YardSlots),{Blue,Yellow,Red,Green},bUnifiedTerminal?0:24,FixedYard);
     SiteLogistics->RegisterBerthVehicles(AGVActors);

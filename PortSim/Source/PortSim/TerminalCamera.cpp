@@ -5,6 +5,8 @@
 #include "InputCoreTypes.h"
 #include "PortSiteLogistics.h"
 #include "PortSupportVehicle.h"
+#include "ProceduralMeshComponent.h"
+#include "TerminalLayout.h"
 #include "PortWorkingCrane.h"
 #include "PortAGVActor.h"
 
@@ -71,6 +73,9 @@ void AQuayCrane::TestEquipmentAndCamera()
     int32 CC=0,TC=0;
     for (const auto& Crane:WorkingCranes) { CC+=Crane->bSTS; TC+=!Crane->bSTS; }
     Pass &= CC==9 && TC==46 && SiteLogistics->Vehicles.Num()==60;
+    const auto* SitePolygon=FindComponentByClass<UProceduralMeshComponent>();
+    Pass &= SitePolygon && SitePolygon->GetNumSections()==1 &&
+        TerminalLayout::ConceptSiteAreaM2()>830000.f && TerminalLayout::ConceptSiteAreaM2()<840000.f;
     const FTransform Saved=CameraArm->GetComponentTransform();
     const float Length=CameraArm->TargetArmLength;
     MoveFreeCamera(FVector::ZeroVector,FVector2D::ZeroVector,0,false);
@@ -82,6 +87,7 @@ void AQuayCrane::TestEquipmentAndCamera()
     Pass &= CameraArm->GetComponentLocation().Equals(Next+FVector(0,0,30000),1.f);
     Pass &= FMath::IsNearlyEqual(CameraArm->GetComponentRotation().Pitch,89.f,.1f);
     CameraArm->SetWorldTransform(Saved); CameraArm->TargetArmLength=Length; bFreeCamera=false;
-    UE_LOG(LogTemp,Display,TEXT("PORTSIM_EQUIPMENT_CAMERA_%s: 220 equipment actors; 60 dispatch AGVs; free translation, boost, mouse rotation and pitch clamp; %s"),Pass?TEXT("PASS"):TEXT("FAIL"),*Error);
+    UE_LOG(LogTemp,Display,TEXT("PORTSIM_EQUIPMENT_CAMERA_%s: polygon site %.0f m2; 220 equipment actors; 60 dispatch AGVs; free translation, boost, mouse rotation and pitch clamp; %s"),
+        Pass?TEXT("PASS"):TEXT("FAIL"),TerminalLayout::ConceptSiteAreaM2(),*Error);
     FPlatformMisc::RequestExitWithStatus(false,Pass?0:1);
 }
