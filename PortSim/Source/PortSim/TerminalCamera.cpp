@@ -9,6 +9,7 @@
 #include "TerminalLayout.h"
 #include "PortWorkingCrane.h"
 #include "PortAGVActor.h"
+#include "EngineUtils.h"
 
 FString AQuayCrane::GetAGVStatus() const
 { return SiteLogistics?SiteLogistics->VehicleStatus():FString(); }
@@ -68,11 +69,38 @@ void AQuayCrane::TestEquipmentAndCamera()
     bool Pass=ValidateTerminalActors(Error);
     int32 Counts[5]={};
     for (const auto& Actor:SupportFleet)
-        if (const auto* Vehicle=Cast<APortSupportVehicle>(Actor)) ++Counts[static_cast<int32>(Vehicle->EquipmentType)];
+        if (const auto* Vehicle=Cast<APortSupportVehicle>(Actor))
+        {
+            ++Counts[static_cast<int32>(Vehicle->EquipmentType)];
+            const FVector P=Vehicle->GetActorLocation()/100.f;
+            Pass &= P.X>=TerminalLayout::SiteX(685) && P.X<=TerminalLayout::SiteX(825)
+                && P.Y>=0 && P.Y<=185;
+        }
     Pass &= Counts[0]==4 && Counts[1]==18 && Counts[2]==2 && Counts[3]==7 && Counts[4]==74;
     int32 CC=0,TC=0;
     for (const auto& Crane:WorkingCranes) { CC+=Crane->bSTS; TC+=!Crane->bSTS; }
     Pass &= CC==9 && TC==36 && SiteLogistics->Vehicles.Num()==60;
+    int32 WorldAGVCount=0;
+    bool ParkingPass=true;
+    double MaxAGVY=-DBL_MAX;
+    TArray<FBox> AGVBounds;
+    for(TActorIterator<APortAGVActor> It(GetWorld());It;++It)
+    {
+        ++WorldAGVCount;
+        FVector Center,Extent;
+        It->GetActorBounds(false,Center,Extent);
+        MaxAGVY=FMath::Max(MaxAGVY,Center.Y+Extent.Y);
+        ParkingPass &= Center.Y+Extent.Y<23800 && Center.Y-Extent.Y>-52500;
+        const FBox Bounds(Center-Extent,Center+Extent);
+        for(const FBox& Other:AGVBounds)
+            ParkingPass &= Bounds.Max.X<Other.Min.X || Bounds.Min.X>Other.Max.X
+                || Bounds.Max.Y<Other.Min.Y || Bounds.Min.Y>Other.Max.Y;
+        AGVBounds.Add(Bounds);
+    }
+    ParkingPass &= WorldAGVCount==60;
+    Pass &= ParkingPass;
+    UE_LOG(LogTemp,Display,TEXT("AGV_PARKING_%s: actual actors=%d; eastmost vehicle edge=%.2f m; worker-rest apron starts at 238 m; no parked overlap"),
+        ParkingPass?TEXT("PASS"):TEXT("FAIL"),WorldAGVCount,MaxAGVY/100.);
     const auto* SitePolygon=FindComponentByClass<UProceduralMeshComponent>();
     Pass &= SitePolygon && SitePolygon->GetNumSections()==1 &&
         TerminalLayout::PlanDepthM>519.f && TerminalLayout::PlanDepthM<521.f && TerminalLayout::ConceptSiteAreaM2()>400000.f;

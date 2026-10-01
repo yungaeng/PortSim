@@ -68,9 +68,11 @@ FVector APortSiteLogistics::YardHandover(const FSiteYardSlot& Slot) const
 FVector APortSiteLogistics::FleetPark(int32 Vehicle) const
 {
     if(LaneCount!=9) return QuayPark(Vehicle);
-    const float Y=-48000+Vehicle*1600;
-    // Keep parked AGVs off facility 2's quay-side footprint and apron.
-    return FVector(TerminalLayout::SiteCmX(Y>23500 && Y<34500?10500:8000),Y,0);
+    // Two 30-vehicle rows stay entirely west of the worker-rest apron (Y=238 m).
+    // 24 m pitch clears the physical 13.8 m vehicle length. Spawn, return and
+    // reset all share these positions, so parked vehicles cannot spill east.
+    const float Y=-48000+(Vehicle%30)*2400;
+    return FVector(TerminalLayout::SiteCmX(8000+(Vehicle/30)*2000),Y,0);
 }
 
 void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>& Cranes,TArray<FSiteYardSlot> Slots,
@@ -724,8 +726,6 @@ bool APortSiteLogistics::Validate(FString& Error) const
     }
     for (const auto& Slot:Yard)
     {
-        if(TerminalLayout::ContainerOverlapsEmptyZone(Slot.Position.X/100.f,Slot.Position.Y/100.f))
-        { Error=TEXT("Vacant zone 9 contains a cargo/receiving slot"); return false; }
         Reserved+=Slot.Reserved; OccupiedReservations+=Slot.Reserved && Slot.Occupied; CentralOccupied+=Slot.Central && Slot.Occupied;
         if (Slot.Occupied && Slot.Below!=INDEX_NONE && !Yard[Slot.Below].Occupied)
         { Error=TEXT("Yard stack has an empty supporting tier"); return false; }

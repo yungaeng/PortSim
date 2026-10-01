@@ -63,31 +63,27 @@ namespace TerminalLayout
     constexpr float QuayApronX = 95.f;
     constexpr float YardRoadX = 145.f;
     constexpr float MainInlandRoadX = 620.f;
-    constexpr float WingRoadX = 710.f;
+    constexpr float WingRoadX = 520.f;
     constexpr float EastServiceY = 300.f;
-    constexpr float GateX = 730.f;
+    constexpr float GateX = 600.f;
     constexpr float GateY = 480.f;
 
     // Shared block coordinates drive scenery, route planning and telemetry.
     constexpr float YardFirstY = -480.f;
-    constexpr float YardBlockPitch = 38.f;
+    constexpr float YardBlockPitch = 35.f;
     constexpr float BlockY(int Index) { return YardFirstY+Index*YardBlockPitch; }
     constexpr float ReeferZoneX = 395.f;
-    constexpr float ReeferZoneY = -150.f;
+    constexpr float ReeferZoneY = -185.f;
     constexpr float ReeferZoneDepth = 430.f;
-    constexpr float ReeferZoneLength = 666.f;
-    // Facility 9 is a separate vacant hardstand east of the occupied yard.
-    constexpr float EmptyZoneX = 400.f;
-    constexpr float EmptyZoneY = 246.f;
+    constexpr float ReeferZoneLength = 630.f;
+    // Facility 9 is a vacant hardstand east of all operational yard blocks.
+    constexpr float EmptyZoneX = 395.f;
+    constexpr float EmptyZoneY = 202.f;
     constexpr float EmptyZoneDepth = 430.f;
-    constexpr float EmptyZoneLength = 110.f;
-    constexpr bool ContainerOverlapsEmptyZone(float X,float Y)
-    {
-        return X+6.096f>SiteX(EmptyZoneX-EmptyZoneDepth*.5f) &&
-            X-6.096f<SiteX(EmptyZoneX+EmptyZoneDepth*.5f) &&
-            Y+1.219f>EmptyZoneY-EmptyZoneLength*.5f &&
-            Y-1.219f<EmptyZoneY+EmptyZoneLength*.5f;
-    }
+    constexpr float EmptyZoneLength = 124.f;
+
+    static_assert(BlockY(17)+17.f < EmptyZoneY-EmptyZoneLength*.5f,
+        "Operational yard and cranes must remain west of vacant facility 9");
 
     constexpr float YardSlotX(int Index)
     {

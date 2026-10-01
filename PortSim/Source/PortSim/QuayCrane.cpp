@@ -266,6 +266,20 @@ void AQuayCrane::BeginPlay()
         Camera->SetOrthoNearClipPlane(1);
         Camera->SetOrthoFarClipPlane(300000);
     }
+    if(FParse::Param(FCommandLine::Get(),TEXT("PortSimAerialView")))
+    {
+        bFreeCamera=false; bFollowAGV=false;
+        CameraArm->SetRelativeLocation(FVector(23000,0,0));
+        CameraArm->SetRelativeRotation(FRotator(-52,-18,0));
+        CameraArm->TargetArmLength=150000;
+        Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+        Camera->SetOrthoWidth(78000);
+        Camera->PostProcessSettings.AutoExposureBias=0.5f;
+        Camera->SetAutoCalculateOrthoPlanes(false);
+        Camera->SetUpdateOrthoPlanes(false);
+        Camera->SetOrthoNearClipPlane(1);
+        Camera->SetOrthoFarClipPlane(300000);
+    }
     int32 FocusIndex=-1;
     if (bTerminalMode && FParse::Value(FCommandLine::Get(),TEXT("PortSimSiteFocus="),FocusIndex) && FocusIndex>=0 && FocusIndex<WorkingCranes.Num())
     { SiteCameraIndex=FocusIndex-1; FocusNextSiteCrane(); }
@@ -497,7 +511,7 @@ void AQuayCrane::Tick(float DeltaSeconds)
         { bFollowAGV=false; bFreeCamera=false; CameraArm->SetRelativeLocation(FVector(12000,0,500)); CameraArm->TargetArmLength=bUnifiedTerminal?65000.f:22000.f; }
         if (bTerminalMode && PC->WasInputKeyJustPressed(EKeys::Tab)) FocusNextSiteCrane();
         TickFreeCamera(WallDt);
-        if (!bFreeCamera && !FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
+        if (!bFreeCamera && !FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")) && !FParse::Param(FCommandLine::Get(),TEXT("PortSimAerialView")))
         {
         const float Orbit = Axis(EKeys::Right, EKeys::Left);
         const float Pitch = Axis(EKeys::Up, EKeys::Down);
@@ -741,6 +755,7 @@ void APortSimHUD::DrawHUD()
     Super::DrawHUD();
     auto* CranePawn = GetOwningPlayerController() ? Cast<AQuayCrane>(GetOwningPlayerController()->GetPawn()) : nullptr;
     if (!Canvas || !CranePawn) return;
+    if (!CranePawn->bHUDVisible && FParse::Param(FCommandLine::Get(),TEXT("PortSimCapture"))) return;
     const float Scale = FMath::Clamp(Canvas->SizeX / 1440.f, 0.65f, 1.4f);
     const FVector2D TogglePosition(Canvas->SizeX-154.f*Scale,16.f);
     const FVector2D ToggleSize(138.f*Scale,30.f*Scale);
