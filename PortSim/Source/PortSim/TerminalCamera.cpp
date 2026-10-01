@@ -79,7 +79,7 @@ void AQuayCrane::TestEquipmentAndCamera()
     Pass &= Counts[0]==4 && Counts[1]==18 && Counts[2]==2 && Counts[3]==7 && Counts[4]==74;
     int32 CC=0,TC=0;
     for (const auto& Crane:WorkingCranes) { CC+=Crane->bSTS; TC+=!Crane->bSTS; }
-    Pass &= CC==9 && TC==36 && SiteLogistics->Vehicles.Num()==60;
+    Pass &= CC==9 && TC==2*TerminalLayout::YardBlockCount && SiteLogistics->Vehicles.Num()==60;
     int32 WorldAGVCount=0;
     bool ParkingPass=true;
     double MaxAGVY=-DBL_MAX;
@@ -101,9 +101,37 @@ void AQuayCrane::TestEquipmentAndCamera()
     Pass &= ParkingPass;
     UE_LOG(LogTemp,Display,TEXT("AGV_PARKING_%s: actual actors=%d; eastmost vehicle edge=%.2f m; worker-rest apron starts at 238 m; no parked overlap"),
         ParkingPass?TEXT("PASS"):TEXT("FAIL"),WorldAGVCount,MaxAGVY/100.);
-    const auto* SitePolygon=FindComponentByClass<UProceduralMeshComponent>();
+    auto* SitePolygon=FindComponentByClass<UProceduralMeshComponent>();
     Pass &= SitePolygon && SitePolygon->GetNumSections()==1 &&
-        TerminalLayout::PlanDepthM>519.f && TerminalLayout::PlanDepthM<521.f && TerminalLayout::ConceptSiteAreaM2()>400000.f;
+        FMath::Abs(TerminalLayout::ConceptSiteAreaM2()-TerminalLayout::SiteAreaM2)<1.0;
+    // Check the generated mesh itself, not only the layout constants.
+    double MeshAreaM2=0;
+    if(SitePolygon && SitePolygon->GetNumSections()==1)
+    {
+        const auto* Section=SitePolygon->GetProcMeshSection(0);
+        for(int32 I=0;I+2<Section->ProcIndexBuffer.Num();I+=3)
+        {
+            const FVector A=Section->ProcVertexBuffer[Section->ProcIndexBuffer[I]].Position;
+            const FVector B=Section->ProcVertexBuffer[Section->ProcIndexBuffer[I+1]].Position;
+            const FVector C=Section->ProcVertexBuffer[Section->ProcIndexBuffer[I+2]].Position;
+            MeshAreaM2+=FMath::Abs(FVector::CrossProduct(B-A,C-A).Z)*.5/10000.;
+        }
+    }
+    Pass &= FMath::Abs(MeshAreaM2-TerminalLayout::SiteAreaM2)<1.0;
+    UE_LOG(LogTemp,Display,TEXT("SITE_AREA_CHECK: mesh=%.3f target=%.3f quay_m=%.1f max_depth_m=%.3f"),
+        MeshAreaM2,TerminalLayout::SiteAreaM2,TerminalLayout::QuayLength/100.,TerminalLayout::PlanDepthM);
+    bool PhysicalScalePass=true, HandoverPass=true;
+    for(const auto& Crane:WorkingCranes)
+        PhysicalScalePass &= Crane->GetActorScale3D().Equals(FVector::OneVector,.0001f);
+    for(const auto& Vehicle:SiteLogistics->Vehicles)
+        PhysicalScalePass &= Vehicle->GetActorScale3D().Equals(FVector::OneVector,.0001f);
+    for(const auto& Actor:SupportFleet)
+        PhysicalScalePass &= Actor->GetActorScale3D().Equals(FVector::OneVector,.0001f);
+    // Site STSs retain their original physical profile and world X=12 m.
+    HandoverPass &= STSProfile.ContainsTarget(FVector(TerminalLayout::SiteCmX(4500)-1200.f,0,504.f));
+    Pass &= PhysicalScalePass && HandoverPass;
+    UE_LOG(LogTemp,Display,TEXT("SITE_PHYSICAL_CHECK: actor_scales=%s sts_handover=%s"),
+        PhysicalScalePass?TEXT("PASS"):TEXT("FAIL"),HandoverPass?TEXT("PASS"):TEXT("FAIL"));
     const FTransform Saved=CameraArm->GetComponentTransform();
     const float Length=CameraArm->TargetArmLength;
     MoveFreeCamera(FVector::ZeroVector,FVector2D::ZeroVector,0,false);
@@ -115,7 +143,7 @@ void AQuayCrane::TestEquipmentAndCamera()
     Pass &= CameraArm->GetComponentLocation().Equals(Next+FVector(0,0,30000),1.f);
     Pass &= FMath::IsNearlyEqual(CameraArm->GetComponentRotation().Pitch,89.f,.1f);
     CameraArm->SetWorldTransform(Saved); CameraArm->TargetArmLength=Length; bFreeCamera=false;
-    UE_LOG(LogTemp,Display,TEXT("PORTSIM_EQUIPMENT_CAMERA_%s: polygon site %.0f m2; 210 equipment actors; 60 dispatch AGVs; free translation, boost, mouse rotation and pitch clamp; %s"),
+    UE_LOG(LogTemp,Display,TEXT("PORTSIM_EQUIPMENT_CAMERA_%s: polygon site %.0f m2; 220 equipment actors; 60 dispatch AGVs; free translation, boost, mouse rotation and pitch clamp; %s"),
         Pass?TEXT("PASS"):TEXT("FAIL"),TerminalLayout::ConceptSiteAreaM2(),*Error);
     FPlatformMisc::RequestExitWithStatus(false,Pass?0:1);
 }

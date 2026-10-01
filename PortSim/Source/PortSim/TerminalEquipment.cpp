@@ -1,4 +1,4 @@
-#include "TerminalLayout.h"
+﻿#include "TerminalLayout.h"
 #include "QuayCrane.h"
 #include "PortSupportVehicle.h"
 #include "PortSiteLogistics.h"
@@ -28,5 +28,5 @@ void AQuayCrane::BuildSupportFleet()
         Spawn(EPortSupportType::EmptyHandler,I+1,FVector(695,20+I*20,0));
     for (int32 I=0;I<7;++I)
         Spawn(EPortSupportType::Forklift,I+1,FVector(695,55+I*4,0));
-    UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_INVENTORY: CC=9 (24 rows), TC=36, AGV=60 active, RS=4, YT=18, EH=2, FL=7, YC=74; total=210"));
+    UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_INVENTORY: CC=9 (24 rows), TC=46, AGV=60 active, RS=4, YT=18, EH=2, FL=7, YC=74; total=220"));
 }

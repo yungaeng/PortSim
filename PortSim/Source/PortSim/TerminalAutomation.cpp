@@ -1,4 +1,4 @@
-#include "QuayCrane.h"
+﻿#include "QuayCrane.h"
 #include "PortWorkingCrane.h"
 #include "PortSiteLogistics.h"
 #include "Components/StaticMeshComponent.h"
@@ -64,7 +64,7 @@ void AQuayCrane::BuildTerminal()
     if (bUnifiedTerminal)
     {
         // Approved curved/polygonal plan outline, with 1050 m frontage.
-        // Plan proportions determine depth; published area is reference data only.
+        // Integrate the retained boundary profile to match the target area; quay length stays fixed.
         auto* SiteMesh=NewObject<UProceduralMeshComponent>(this,TEXT("DGT_SitePolygon"));
         AddInstanceComponent(SiteMesh);
         SiteMesh->SetupAttachment(RootComponent);
@@ -91,7 +91,7 @@ void AQuayCrane::BuildTerminal()
         }
         SiteMesh->CreateMeshSection_LinearColor(0,Vertices,Triangles,Normals,UVs,Colors,Tangents,true);
         SiteMesh->SetCollisionProfileName(TEXT("BlockAll"));
-        if (auto* QuayMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_Quay.M_Quay")))
+        if (auto* QuayMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_SiteRoad.M_SiteRoad")))
             SiteMesh->SetMaterial(0,QuayMaterial);
         SiteMesh->RegisterComponent();
     }

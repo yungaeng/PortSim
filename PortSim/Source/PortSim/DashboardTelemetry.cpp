@@ -1,4 +1,4 @@
-#include "TerminalLayout.h"
+﻿#include "TerminalLayout.h"
 #include "PortSiteLogistics.h"
 #include "Async/Async.h"
 #include "PortWorkingCrane.h"
@@ -413,10 +413,10 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         O->SetStringField(TEXT("state"),Unloaded==Total?TEXT("complete"):TEXT("working"));
         Vessels.Add(Value(O)); Actors.Add(Value(O));
     }
-    int32 YardTotals[18]={}, YardOccupied[18]={};
-    for (const auto& Slot:Yard) if (Slot.Block>=0 && Slot.Block<18)
+    int32 YardTotals[TerminalLayout::YardBlockCount]={}, YardOccupied[TerminalLayout::YardBlockCount]={};
+    for (const auto& Slot:Yard) if (Slot.Block>=0 && Slot.Block<TerminalLayout::YardBlockCount)
     { ++YardTotals[Slot.Block]; YardOccupied[Slot.Block]+=Slot.Occupied; }
-    for(int32 B=0;B<18;++B)
+    for(int32 B=0;B<TerminalLayout::YardBlockCount;++B)
     {
         auto O=Object(); const int32 Total=YardTotals[B], Occupied=YardOccupied[B];
         O->SetStringField(TEXT("id"),FString::Printf(TEXT("yard-%d"),B+1));

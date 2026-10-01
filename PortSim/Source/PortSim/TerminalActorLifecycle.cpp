@@ -1,4 +1,5 @@
 #include "QuayCrane.h"
+#include "TerminalLayout.h"
 #include "PortWorkingCrane.h"
 #include "PortSiteLogistics.h"
 #include "Components/StaticMeshComponent.h"
@@ -23,7 +24,7 @@ bool AQuayCrane::ValidateTerminalActors(FString& Error) const
 {
     if (bUnifiedTerminal)
     {
-        if (!IsValid(SiteLogistics) || WorkingCranes.Num()!=45 || SupportFleet.Num()!=105 || ContainerActors.Num()!=0 || AGVActors.Num()!=0 || ShipActor)
+        if (!IsValid(SiteLogistics) || WorkingCranes.Num()!=2*TerminalLayout::YardBlockCount+9 || SupportFleet.Num()!=105 || ContainerActors.Num()!=0 || AGVActors.Num()!=0 || ShipActor)
         { Error=TEXT("Legacy central berth still exists or unified equipment count is wrong"); return false; }
         return SiteLogistics->Validate(Error);
     }
@@ -53,7 +54,7 @@ bool AQuayCrane::ValidateTerminalActors(FString& Error) const
     if (!bTerminalMode) return true;
     for (TActorIterator<APortRMGActor> It(GetWorld());It;++It)
         if (It->GetOwner()==this) { Error=TEXT("Obsolete central RMG still exists"); return false; }
-    if (AGVActors.Num()!=3 || WorkingCranes.Num()!=44 || !IsValid(SiteLogistics) || !IsValid(ShipActor) || ShipActor->GetOwner()!=this)
+    if (AGVActors.Num()!=3 || WorkingCranes.Num()!=2*TerminalLayout::YardBlockCount+8 || !IsValid(SiteLogistics) || !IsValid(ShipActor) || ShipActor->GetOwner()!=this)
     { Error=TEXT("Fleet/ship actor ownership mismatch"); return false; }
     TArray<const AActor*> Equipment={ShipActor.Get()};
     for (const auto& Crane:WorkingCranes) Equipment.Add(Crane);

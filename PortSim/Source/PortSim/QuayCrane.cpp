@@ -1,4 +1,5 @@
-#include "QuayCrane.h"
+﻿#include "QuayCrane.h"
+#include "TerminalLayout.h"
 #include "PortSiteLogistics.h"
 #include "PortSimTimeStep.h"
 #include "Misc/FileHelper.h"
@@ -168,7 +169,7 @@ void AQuayCrane::ApplyAppearance()
     };
     UMaterialInterface* Yellow = Material(TEXT("CraneYellow"));
     UMaterialInterface* Steel = Material(TEXT("Steel"));
-    UMaterialInterface* QuayMaterial = Material(bTerminalMode ? TEXT("SiteAsphalt") : TEXT("Quay"));
+    UMaterialInterface* QuayMaterial = Material(bTerminalMode ? TEXT("SiteRoad") : TEXT("Quay"));
     UMaterialInterface* PickupMaterial = Material(TEXT("Pickup"));
     UMaterialInterface* TargetMaterial = Material(TEXT("Target"));
     TArray<UStaticMeshComponent*> Meshes;
@@ -256,7 +257,7 @@ void AQuayCrane::BeginPlay()
     if(FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
     {
         bFreeCamera=false; bFollowAGV=false;
-        CameraArm->SetRelativeLocation(FVector(25000,0,0));
+        CameraArm->SetRelativeLocation(FVector((TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[TerminalLayout::SiteBoundaryPointCount-1][0])*100.f+TerminalLayout::QuayLeftX)*.5f,0,0));
         CameraArm->SetRelativeRotation(FRotator(-90,0,0));
         CameraArm->TargetArmLength=150000;
         Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
@@ -778,7 +779,7 @@ void APortSimHUD::DrawHUD()
     {
         Line(CranePawn->GetFleetStatus(),FLinearColor(0.3f,0.8f,1.f));
         Line(CranePawn->GetAGVStatus(),FLinearColor(1.f,.85f,.25f));
-        Line(TEXT("CC 9 (24-row) | TC 36 | AGV 60 | RS 4 | YT 18 | EH 2 | FL 7 | YC 74"),FLinearColor::White);
+        Line(TEXT("CC 9 (24-row) | TC 46 | AGV 60 | RS 4 | YT 18 | EH 2 | FL 7 | YC 74"),FLinearColor::White);
         Line(TEXT("WASD move | Q/E down/up | RMB look | Shift boost"),FLinearColor::White);
         Line(TEXT("P pause/resume | Space E-stop | R reset | U resume unloading"),FLinearColor(0.3f,1.f,0.7f));
         Line(TEXT("Home overview | End middle berth | Tab next crane"),FLinearColor::White);
