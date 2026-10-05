@@ -26,13 +26,13 @@ namespace TerminalLayout
     constexpr float QuayLength = 105000.f;
     constexpr float QuayRightX = QuayLeftX + (SiteAreaM2 / 1050.0) * 100.0;
 
+    // Full-frame reference: berth ends at Y=525; eastern service land continues to Y=645.
+    // Rear-profile stations follow the overview, not the cropped close-up edge.
     constexpr float SiteBoundaryProfile[][2] = {
-        {705.f,-525.f},{705.f,-90.f},{725.f,-90.f},{725.f,50.f},
-        {729.f,58.f},{742.f,68.f},{762.f,78.f},{789.f,90.f},
-        {816.f,102.f},{840.f,112.f},{852.f,118.f},{855.f,125.f},
-        {855.f,250.f},{860.f,265.f},{875.f,287.f},{898.f,312.f},
-        {918.f,332.f},{925.f,347.f},{925.f,525.f}
+        {705.f,-525.f},{705.f,110.f},{730.f,155.f},{785.f,220.f},
+        {840.f,265.f},{895.f,320.f},{925.f,370.f},{925.f,645.f}
     };
+    constexpr float SiteAlongshoreLengthM=1170.f;
     constexpr int SiteBoundaryPointCount = sizeof(SiteBoundaryProfile)/sizeof(SiteBoundaryProfile[0]);
     constexpr float SiteHalfLengthY = QuayLength * .5f;
 
@@ -45,13 +45,13 @@ namespace TerminalLayout
         return Area;
     }
     // The fixed -7 m quay edge contributes a strip that must not be scaled.
-    constexpr double PlanDepthScale=(SiteAreaM2+(QuayLeftX/100.0)*(QuayLength/100.0))/AuthoredInlandAreaM2();
+    constexpr double PlanDepthScale=(SiteAreaM2+(QuayLeftX/100.0)*SiteAlongshoreLengthM)/AuthoredInlandAreaM2();
     constexpr float SiteX(float Metres) { return Metres>0?Metres*PlanDepthScale:Metres; }
     constexpr float SiteCmX(float Cm) { return SiteX(Cm/100.f)*100.f; }
     constexpr double PlanDepthM=SiteBoundaryProfile[SiteBoundaryPointCount-1][0]*PlanDepthScale-QuayLeftX/100.0;
     constexpr double ConceptSiteAreaM2()
     {
-        return AuthoredInlandAreaM2()*PlanDepthScale-(QuayLeftX/100.0)*(QuayLength/100.0);
+        return AuthoredInlandAreaM2()*PlanDepthScale-(QuayLeftX/100.0)*SiteAlongshoreLengthM;
     }
     static_assert(ConceptSiteAreaM2()>SiteAreaM2-.01 && ConceptSiteAreaM2()<SiteAreaM2+.01,
         "Boundary integration must match the actual area target");
@@ -62,14 +62,20 @@ namespace TerminalLayout
     constexpr float MainInlandRoadX = 620.f;
     constexpr float WingRoadX = 520.f;
     constexpr float EastServiceY = 300.f;
-    constexpr float GateX = 600.f;
-    constexpr float GateY = 480.f;
+    constexpr float GateX = 790.f;
+    constexpr float GateY = 625.f;
+
+    // User-supplied percent anchors in the 916 x 984 sea-on-right overview.
+    // Image quay X=700; berth endpoints Y=125..975. Inland service baseline X=285.
+    // These map photo positions to authored layout; SiteX supplies the area calibration.
+    constexpr float PhotoAnchorX(float Percent) { return (700.f-916.f*Percent/100.f)*705.f/415.f; }
+    constexpr float PhotoAnchorY(float Percent) { return 525.f-(984.f*Percent/100.f-125.f)*1050.f/850.f; }
 
     // Shared block coordinates drive scenery, route planning and telemetry.
     constexpr int LeftYardCount=9, RightYardCount=14;
     constexpr int YardBlockCount=LeftYardCount+RightYardCount;
-    constexpr float CentralRoadY=-170.f;
-    constexpr float YardFirstY = -480.f;
+    constexpr float CentralRoadY=-160.f;
+    constexpr float YardFirstY = -465.f;
     constexpr float YardBlockPitch = 35.f;
     // Keep full-size RMG bogies and stopping envelopes apart after plan scaling.
     // Bay 14 used to leave only 18.3 m to the far crane's AGV handover.
@@ -84,32 +90,34 @@ namespace TerminalLayout
     constexpr float RMGRailEndX=YardBayX(28)+RMGBogieHalfLengthM;
 
 
-    constexpr float BlockY(int Index) { return YardFirstY+Index*YardBlockPitch+(Index>=LeftYardCount?25.f:0.f); }
+    constexpr float BlockY(int Index) { return YardFirstY+Index*YardBlockPitch+(Index>=LeftYardCount?15.f:0.f); }
     constexpr float ReeferZoneX = 395.f;
-    constexpr float ReeferZoneY = -82.5f;
+    constexpr float ReeferZoneY = -72.5f;
     constexpr float ReeferZoneDepth = 430.f;
-    constexpr float ReeferZoneLength = 829.f;
+    constexpr float ReeferZoneLength = 819.f;
     // Empty-container hardstand between the 23 operational yards and maintenance.
-    constexpr float EmptyZoneX = 337.5f;
-    constexpr float EmptyZoneY = 380.f;
-    constexpr float EmptyZoneDepth = 285.f;
-    constexpr float EmptyZoneLength = 60.f;
+    constexpr float EmptyZoneX = 395.f;
+    constexpr float EmptyZoneY = 420.f;
+    constexpr float EmptyZoneDepth = 430.f;
+    constexpr float EmptyZoneLength = 4.f*YardBlockPitch;
 
-    static_assert(YardBlockCount==23 && BlockY(8)+17.f<CentralRoadY-12.f &&
-        BlockY(9)-17.f>CentralRoadY+12.f,"9 left / 14 right blocks clear central road");
+    static_assert(YardBlockCount==23 && BlockY(8)+17.f<CentralRoadY-7.f &&
+        BlockY(9)-17.f>CentralRoadY+7.f,"9 left / 14 right blocks clear central road");
 
+    static_assert(EmptyZoneLength==4.f*YardBlockPitch, "Empty yard must span four yard pitches");
+    static_assert(BlockY(22)+25.f<=EmptyZoneY-EmptyZoneLength*.5f, "Yard departure must clear empty hardstand");
     // Unified AGV routes, centimetres; keep physical envelopes inside the site.
-    constexpr float AGVNorthCrossY = 34500.f;
+    constexpr float AGVNorthCrossY = 35000.f;
     constexpr float AGVSouthLoadedY = -48750.f;
     constexpr float AGVSouthReturnY = -50250.f;
     constexpr float AGVParkFirstY = -46000.f;
     constexpr float AGVParkPitch = 2300.f;
     inline bool AGVEnvelopeInside(double MinX,double MaxX,double MinY,double MaxY)
     {
-        if (MinX<SiteCmX(2000.f) || MaxX>SiteCmX(62000.f) || MinY<-51000.f || MaxY>35500.f)
+        if (MinX<SiteCmX(2000.f) || MaxX>SiteCmX(62000.f) || MinY<-51000.f || MaxY>36000.f)
             return false;
         // Only the quay/spine corridor extends beyond the operational yard.
-        return MaxX<=SiteCmX(18000.f) || (MinY>=-49700.f && MaxY<=34300.f);
+        return MaxX<=SiteCmX(18000.f) || (MinY>=-49700.f && MaxY<=34800.f);
     }
 
     constexpr float YardSlotX(int Index)

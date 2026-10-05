@@ -133,12 +133,12 @@ void AQuayCrane::BuildTerminalSite()
     BezierRoad(Roads,{595,-505},{635,-505},{635,-485},{635,-465},18,10);
     // Straight service road beneath the combined CIS/cargo block.
     RoadSegment(Roads,{635,-465},{635,480},22);
-    RoadSegment(Roads,{195,480},{1035,480},22);
-    BezierRoad(Roads,{145,430},{145,480},{170,480},{195,480},22,12);
-    RoadSegment(Roads,{550,480},{655,480},38);
-    // Continue the gate axis past the inland boundary to the external road.
-    for(int32 I=0;I<48;++I)
-        Box(White,FVector(175+I*18,480,.29),FVector(7,.15,.02));
+    RoadSegment(Roads,{195,620},{910,620},22);
+    BezierRoad(Roads,{145,550},{145,620},{170,620},{195,620},22,12);
+    // Gate approach provides the road surface here; no second overlapping strip.
+    // Internal perimeter road ends inside the site; no external road spur.
+    for(int32 I=0;I<24;++I)
+        Box(White,FVector(175+I*18,620,.29),FVector(7,.15,.02));
     // No perimeter-road spurs behind operations, CIS or cargo facility 8.
     // Positions follow the area-calibrated plan; ISO boxes and cranes retain size.
     // HISM batches avoid thousands of ticking/physics actors for the context yard.
@@ -152,8 +152,9 @@ void AQuayCrane::BuildTerminalSite()
                 Y+Rail*TerminalLayout::RMGHalfGaugeM,.30),
                 FVector(TerminalLayout::RMGRailEndX-TerminalLayout::RMGRailStartX,.25,.12),0);
         // White slot grid follows the empty-yard satellite reference.
-        for(int32 MarkBay=0;MarkBay<30;++MarkBay)
+        for(int32 MarkBay=0;MarkBay<30;MarkBay+=2)
         {
+            if (!TerminalLayout::IsOperationalYardBay(MarkBay)) continue;
             const float MX=TerminalLayout::YardBayX(MarkBay);
             for(int32 Edge=0;Edge<=7;++Edge)
                 OrientedBox(White,FVector(MX,Y-10.5f+Edge*3.f,.39),FVector(12.2f,.12f,.025f),0);
@@ -161,9 +162,9 @@ void AQuayCrane::BuildTerminalSite()
                 OrientedBox(White,FVector(MX+Side*6.1f,Y,.39),FVector(.12f,21.f,.025f),0);
         }
         for(float EndX:{172.f,600.f})
-            for(int32 Stripe=0;Stripe<7;++Stripe)
-                OrientedBox(PaintYellow,FVector(TerminalLayout::SiteX(EndX),Y-9.f+Stripe*3.f,.40),
-                    FVector(9.f,.16f,.025f),25.f);
+            for(int32 Stripe=0;Stripe<4;++Stripe)
+                OrientedBox(PaintYellow,FVector(TerminalLayout::SiteX(EndX),Y-7.5f+Stripe*5.f,.40),
+                    FVector(6.f,.16f,.025f),25.f);
         for (int32 Bay=0;Bay<30;Bay+=2)
             for (int32 Row=0;Row<7;++Row)
                 for (int32 Tier=0;Tier<2+(Bay+Row+Block)%3;++Tier)
@@ -201,18 +202,29 @@ void AQuayCrane::BuildTerminalSite()
             for (float Side:{-1.f,1.f})
                 Box(White,FVector(HX,Y+13.2f+Side*1.8f,.30),FVector(15,.12,.02));
         }
-        const TCHAR* ZoneCode=TEXT("RF");
+        const TCHAR* ZoneCode=TEXT("CY");
         Label(FString::Printf(TEXT("%s %02d"),ZoneCode,Block+1),FVector(177,Y,.4),2.5f);
     }
-    ZoneOutline(White,FVector2D(TerminalLayout::ReeferZoneX,TerminalLayout::ReeferZoneY),
-        FVector2D(TerminalLayout::ReeferZoneDepth,TerminalLayout::ReeferZoneLength));
-    ZoneOutline(White,{395,-340},{430,314});
-    ZoneOutline(White,{395,87.5f},{430,489});
-    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},32);
+    // Reefer blocks use the same slot markings; no overlapping zone rectangle.
+    ZoneOutline(White,{395,-325},{430,314});
+    ZoneOutline(White,{395,92.5f},{430,489});
+    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},16);
     for(float X=185;X<620;X+=12)
         Box(White,FVector(X,TerminalLayout::CentralRoadY,.39),FVector(5,.18,.025));
-    Label(TEXT("LEFT YARD 01-09"),FVector(610,-340,.4),3.f);
-    Label(TEXT("RIGHT YARD 10-23"),FVector(610,87.5,.4),3.f);
+    Label(TEXT("LEFT YARD 01-09"),FVector(610,-325,.4),3.f);
+    Label(TEXT("RIGHT YARD 10-23"),FVector(610,92.5,.4),3.f);
+    // Facility 7 from the marked satellite: inland ends of five central blocks.
+    // Reefer identity is shown by its label and equipment, without lines crossing slots.
+    Label(TEXT("7 REEFER CONTAINER AREA"),FVector(515,-65,22),3.5f);
+    for(int32 B=9;B<14;++B)
+    {
+        const float Y=TerminalLayout::BlockY(B)-12.f;
+        for(float X=450;X<585;X+=14)
+        {
+            OrientedBox(White,FVector(TerminalLayout::SiteX(X),Y,1.5),FVector(1.2,.65,2.6),0);
+            OrientedBox(Blue,FVector(TerminalLayout::SiteX(X),Y,2.9),FVector(1.3,.7,.2),0);
+        }
+    }
     int32 STSIndex=0;
     const TArray<float> STSPositions=bUnifiedTerminal?
         TArray<float>{TerminalLayout::STSCenterY(0),TerminalLayout::STSCenterY(1),TerminalLayout::STSCenterY(2),TerminalLayout::STSCenterY(3),TerminalLayout::STSCenterY(4),TerminalLayout::STSCenterY(5),TerminalLayout::STSCenterY(6),TerminalLayout::STSCenterY(7),TerminalLayout::STSCenterY(8)}:
@@ -262,19 +274,25 @@ void AQuayCrane::BuildTerminalSite()
     auto Building=[&](const TCHAR* Name,float X,float Y,FVector Size)
     {
         OrientedBox(Buildings,FVector(TerminalLayout::SiteX(X),Y,.2+Size.Z*.5),Size,0);
-        OrientedBox(Blue,FVector(TerminalLayout::SiteX(X),Y,.4+Size.Z),FVector(Size.X+1,Size.Y+1,.35),0);
+        auto* Roof=(FCString::Strstr(Name,TEXT("OPERATIONS")) || FCString::Strstr(Name,TEXT("CONTROL")) || FCString::Strstr(Name,TEXT("SUBSTATION")))?White:Blue;
+        OrientedBox(Roof,FVector(TerminalLayout::SiteX(X),Y,.4+Size.Z),FVector(Size.X+1,Size.Y+1,.35),0);
         Label(Name,FVector(X,Y,Size.Z+1),3.f);
     };
+    const FVector2D Operations(TerminalLayout::PhotoAnchorX(30.6f),TerminalLayout::PhotoAnchorY(40.7f));
+    const FVector2D Substation(TerminalLayout::PhotoAnchorX(34.3f),TerminalLayout::PhotoAnchorY(64.7f));
+    const FVector2D Rest(TerminalLayout::PhotoAnchorX(74.2f),TerminalLayout::PhotoAnchorY(9.8f));
+    const FVector2D Maintenance(TerminalLayout::PhotoAnchorX(58.8f),TerminalLayout::PhotoAnchorY(8.3f));
+    const FVector2D CIS(TerminalLayout::PhotoAnchorX(23.1f),TerminalLayout::PhotoAnchorY(23.2f));
+    const FVector2D RepairWash(TerminalLayout::PhotoAnchorX(37.1f),TerminalLayout::PhotoAnchorY(13.7f));
     // Footprints and open areas follow the approved top-down plan V3.
     // Published quay length and area set scale; the drawing is not a cadastral survey.
     // Shrink rear edges to X=700, inside the narrowest site boundary (X=705).
-    Box(Roads,FVector(665,-55,.22),FVector(70,100,.04));
-    // Satellite-proportioned estimates in metres, not surveyed dimensions.
-    Building(TEXT("1 OPERATIONS"),665,-55,FVector(24,36,8));
-    Building(TEXT("1 CONTROL"),672,-62,FVector(12,14,22));
-    Parking(FVector2D(665,-101),FVector2D(54,16),6);
-    Building(TEXT("6 SUBSTATION"),667.5,-240,FVector(16,64,6));
-
+    ZoneOutline(White,{Operations.X-8,Operations.Y},{38,60});
+    Building(TEXT("1 OPERATIONS"),Operations.X,Operations.Y,FVector(24,36,8));
+    Building(TEXT("1 CONTROL"),Operations.X+7,Operations.Y-7,FVector(12,14,22));
+    Parking({Operations.X,Operations.Y-35},{42,16},6);
+    Building(TEXT("6 SUBSTATION"),Substation.X,Substation.Y,FVector(18,88,6));
+    ZoneOutline(White,Substation,{44,110});
     // Replace the two rear road stretches beside the substation with parking.
     // Physical 5 m-deep bays on both sides leave a central circulation aisle.
     auto RearParking=[&](float CenterY,float Length,int32 Bays)
@@ -290,11 +308,11 @@ void AQuayCrane::BuildTerminalSite()
         RoadSegment(Roads,{635,CenterY},{675,CenterY},12);
     };
     RearParking(-404,180,42);
-    RearParking(-143,62,14);
+    RearParking(-235,62,14);
 
     // 2 is on the quay-side strip, clear of the operational AGV lanes.
-    Box(Roads,FVector(72,290,.22),FVector(72,104,.04));
-    Building(TEXT("2 WORKER REST"),72,465,FVector(14,44,5));
+    ZoneOutline(White,Rest,{40,74});
+    Building(TEXT("2 WORKER REST"),Rest.X,Rest.Y,FVector(14,44,5));
 
     // Open paved staff parking east of the rest building, below maintenance.
     // Two rows of 5 m-deep bays flank a generous central circulation apron.
@@ -309,67 +327,58 @@ void AQuayCrane::BuildTerminalSite()
     }
     Label(TEXT("STAFF PARKING"),FVector(72,391,.4),2.5f);
 
-    // 3: shorten and inset both buildings; roof overhangs stay inside the apron.
-    Box(Roads,FVector(340,442,.22),FVector(295,40,.04));
-    Building(TEXT("3 MAINTENANCE"),380,442,FVector(72,28,12));
-    Building(TEXT("3 OFFICE"),240,442,FVector(32,16,8));
-    Parking(FVector2D(292,442),FVector2D(35,26),10);
-    // Photo reference: repeated workshop doors and a two-storey office facade.
-    for(int32 I=0;I<6;++I)
-        OrientedBox(White,FVector(TerminalLayout::SiteX(350)+I*12,427.8,4.2),FVector(7,.3,8),0);
-    for(int32 Floor=0;Floor<2;++Floor)
-        for(int32 I=0;I<5;++I)
-            OrientedBox(Blue,FVector(TerminalLayout::SiteX(228)+I*6,433.8,2.5+Floor*3.5),FVector(3,.3,1.6),0);
-    // Explicit vacant reserve boundary between operations (1) and CIS (5).
-    // The inland edge follows the curved site profile with a generous setback.
-    const FVector2D OperationsCISReserve[]={
-        {685,0},{705,0},{705,45},{709,58},{728,76},{754,90},
-        {788,108},{816,125},{825,140},{825,185},{685,185}
-    };
-    constexpr int32 ReservePoints=UE_ARRAY_COUNT(OperationsCISReserve);
-    for(int32 I=0;I<ReservePoints;++I)
-        RoadSegment(White,OperationsCISReserve[I],OperationsCISReserve[(I+1)%ReservePoints],.9f);
-    Label(TEXT("PARKED SUPPORT EQUIPMENT"),FVector(735,95,.5),3);
-
+    // Three distinct blue roofs identified in close-up 2.
+    // Shared maintenance apron: retain parking markings without an oversized perimeter box.
+    Building(TEXT("3 MAINTENANCE"),Maintenance.X,Maintenance.Y,FVector(72,28,12));
+    Building(TEXT("3 QUAY SIDE"),Maintenance.X-85,Maintenance.Y+15,FVector(73.f*127.f/154.f-1.f,29.f*52.f/61.f-1.f,8));
+    Building(TEXT("3 GATE SIDE"),Maintenance.X+130,Maintenance.Y+5,FVector(18,16,7));
+    Parking({Maintenance.X-45,Maintenance.Y-30},{36,18},7);
+    for(int I=0;I<6;++I)
+        OrientedBox(White,FVector(TerminalLayout::SiteX(Maintenance.X)-30+I*12,Maintenance.Y-14.2,4.2),FVector(7,.3,8),0);
+    // Equipment parking shares the apron; no extra outline across the access road.
+    Label(TEXT("PARKED SUPPORT EQUIPMENT"),FVector(755,395,.5),3);
     // CIS and unused cargo facility 8 share one continuous rectangular block.
     // Extend the shared block to the inland edge of the 22 m service road.
     // Road width is rendered at 75%; Box scales authored X coordinates.
     constexpr float SharedApronRoadEdgeX=635.f+(22.f*.75f*.5f)/TerminalLayout::PlanDepthScale;
-    Box(Roads,FVector((SharedApronRoadEdgeX+850.f)*.5f,318,.23),
-        FVector(850.f-SharedApronRoadEdgeX,250,.04));
-    Building(TEXT("5 CIS"),750,228,FVector(24,20,7));
-    Parking(FVector2D(750,198),FVector2D(48,12),8);
+    Box(Roads,FVector((SharedApronRoadEdgeX+850.f)*.5f,435,.23),
+        FVector(850.f-SharedApronRoadEdgeX,270,.04));
+    Building(TEXT("5 CIS"),CIS.X,CIS.Y,FVector(24,25.f*110.f/62.f-1.f,7));
+    Parking({CIS.X,CIS.Y-36},{40,12},8);
 
-    // 10: expand inland only (X=490..610), leaving clearance to the road.
-    // Keep the adjoining repair/service pair and the separate wash building.
-    Box(Roads,FVector(550,404,.22),FVector(120,116,.04));
-    constexpr float ServiceBuildingX=550.f;
-    constexpr float ServiceBuildingY[]={365.f,387.f,425.f};
-    const TCHAR* ServiceBuildingNames[]={TEXT("10 REPAIR"),TEXT("10 SERVICE"),TEXT("10 WASH")};
-    for(int32 I=0;I<UE_ARRAY_COUNT(ServiceBuildingY);++I)
-    {
-        Building(ServiceBuildingNames[I],ServiceBuildingX,ServiceBuildingY[I],FVector(20,12,6));
-        // Each work pad aligns with its own building, including the close pair.
-        ZoneOutline(White,{ServiceBuildingX+20.f,ServiceBuildingY[I]},{16,14});
-    }
+    // Exactly two small blue-roof buildings. Adjacent long rectangles in the photo are cargo.
+    // Keep one work-pad outline clear of the service-road junction.
+    Building(TEXT("10 REPAIR"),RepairWash.X,RepairWash.Y-7,FVector(8,7,4));
+    Building(TEXT("10 WASH"),RepairWash.X,RepairWash.Y+7,FVector(8,7,4));
+    // Wash-pad paint is drawn below, clear of the empty-yard perimeter.
+    Label(TEXT("10 REPAIR / WASH WORK AREA"),FVector(RepairWash.X-22,RepairWash.Y+17,.50),1.6f);
     // 8 occupies the inland/eastern hardstand; the gate is below it on the
     // side boundary rather than at the rear edge.
     // The shared apron is created with CIS above, without a narrow connector.
-    Label(TEXT("8 NON-STANDARD CARGO"),FVector(777.5,373,.5),4);
-    OrientedBox(Blue,FVector(TerminalLayout::SiteX(TerminalLayout::GateX),TerminalLayout::GateY,7),FVector(18,60,.6),0);
-    for(int32 Lane=0;Lane<=8;++Lane)
+    Label(TEXT("8 NON-STANDARD CARGO"),FVector(840,500,.5),4);
+    // Overview registration: inland entrance, canopy perpendicular to the X approach.
+    OrientedBox(Blue,FVector(TerminalLayout::SiteX(TerminalLayout::GateX),TerminalLayout::GateY,7),FVector(10,20,.6),0);
+    for(int32 Lane=0;Lane<=4;++Lane)
     {
-        const float Y=TerminalLayout::GateY-28+Lane*7;
-        Box(White,FVector(TerminalLayout::GateX,Y,.3),FVector(102,.15,.04));
-        Box(Buildings,FVector(TerminalLayout::GateX,Y,3.5),FVector(.6,.6,7));
-        if(Lane<8) Box(White,FVector(TerminalLayout::GateX-13,Y+1,1.5),FVector(4,1.5,3));
+        const float Y=TerminalLayout::GateY-8+Lane*4;
+        // Gate lane paint is generated with its continuous approach markings below.
+        OrientedBox(Buildings,FVector(TerminalLayout::SiteX(TerminalLayout::GateX),Y,3.5),FVector(.6,.6,7),0);
+        if(Lane<4) OrientedBox(White,FVector(TerminalLayout::SiteX(TerminalLayout::GateX)-8,Y+2,1.2),FVector(3,1.2,2.4),0);
     }
+
+    Box(Roads,FVector(TerminalLayout::GateX,TerminalLayout::GateY,.28),FVector(48,22,.04));
+    // Quay apron and access below the worker rest building, within the existing boundary.
+    Box(Roads,FVector(8,450,.24),FVector(12,370,.06));
+    for(float Y=270;Y<630;Y+=12)
+        Box(White,FVector(8,Y,.39),FVector(.18,5,.025));
+    Box(White,FVector(-6,0,.39),FVector(.35,1050,.06));
+    RoadSegment(Roads,{20,630},{145,630},16);
     Label(TEXT("4 GATE"),FVector(TerminalLayout::GateX,TerminalLayout::GateY,11),4);
     // Asphalt is continuous; thin paint defines circulation and work areas.
     
-    ZoneOutline(White,{340,442},{295,40});
-    ZoneOutline(White,{550,404},{120,116});
-    ZoneOutline(White,{747,318},{202,250});
+
+
+    // Continuous apron: avoid a second rectangle crossing the gate approaches.
     auto PaintLine=[&](FVector2D A,FVector2D B)
     {
         A.X=TerminalLayout::SiteX(A.X); B.X=TerminalLayout::SiteX(B.X);
@@ -378,33 +387,208 @@ void AQuayCrane::BuildTerminalSite()
             FVector(D.Size(),.18,.025),FMath::RadiansToDegrees(FMath::Atan2(D.Y,D.X)));
     };
     // Facility 9 is separate from the 23 RMG yards and their cargo inventory.
-    ZoneOutline(White,{TerminalLayout::EmptyZoneX,TerminalLayout::EmptyZoneY},
-        {TerminalLayout::EmptyZoneDepth,TerminalLayout::EmptyZoneLength});
+    // The former square hardstand outline is replaced by the rounded circulation road below.
     // Open entries through both short edges lead into a 16 m handling aisle.
-    for(float X:{195.f,480.f})
-        Box(Roads,FVector(X,380,.42),FVector(.6,16,.03));
-    for(int Bay=0;Bay<19;++Bay)
-        for(float Y:{355.f,360.f,365.f,395.f,400.f,405.f})
+
+    // Facility 9 traced by region from the red-circled satellite reference:
+    // narrow yard-side strip, wider central strip, open building-side pads.
+    // Widths differ intentionally; these are not three identical storage banks.
+    for(int Strip=0;Strip<2;++Strip)
+    {
+        const float Y=Strip==0?367.f:419.f;
+        const float HalfWidth=Strip==0?8.f:14.f;
+        const float Start=TerminalLayout::SiteX(193.f);
+        const float End=TerminalLayout::SiteX(605.f);
+        for(float Side:{-1.f,1.f})
+            OrientedBox(White,FVector((Start+End)*.5f,Y+Side*HalfWidth,.48f),
+                FVector(End-Start,.12f,.025f),0);
+        for(float X=Start;X<End;X+=6.f)
         {
-            const float X=TerminalLayout::SiteX(210.f)+Bay*14.f;
-            for(float Side:{-1.f,1.f})
+            // Small breaks visible in the long central strip.
+            if(Strip==1 && X>TerminalLayout::SiteX(420.f) && X<TerminalLayout::SiteX(438.f)) continue;
+            OrientedBox(White,FVector(X,Y,.48f),FVector(.12f,HalfWidth*2,.025f),0);
+        }
+    }
+    // Long empty rectangle beside maintenance, then a separate shorter pad.
+    // Sea is at smaller X; the reference is rotated 180 degrees from plan view.
+    ZoneOutline(White,{309,471},{230,30});
+    ZoneOutline(White,{469,471},{58,30});
+    Label(TEXT("9 EMPTY CONTAINER YARD"),FVector(395,447,.45),3.f);
+    auto RoadPaint=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector2D A,FVector2D B,float Width=.18f)
+    {
+        A.X=TerminalLayout::SiteX(A.X); B.X=TerminalLayout::SiteX(B.X);
+        const FVector2D D=B-A;
+        OrientedBox(Mesh,FVector((A.X+B.X)*.5,(A.Y+B.Y)*.5,Mesh==Roads?.32f:.48f),
+            FVector(D.Size(),Width,.025),FMath::RadiansToDegrees(FMath::Atan2(D.Y,D.X)));
+    };
+    // Three-sided wash pad, with an open approach toward the two buildings.
+    // Short straight edges avoid the yard loop and the service-road junction.
+    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+8},{RepairWash.X-32,RepairWash.Y+26},.16f);
+    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+8},{RepairWash.X-12,RepairWash.Y+8},.16f);
+    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+26},{RepairWash.X-12,RepairWash.Y+26},.16f);
+    const float EmptyMinX=TerminalLayout::EmptyZoneX-TerminalLayout::EmptyZoneDepth*.5f;
+    const float EmptyMaxX=TerminalLayout::EmptyZoneX+TerminalLayout::EmptyZoneDepth*.5f;
+    const float EmptyY=TerminalLayout::EmptyZoneY;
+    // The reference has clear dark handling corridors between the marked strips.
+    // Do not add highway centre dashes or yellow hatching over this storage apron.
+    // Road geometry and paint share the same sampled curves, not separate guessed paths.
+    auto Curve=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector2D A,FVector2D B,
+        FVector2D C,FVector2D D,float Width)
+    {
+        FVector2D Last=A;
+        for(int I=1;I<=32;++I)
+        {
+            const float T=I/32.f,U=1-T;
+            const FVector2D P=U*U*U*A+3*U*U*T*B+3*U*T*T*C+T*T*T*D;
+            RoadPaint(Mesh,Last,P,Width); Last=P;
+        }
+    };
+    // Rounded perimeter of the empty-container storage banks.
+    // Paint stops at the four aisle intersections so it never seals an entrance.
+    auto EmptyLoop=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,float Offset,float Width,bool Gaps)
+    {
+        const float L=174-Offset/TerminalLayout::PlanDepthScale;
+        const float R=616+Offset/TerminalLayout::PlanDepthScale;
+        const float B=346-Offset,T=494+Offset,Radius=14+Offset;
+        RoadPaint(Mesh,{L+Radius,B},{R-Radius,B},Width);
+        RoadPaint(Mesh,{L+Radius,T},{R-Radius,T},Width);
+        for(float X:{L,R})
+        {
+            if(!Gaps) RoadPaint(Mesh,{X,B+Radius},{X,T-Radius},Width);
+            else
             {
-                OrientedBox(White,FVector(X,Y+Side*1.3f,.40),FVector(12.2,.15,.025),0);
-                OrientedBox(White,FVector(X+Side*6.1f,Y,.40),FVector(.15,2.6,.025),0);
+                RoadPaint(Mesh,{X,B+Radius},{X,386},Width);
+                RoadPaint(Mesh,{X,404},{X,436},Width);
+                RoadPaint(Mesh,{X,454},{X,T-Radius},Width);
             }
         }
-    Label(TEXT("9 EMPTY CONTAINER YARD"),FVector(337.5,380,.45),4.f);
-    for(float X=200;X<470;X+=10)
-        PaintLine({X,412},{X+5,417});
-    // Keep-clear strips alongside the yard access road and service aprons.
-    for(float Y=-480;Y<330;Y+=8)
-        PaintLine({166,Y},{173,Y+7});
-    for(float Y=350;Y<450;Y+=8)
-        PaintLine({488,Y},{496,Y+7});
-    for(float Y=-480;Y<465;Y+=12)
-        Box(White,FVector(635,Y,.39),FVector(.18,5,.025));
+        Curve(Mesh,{L+Radius,B},{L+Radius*.45f,B},{L,B+Radius*.45f},{L,B+Radius},Width);
+        Curve(Mesh,{R-Radius,B},{R-Radius*.45f,B},{R,B+Radius*.45f},{R,B+Radius},Width);
+        Curve(Mesh,{L,T-Radius},{L,T-Radius*.45f},{L+Radius*.45f,T},{L+Radius,T},Width);
+        Curve(Mesh,{R,T-Radius},{R,T-Radius*.45f},{R-Radius*.45f,T},{R-Radius,T},Width);
+    };
+    EmptyLoop(Roads,0,10,false);
+    EmptyLoop(White,5,.20f,true);
+    EmptyLoop(White,-5,.20f,true);
+    // Visible junction throats connect the perimeter to each transverse aisle.
+    for(float Y:{395.f,445.f})
+    {
+        for(float X:{174.f,616.f})
+            OrientedBox(Roads,FVector(TerminalLayout::SiteX(X),Y,.51),FVector(12,17,.02),0);
+        for(float Side:{-1.f,1.f})
+        {
+            RoadPaint(White,{145,Y+Side*9},{166,Y+Side*9});
+            RoadPaint(White,{624,Y+Side*9},{635,Y+Side*9});
+        }
+    }
+    // Red-circled reference: long inland wrap, lower reverse curve, and a
+    // separate service spine. Coordinates fit the existing terminal boundary.
+    // Lane offsets are taken from one physical centreline to avoid crossing bends.
+    TArray<FVector2D> GatePath;
+    auto AddGatePoint=[&](FVector2D P)
+    {
+        const FVector2D End(TerminalLayout::SiteX(P.X),P.Y);
+        if(GatePath.IsEmpty()) { GatePath.Add(End); return; }
+        const FVector2D Start=GatePath.Last();
+        const int Steps=FMath::Max(1,FMath::CeilToInt((End-Start).Size()/1.5f));
+        for(int I=1;I<=Steps;++I) GatePath.Add(FMath::Lerp(Start,End,float(I)/Steps));
+    };
+    auto AddGateCurve=[&](FVector2D A,FVector2D B,FVector2D C,FVector2D D)
+    {
+        for(int I=1;I<=40;++I)
+        {
+            const float T=I/40.f,U=1-T;
+            AddGatePoint(U*U*U*A+3*U*U*T*B+3*U*T*T*C+T*T*T*D);
+        }
+    };
+    AddGatePoint({635,300}); AddGatePoint({635,530});
+    AddGateCurve({635,530},{635,605},{660,625},{715,625});
+    AddGatePoint({880,625});
+    AddGateCurve({880,625},{903,625},{910,606},{910,580});
+    AddGatePoint({910,375});
+    AddGateCurve({910,375},{906,349},{852,334},{815,315});
+    AddGateCurve({815,315},{796,299},{817,294},{797,273});
+    AddGatePoint({759,245});
+    AddGateCurve({759,245},{739,230},{723,205},{705,205});
+    AddGatePoint({675,205});
+    auto GateStroke=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,float Offset,float Width,bool Dashed)
+    {
+        float Travel=0;
+        for(int I=1;I<GatePath.Num();++I)
+        {
+            FVector2D A=GatePath[I-1],B=GatePath[I];
+            const FVector2D D=(B-A).GetSafeNormal();
+            const FVector2D TA=(GatePath[I]-GatePath[FMath::Max(0,I-2)]).GetSafeNormal();
+            const FVector2D TB=(GatePath[FMath::Min(GatePath.Num()-1,I+1)]-GatePath[I-1]).GetSafeNormal();
+            const FVector2D NA(-TA.Y,TA.X),NB(-TB.Y,TB.X);
+            const float Length=(B-A).Size();
+            for(float Along=0;Along<Length;)
+            {
+                const float Phase=FMath::Fmod(Travel+Along,10.f);
+                const float Step=FMath::Min(Length-Along,Dashed?(Phase<4?4-Phase:10-Phase):Length);
+                const float MidY=(A+D*(Along+Step*.5f)).Y;
+                const float Spread=(2.f/3.f)+(1.f/3.f)*FMath::Clamp((MidY-500.f)/55.f,0.f,1.f);
+                const bool MergedLane=Dashed && FMath::Fmod(FMath::Abs(Offset),14.f)>6.f && Spread<.99f;
+                if((!Dashed || Phase<4) && !MergedLane)
+                {
+                    const float T0=Along/Length,T1=(Along+Step)/Length;
+                    const FVector2D P0=A+D*Along;
+                    const FVector2D P1=A+D*(Along+Step);
+                    const float S0=(2.f/3.f)+(1.f/3.f)*FMath::Clamp((P0.Y-500.f)/55.f,0.f,1.f);
+                    const float S1=(2.f/3.f)+(1.f/3.f)*FMath::Clamp((P1.Y-500.f)/55.f,0.f,1.f);
+                    const FVector2D Q0=P0+FMath::Lerp(NA,NB,T0).GetSafeNormal()*(Offset*S0);
+                    const FVector2D Q1=P1+FMath::Lerp(NA,NB,T1).GetSafeNormal()*(Offset*S1);
+                    const FVector2D Mid=(Q0+Q1)*.5f,Stroke=Q1-Q0;
+                    OrientedBox(Mesh,FVector(Mid.X,Mid.Y,Mesh==Roads?.32f:.48f),
+                        FVector(Stroke.Size()+.015f,Mesh==Roads?Width*Spread:Width,.025f),FMath::RadiansToDegrees(FMath::Atan2(Stroke.Y,Stroke.X)));
+                }
+                Along+=FMath::Max(Step,.001f);
+            }
+            Travel+=Length;
+        }
+    };
+    GateStroke(Roads,0,18,false);
+    GateStroke(White,-9,.18f,false); GateStroke(White,9,.18f,false);
+    for(int Lane=1;Lane<4;++Lane)
+        GateStroke(Lane==2?PaintYellow:White,-8+Lane*4,.16f,Lane!=2);
+    const float GX=TerminalLayout::GateX,GY=TerminalLayout::GateY;
+    for(int Lane=0;Lane<4;++Lane)
+    {
+        const float Offset=-8+Lane*4;
+        const float StopX=GX+(Lane<2?-12.f:12.f)/TerminalLayout::PlanDepthScale;
+        RoadPaint(White,{StopX,GY+Offset+.4f},{StopX,GY+Offset+3.6f},.45f);
+    }
+    // Open junction mouths on the service spine, with rounded corner returns.
+    for(float Y:{395.f,445.f,513.f})
+    {
+        OrientedBox(Roads,FVector(TerminalLayout::SiteX(635),Y,.54f),FVector(66,22,.025f),0);
+        RoadPaint(Roads,{605,Y},{635,Y},20);
+        // Leave the junction mouth open; no extra arcs through the work pad.
+    }
+    // Lower curved entrance connects to the operations-side approach.
+    // The entrance pavement and markings now share GatePath through the final connection.
+
+    // Two-way external access between operations and CIS, branching at the bend.
+    // The spur is an access road outside the terminal parcel, not extra yard area.
+    RoadPaint(Roads,{797,273},{940,273},14.f);
+    OrientedBox(Roads,FVector(TerminalLayout::SiteX(802),273,.55f),FVector(23,15,.025f),0);
+    for(float Side:{-1.f,1.f})
+        RoadPaint(White,{819,273+Side*6.8f},{940,273+Side*6.8f},.18f);
+    RoadPaint(PaintYellow,{819,273},{940,273},.18f);
+    // Main service-road edges are interrupted at the gate and empty-yard junctions.
+    for(float Y=-465;Y<300;Y+=8)
+    {
+        if(FMath::Abs(Y-(EmptyY-25))<14 || FMath::Abs(Y-(EmptyY+25))<14 || FMath::Abs(Y-(TerminalLayout::GateY-100))<16) continue;
+        for(float X:{627.f,643.f}) RoadPaint(White,{X,Y},{X,Y+8});
+    }
+    // One hatch group per yard end; no overlapping continuous diagonal strip.
+    for(float Y=-480;Y<300;Y+=12)
+    {
+        if(FMath::Abs(Y-(EmptyY-25))<14 || FMath::Abs(Y-(EmptyY+25))<14 || FMath::Abs(Y-(TerminalLayout::GateY-100))<16) continue;
+        RoadPaint(White,{635,Y},{635,Y+5});
+    }
     for(float X=195;X<600;X+=12)
-        Box(White,FVector(X,-505,.39),FVector(5,.18,.025));
+        RoadPaint(White,{X,-505},{X+5,-505});
     Label(TEXT("DGT | BUSAN NEW PORT 7 | 1,050 m"),FVector(72,-200,.4),5.f);
     SiteLogistics->Initialize(WorkingCranes,MoveTemp(YardSlots),{Blue,Yellow,Red,Green},bUnifiedTerminal?0:24,FixedYard);
     SiteLogistics->RegisterBerthVehicles(AGVActors);

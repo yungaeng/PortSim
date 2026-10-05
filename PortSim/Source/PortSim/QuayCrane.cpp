@@ -257,7 +257,7 @@ void AQuayCrane::BeginPlay()
     if(FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
     {
         bFreeCamera=false; bFollowAGV=false;
-        CameraArm->SetRelativeLocation(FVector((TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[TerminalLayout::SiteBoundaryPointCount-1][0])*100.f+TerminalLayout::QuayLeftX)*.5f,0,0));
+        CameraArm->SetRelativeLocation(FVector((TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[TerminalLayout::SiteBoundaryPointCount-1][0])*100.f+TerminalLayout::QuayLeftX)*.5f,6000,0));
         CameraArm->SetRelativeRotation(FRotator(-90,0,0));
         CameraArm->TargetArmLength=150000;
         Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);

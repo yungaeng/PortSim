@@ -1,4 +1,4 @@
-﻿#include "TerminalLayout.h"
+#include "TerminalLayout.h"
 #include "QuayCrane.h"
 #include "PortSupportVehicle.h"
 #include "PortSiteLogistics.h"
@@ -12,7 +12,7 @@ void AQuayCrane::BuildSupportFleet()
     Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
     auto Spawn=[&](EPortSupportType Type,int32 Number,FVector Metres)
     {
-        Metres.X=TerminalLayout::SiteX(Metres.X);
+        Metres.X=TerminalLayout::SiteX(Metres.X); Metres.Y+=300.f;
         auto* Vehicle=GetWorld()->SpawnActor<APortSupportVehicle>(Metres*100,FRotator::ZeroRotator,Params);
         Vehicle->Configure(Type,Number); SupportFleet.Add(Vehicle);
     };

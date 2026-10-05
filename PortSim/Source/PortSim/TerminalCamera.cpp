@@ -74,7 +74,7 @@ void AQuayCrane::TestEquipmentAndCamera()
             ++Counts[static_cast<int32>(Vehicle->EquipmentType)];
             const FVector P=Vehicle->GetActorLocation()/100.f;
             Pass &= P.X>=TerminalLayout::SiteX(685) && P.X<=TerminalLayout::SiteX(825)
-                && P.Y>=0 && P.Y<=185;
+                && P.Y>=300 && P.Y<=485;
         }
     Pass &= Counts[0]==4 && Counts[1]==18 && Counts[2]==2 && Counts[3]==7 && Counts[4]==74;
     int32 CC=0,TC=0;
