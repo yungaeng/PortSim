@@ -161,10 +161,6 @@ void AQuayCrane::BuildTerminalSite()
             for(float Side:{-1.f,1.f})
                 OrientedBox(White,FVector(MX+Side*6.1f,Y,.39),FVector(.12f,21.f,.025f),0);
         }
-        for(float EndX:{172.f,600.f})
-            for(int32 Stripe=0;Stripe<4;++Stripe)
-                OrientedBox(PaintYellow,FVector(TerminalLayout::SiteX(EndX),Y-7.5f+Stripe*5.f,.40),
-                    FVector(6.f,.16f,.025f),25.f);
         for (int32 Bay=0;Bay<30;Bay+=2)
             for (int32 Row=0;Row<7;++Row)
                 for (int32 Tier=0;Tier<2+(Bay+Row+Block)%3;++Tier)
@@ -332,7 +328,7 @@ void AQuayCrane::BuildTerminalSite()
     Building(TEXT("3 MAINTENANCE"),Maintenance.X,Maintenance.Y,FVector(72,28,12));
     Building(TEXT("3 QUAY SIDE"),Maintenance.X-85,Maintenance.Y+15,FVector(73.f*127.f/154.f-1.f,29.f*52.f/61.f-1.f,8));
     Building(TEXT("3 GATE SIDE"),Maintenance.X+130,Maintenance.Y+5,FVector(18,16,7));
-    Parking({Maintenance.X-45,Maintenance.Y-30},{36,18},7);
+    // Maintenance apron intentionally has no internal pavement markings.
     for(int I=0;I<6;++I)
         OrientedBox(White,FVector(TerminalLayout::SiteX(Maintenance.X)-30+I*12,Maintenance.Y-14.2,4.2),FVector(7,.3,8),0);
     // Equipment parking shares the apron; no extra outline across the access road.
@@ -421,11 +417,6 @@ void AQuayCrane::BuildTerminalSite()
         OrientedBox(Mesh,FVector((A.X+B.X)*.5,(A.Y+B.Y)*.5,Mesh==Roads?.32f:.48f),
             FVector(D.Size(),Width,.025),FMath::RadiansToDegrees(FMath::Atan2(D.Y,D.X)));
     };
-    // Three-sided wash pad, with an open approach toward the two buildings.
-    // Short straight edges avoid the yard loop and the service-road junction.
-    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+8},{RepairWash.X-32,RepairWash.Y+26},.16f);
-    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+8},{RepairWash.X-12,RepairWash.Y+8},.16f);
-    RoadPaint(White,{RepairWash.X-32,RepairWash.Y+26},{RepairWash.X-12,RepairWash.Y+26},.16f);
     const float EmptyMinX=TerminalLayout::EmptyZoneX-TerminalLayout::EmptyZoneDepth*.5f;
     const float EmptyMaxX=TerminalLayout::EmptyZoneX+TerminalLayout::EmptyZoneDepth*.5f;
     const float EmptyY=TerminalLayout::EmptyZoneY;
@@ -509,8 +500,8 @@ void AQuayCrane::BuildTerminalSite()
     AddGateCurve({910,375},{906,349},{852,334},{815,315});
     AddGateCurve({815,315},{796,299},{817,294},{797,273});
     AddGatePoint({759,245});
-    AddGateCurve({759,245},{739,230},{723,205},{705,205});
-    AddGatePoint({675,205});
+    AddGateCurve({759,245},{740,235},{725,225},{705,225});
+    AddGatePoint({635,225});
     auto GateStroke=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,float Offset,float Width,bool Dashed)
     {
         float Travel=0;
@@ -575,9 +566,12 @@ void AQuayCrane::BuildTerminalSite()
     for(float Side:{-1.f,1.f})
         RoadPaint(White,{819,273+Side*6.8f},{940,273+Side*6.8f},.18f);
     RoadPaint(PaintYellow,{819,273},{940,273},.18f);
+    // Open the operations approach onto the inland service road.
+    OrientedBox(Roads,FVector(TerminalLayout::SiteX(635),225,.55f),FVector(20,16,.025f),0);
     // Main service-road edges are interrupted at the gate and empty-yard junctions.
     for(float Y=-465;Y<300;Y+=8)
     {
+        if(Y<235 && Y+8>215) continue;
         if(FMath::Abs(Y-(EmptyY-25))<14 || FMath::Abs(Y-(EmptyY+25))<14 || FMath::Abs(Y-(TerminalLayout::GateY-100))<16) continue;
         for(float X:{627.f,643.f}) RoadPaint(White,{X,Y},{X,Y+8});
     }

@@ -1,4 +1,4 @@
-﻿#include "PortSiteLogistics.h"
+#include "PortSiteLogistics.h"
 #include "TerminalLayout.h"
 #include "YardReservation.h"
 #include "PortWorkingCrane.h"
@@ -206,7 +206,7 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
     if (FromQueue) { NextVehicles[STS]=INDEX_NONE; ++QueuedHandoffs; }
     Job.Route.Reset();
     const FVector Position=Vehicles[Vehicle]->GetActorLocation();
-    const float ApproachX=TerminalLayout::SiteCmX(6500);
+    const float ApproachX=TerminalLayout::SiteCmX(7200);
     if (Vehicle>=30)
     {
         // Inland parking row exits through the shared northbound aisle, never
@@ -219,6 +219,12 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
         Job.Route.Add(FVector(ApproachX,TerminalLayout::AGVNorthCrossY,0));
     }
     else Job.Route.Add(FVector(ApproachX,Position.Y,0));
+    // Reserve the approach in short sections, not all the way to a distant
+    // berth crossing: that crossing can be occupied by the northbound queue.
+    const float ApproachStartY=Job.Route.Last().Y;
+    const float Direction=Quay.Y>=ApproachStartY?1.f:-1.f;
+    for(float Y=ApproachStartY+Direction*3000;Direction*(Quay.Y-Y)>1600;Y+=Direction*3000)
+        Job.Route.Add(FVector(ApproachX,Y,0));
     Job.Route.Add(FVector(ApproachX,Quay.Y,0));
     Job.Route.Add(Quay);
 }
@@ -291,7 +297,7 @@ void APortSiteLogistics::Dispatch(int32 Lane)
     PreparedCargo[STS]=INDEX_NONE; PreparedStarted[STS]=false; STSOwners[STS]=Lane;
     const FVector Quay=CargoQuay(Job.Cargo);
     if (LaneCount==9 && !Vehicles[Lane]->GetActorLocation().Equals(Quay,1.f))
-        Job.Route={FVector(TerminalLayout::SiteCmX(6500),Vehicles[Lane]->GetActorLocation().Y,0),FVector(TerminalLayout::SiteCmX(6500),Quay.Y,0),Quay};
+        Job.Route={FVector(TerminalLayout::SiteCmX(7200),Vehicles[Lane]->GetActorLocation().Y,0),FVector(TerminalLayout::SiteCmX(7200),Quay.Y,0),Quay};
     else Job.Route={Quay};
 }
 
