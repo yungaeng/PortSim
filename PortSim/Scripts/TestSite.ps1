@@ -61,7 +61,7 @@ foreach ($case in $cases) {
                     [double]$row.FinalPlacementAtSeconds -lt [double]$row.STSHandoverAtSeconds -or
                     [double]$row.STSSeconds -gt [double]$row.ShipmentSeconds -or
                     [double]$row.GrossKg -ne ([double]$row.TareKg+[double]$row.CargoKg) -or
-                    [int]$row.LengthFt -notin @(20,40,45) -or [int]$row.PlannedYardBlock -lt 1 -or [int]$row.PlannedYardBlock -gt 18) {
+                    [int]$row.LengthFt -notin @(20,40,45) -or [int]$row.PlannedYardBlock -lt 1 -or [int]$row.PlannedYardBlock -gt 23) {
                     throw "Site timing/mass mismatch: $($row.ContainerID)"
                 }
             }

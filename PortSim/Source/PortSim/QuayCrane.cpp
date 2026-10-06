@@ -1,4 +1,5 @@
-#include "QuayCrane.h"
+﻿#include "QuayCrane.h"
+#include "TerminalLayout.h"
 #include "PortSiteLogistics.h"
 #include "PortSimTimeStep.h"
 #include "Misc/FileHelper.h"
@@ -168,7 +169,7 @@ void AQuayCrane::ApplyAppearance()
     };
     UMaterialInterface* Yellow = Material(TEXT("CraneYellow"));
     UMaterialInterface* Steel = Material(TEXT("Steel"));
-    UMaterialInterface* QuayMaterial = Material(bTerminalMode ? TEXT("SiteAsphalt") : TEXT("Quay"));
+    UMaterialInterface* QuayMaterial = Material(bTerminalMode ? TEXT("SiteRoad") : TEXT("Quay"));
     UMaterialInterface* PickupMaterial = Material(TEXT("Pickup"));
     UMaterialInterface* TargetMaterial = Material(TEXT("Target"));
     TArray<UStaticMeshComponent*> Meshes;
@@ -251,6 +252,34 @@ void AQuayCrane::BeginPlay()
         UE_LOG(LogPortSimCrane,Display,TEXT("PORTSIM_ACTORS_%s: %s"),Pass?TEXT("PASS"):TEXT("FAIL"),
             Pass?TEXT("Terminal actor ownership, vessel inventory, equipment counts and reset verified"):*Error);
         FPlatformMisc::RequestExitWithStatus(false,Pass?0:1);
+    }
+    // Orthographic review view matches the approved plan: inland up, gate right.
+    if(FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")))
+    {
+        bFreeCamera=false; bFollowAGV=false;
+        CameraArm->SetRelativeLocation(FVector((TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[TerminalLayout::SiteBoundaryPointCount-1][0])*100.f+TerminalLayout::QuayLeftX)*.5f,6000,0));
+        CameraArm->SetRelativeRotation(FRotator(-90,0,0));
+        CameraArm->TargetArmLength=150000;
+        Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+                Camera->SetOrthoWidth(130000);
+        Camera->SetAutoCalculateOrthoPlanes(false);
+        Camera->SetUpdateOrthoPlanes(false);
+        Camera->SetOrthoNearClipPlane(1);
+        Camera->SetOrthoFarClipPlane(300000);
+    }
+    if(FParse::Param(FCommandLine::Get(),TEXT("PortSimAerialView")))
+    {
+        bFreeCamera=false; bFollowAGV=false;
+        CameraArm->SetRelativeLocation(FVector(23000,0,0));
+        CameraArm->SetRelativeRotation(FRotator(-52,-18,0));
+        CameraArm->TargetArmLength=150000;
+        Camera->SetProjectionMode(ECameraProjectionMode::Orthographic);
+        Camera->SetOrthoWidth(78000);
+        Camera->PostProcessSettings.AutoExposureBias=0.5f;
+        Camera->SetAutoCalculateOrthoPlanes(false);
+        Camera->SetUpdateOrthoPlanes(false);
+        Camera->SetOrthoNearClipPlane(1);
+        Camera->SetOrthoFarClipPlane(300000);
     }
     int32 FocusIndex=-1;
     if (bTerminalMode && FParse::Value(FCommandLine::Get(),TEXT("PortSimSiteFocus="),FocusIndex) && FocusIndex>=0 && FocusIndex<WorkingCranes.Num())
@@ -424,7 +453,7 @@ void AQuayCrane::Tick(float DeltaSeconds)
         CaptureElapsed += WallDt;
         if (!bCaptureRequested && CaptureElapsed > 8.f)
         {
-            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / (bHUDVisible?TEXT("Screenshots/CraneLab.png"):TEXT("Screenshots/CraneLab_HUDHidden.png")), true, false);
+            FScreenshotRequest::RequestScreenshot(FPaths::ProjectSavedDir() / (FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView"))?TEXT("Screenshots/TerminalPlanV3.png"):(bHUDVisible?TEXT("Screenshots/CraneLab.png"):TEXT("Screenshots/CraneLab_HUDHidden.png"))), true, false);
             bCaptureRequested = true;
         }
         if (CaptureElapsed > 12.f) FPlatformMisc::RequestExit(false);
@@ -483,7 +512,7 @@ void AQuayCrane::Tick(float DeltaSeconds)
         { bFollowAGV=false; bFreeCamera=false; CameraArm->SetRelativeLocation(FVector(12000,0,500)); CameraArm->TargetArmLength=bUnifiedTerminal?65000.f:22000.f; }
         if (bTerminalMode && PC->WasInputKeyJustPressed(EKeys::Tab)) FocusNextSiteCrane();
         TickFreeCamera(WallDt);
-        if (!bFreeCamera)
+        if (!bFreeCamera && !FParse::Param(FCommandLine::Get(),TEXT("PortSimPlanView")) && !FParse::Param(FCommandLine::Get(),TEXT("PortSimAerialView")))
         {
         const float Orbit = Axis(EKeys::Right, EKeys::Left);
         const float Pitch = Axis(EKeys::Up, EKeys::Down);
@@ -727,6 +756,7 @@ void APortSimHUD::DrawHUD()
     Super::DrawHUD();
     auto* CranePawn = GetOwningPlayerController() ? Cast<AQuayCrane>(GetOwningPlayerController()->GetPawn()) : nullptr;
     if (!Canvas || !CranePawn) return;
+    if (!CranePawn->bHUDVisible && FParse::Param(FCommandLine::Get(),TEXT("PortSimCapture"))) return;
     const float Scale = FMath::Clamp(Canvas->SizeX / 1440.f, 0.65f, 1.4f);
     const FVector2D TogglePosition(Canvas->SizeX-154.f*Scale,16.f);
     const FVector2D ToggleSize(138.f*Scale,30.f*Scale);

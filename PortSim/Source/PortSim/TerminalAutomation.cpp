@@ -1,12 +1,14 @@
-#include "QuayCrane.h"
+﻿#include "QuayCrane.h"
 #include "PortWorkingCrane.h"
 #include "PortSiteLogistics.h"
 #include "Components/StaticMeshComponent.h"
+#include "ProceduralMeshComponent.h"
 #include "TerminalLayout.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "GameFramework/SpringArmComponent.h"
+#include "Materials/MaterialInterface.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -59,8 +61,45 @@ void AQuayCrane::BuildTerminal()
         Mesh->RegisterComponent();
         return Mesh;
     };
-    Box(TEXT("Quay"), FVector((TerminalLayout::QuayLeftX+TerminalLayout::QuayRightX)*0.5f,0.f,-30.f),
-        FVector(TerminalLayout::QuayRightX-TerminalLayout::QuayLeftX,TerminalLayout::QuayLength,100.f));
+    if (bUnifiedTerminal)
+    {
+        // Approved curved/polygonal plan outline, with 1050 m frontage.
+        // Integrate the retained boundary profile to match the target area; quay length stays fixed.
+        auto* SiteMesh=NewObject<UProceduralMeshComponent>(this,TEXT("DGT_SitePolygon"));
+        AddInstanceComponent(SiteMesh);
+        SiteMesh->SetupAttachment(RootComponent);
+        TArray<FVector> Vertices;
+        TArray<int32> Triangles;
+        TArray<FVector> Normals;
+        TArray<FVector2D> UVs;
+        TArray<FProcMeshTangent> Tangents;
+        TArray<FLinearColor> Colors;
+        for (int32 I=0;I<TerminalLayout::SiteBoundaryPointCount;++I)
+        {
+            const float BackX=TerminalLayout::SiteX(TerminalLayout::SiteBoundaryProfile[I][0])*100.f;
+            const float Y=TerminalLayout::SiteBoundaryProfile[I][1]*100.f;
+            // Match the +20 cm top surface of the former 1 m-thick quay cube.
+            Vertices.Add(FVector(TerminalLayout::QuayLeftX,Y,20.f));
+            Vertices.Add(FVector(BackX,Y,20.f));
+            Normals.Add(FVector::UpVector); Normals.Add(FVector::UpVector);
+            UVs.Add(FVector2D(0.f,I)); UVs.Add(FVector2D(1.f,I));
+            Tangents.Add(FProcMeshTangent(0,1,0)); Tangents.Add(FProcMeshTangent(0,1,0));
+            Colors.Add(FLinearColor::White); Colors.Add(FLinearColor::White);
+            if (I==0) continue;
+            const int32 A=(I-1)*2, B=A+1, C=I*2, D=C+1;
+            Triangles.Append({A,C,B,B,C,D});
+        }
+        SiteMesh->CreateMeshSection_LinearColor(0,Vertices,Triangles,Normals,UVs,Colors,Tangents,true);
+        SiteMesh->SetCollisionProfileName(TEXT("BlockAll"));
+        if (auto* QuayMaterial=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_SiteRoad.M_SiteRoad")))
+            SiteMesh->SetMaterial(0,QuayMaterial);
+        SiteMesh->RegisterComponent();
+    }
+    else
+    {
+        Box(TEXT("Quay"), FVector((TerminalLayout::QuayLeftX+TerminalLayout::QuayRightX)*0.5f,0.f,-30.f),
+            FVector(TerminalLayout::QuayRightX-TerminalLayout::QuayLeftX,TerminalLayout::QuayLength,100.f));
+    }
     const float SeaRail=STSProfile.bReady?STSProfile.WatersideRailX:-850.f;
     const float LandRail=STSProfile.bReady?SeaRail+STSProfile.RailGauge:850.f;
     if(!bUnifiedTerminal) Box(TEXT("RailPier"), FVector(SeaRail,0.f,-30.f), FVector(190.f,10000.f,100.f));
@@ -69,8 +108,8 @@ void AQuayCrane::BuildTerminal()
     if (bUnifiedTerminal)
     {
         BuildTerminalSite();
-        CameraArm->TargetArmLength=185000.f;
-        CameraArm->SetRelativeLocation(FVector(35000,0,0));
+        CameraArm->TargetArmLength=205000.f;
+        CameraArm->SetRelativeLocation(FVector(43000,0,0));
         CameraArm->SetRelativeRotation(FRotator(-52,38,0));
         return;
     }

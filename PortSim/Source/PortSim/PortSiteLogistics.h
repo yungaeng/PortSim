@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "STSOperatingProfile.h"
@@ -123,7 +123,7 @@ private:
     int32 LastProgressDelivered=0;
     TSet<int32> FinishedRoadSegments;
     TArray<bool> SlotAssigned;
-    int32 CentralCount=0, Dispatched=0, LaneCount=8, YardCraneCount=36;
+    int32 CentralCount=0, Dispatched=0, LaneCount=8, YardCraneCount=46;
     bool bReady=false, bWasPaused=false;
     bool bCargoAlignedHandover=true;
     void Dispatch(int32 Lane);

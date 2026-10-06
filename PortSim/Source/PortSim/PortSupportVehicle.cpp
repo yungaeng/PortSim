@@ -11,8 +11,10 @@ void APortSupportVehicle::Configure(EPortSupportType Type,int32 Number)
     const FString Code=Codes[static_cast<int32>(Type)];
     const bool Chassis=Type==EPortSupportType::YardChassis;
     const bool Small=Type==EPortSupportType::Forklift;
-    const float Length=Chassis?1250.f:Small?340.f:Type==EPortSupportType::YardTractor?550.f:900.f;
-    const float Width=Small?190.f:Chassis?250.f:320.f;
+    const float Length=Chassis?1250.f:Small?340.f:Type==EPortSupportType::YardTractor?550.f:
+        Type==EPortSupportType::EmptyHandler?700.f:900.f;
+    const float Width=Small?190.f:Chassis?250.f:Type==EPortSupportType::YardTractor?250.f:
+        Type==EPortSupportType::EmptyHandler?350.f:320.f;
     auto* Paint=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_SiteOrange.M_SiteOrange"));
     auto* Steel=LoadObject<UMaterialInterface>(nullptr,TEXT("/Game/PortSim/Assets/Materials/M_Steel.M_Steel"));
     auto Part=[&](const TCHAR* Name,FVector P,FVector S,bool Dark=false)
