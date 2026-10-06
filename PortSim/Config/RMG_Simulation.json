@@ -524,6 +524,24 @@
       ]
     },
     {
+      "key": "telescope_encoder",
+      "name": "스프레더 신축 위치 엔코더",
+      "frame": "spreader",
+      "position_m": [0, 0, 0],
+      "rotation_deg": [0, 0, 0],
+      "unit": "m",
+      "minimum": 6,
+      "maximum": 13.8,
+      "fov_deg": 0,
+      "scan": false,
+      "installation_status": "ASSUMED",
+      "specification_status": "VERIFIED_FUNCTION_ASSUMED_INSTALLATION",
+      "source_notes": "Bromma YSX45E/YTR45 public specification: 20-45 ft telescopic motion approximately 30 s; exact DGT RMG model and encoder installation are unverified",
+      "model": "Synthetic absolute telescope encoder",
+      "provenance": "public_function_unvalidated_rmg_installation",
+      "controller_decisions": ["20/40/45 ft target reached before seating and twistlock command"]
+    },
+    {
       "key": "crane_collision_rear",
       "name": "후방 크레인 충돌 레이저",
       "frame": "gantry",

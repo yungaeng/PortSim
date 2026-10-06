@@ -111,7 +111,8 @@ void FSTSPickupController::Update(const FSTSPickupConfig& C,const FSTSObservatio
     if(EstimatedMass>0&&FMath::Abs(Mass-EstimatedMass)>C.MassStability*EstimatedMass)StableTime=0;
     EstimatedMass=Mass;
     EstimatedCoG=FVector::ZeroVector;
-    for(int32 I=0;I<4;++I)EstimatedCoG+=FVector((I&1)?100:-100,(I&2)?520:-520,0)*(O.CornerLoadsN[I]/Sum);
+    for(int32 I=0;I<4;++I)EstimatedCoG+=FVector((I&1)?O.CornerHalfWidthCm:-O.CornerHalfWidthCm,
+        (I&2)?O.CornerHalfLengthCm:-O.CornerHalfLengthCm,0)*(O.CornerLoadsN[I]/Sum);
     StableTime+=SampleDt;
     if(StableTime>=C.TrialHold){EstimateValid=true;Enter(ESTSPickupPhase::Complete,TEXT("Trial load verified; full hoist permitted"));}
 }

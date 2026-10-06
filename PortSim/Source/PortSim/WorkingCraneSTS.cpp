@@ -4,6 +4,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
+#include "SpreaderTelescope.h"
 
 // Site STS suspension integrates sway/yaw; sensor observations remain synthetic.
 void APortWorkingCrane::SetHandoverVehicle(APortAGVActor* Vehicle)
@@ -39,6 +40,75 @@ void APortWorkingCrane::ClearSTSState()
     for(bool& Locked:CornerLocked) Locked=false;
 }
 
+bool APortWorkingCrane::TelescopeReady() const
+{
+    return PortSpreaderTelescope::IsReady(TelescopeLengthCm,TelescopeTargetLengthCm);
+}
+
+void APortWorkingCrane::AdvanceTelescope(float Dt)
+{
+    // Retarget only with an empty spreader and finish before seating. This lets
+    // the crane telescope during its high-level approach without moving the
+    // end beams while locks or a payload are engaged.
+    if(bCarrying || Stage>2 || Dt<=0) return;
+    const float Next=PortSpreaderTelescope::Advance(TelescopeLengthCm,TelescopeTargetLengthCm,Dt);
+    if(FMath::IsNearlyEqual(Next,TelescopeLengthCm)) return;
+    TelescopeLengthCm=Next;
+    if(TelescopeReady()) TelescopeLengthCm=TelescopeTargetLengthCm;
+    UpdateSpreaderGeometry();
+}
+
+FVector APortWorkingCrane::DynamicSpreaderMount(const FSTSSensorMount& Mount,FVector ConfiguredPosition) const
+{
+    if(Mount.Frame!=TEXT("spreader")) return ConfiguredPosition;
+    const float HalfLengthM=PortSpreaderTelescope::TwistlockHalfLengthCm(TelescopeLengthCm)*.01f;
+    const float HalfWidthM=PortSpreaderTelescope::TwistlockHalfWidthCm()*.01f;
+    if(Mount.Key==TEXT("twistlock_load") || Mount.Key==TEXT("twistlock_state") || Mount.Key==TEXT("landed"))
+    {
+        ConfiguredPosition.X=FMath::Sign(ConfiguredPosition.X)*HalfWidthM;
+        ConfiguredPosition.Y=FMath::Sign(ConfiguredPosition.Y)*HalfLengthM;
+    }
+    else
+    {
+        // Corner/side cameras follow the end beams. Centre-mounted devices
+        // such as TTDS and the telescope encoder stay at zero.
+        if(FMath::Abs(ConfiguredPosition.X)>.1f) ConfiguredPosition.X*=HalfWidthM;
+        if(FMath::Abs(ConfiguredPosition.Y)>.1f) ConfiguredPosition.Y*=HalfLengthM/5.2f;
+    }
+    return ConfiguredPosition;
+}
+
+void APortWorkingCrane::UpdateSpreaderSensors()
+{
+    for(int32 I=0;I<SpreaderSensorInstances.Num();++I)
+    {
+        if(!SpreaderSensorInstances[I] || !STSProfile.Dynamics.Mounts.IsValidIndex(SpreaderSensorMountIndices[I])) continue;
+        const auto& Mount=STSProfile.Dynamics.Mounts[SpreaderSensorMountIndices[I]];
+        SpreaderSensorInstances[I]->SetRelativeLocation(DynamicSpreaderMount(Mount,SpreaderSensorConfiguredPositions[I])*100.f);
+    }
+}
+
+void APortWorkingCrane::UpdateSpreaderGeometry()
+{
+    if(!SpreaderCenter) return;
+    const float EndY=PortSpreaderTelescope::TwistlockHalfLengthCm(TelescopeLengthCm);
+    const float HalfWidth=PortSpreaderTelescope::TwistlockHalfWidthCm();
+    constexpr float CentreHalfLength=250.f;
+    const float ArmLength=FMath::Max(40.f,EndY-CentreHalfLength);
+    SpreaderCenter->SetRelativeLocation(FVector::ZeroVector);
+    SpreaderCenter->SetRelativeScale3D(FVector(243.8f,500.f,50.f)/100.f);
+    for(int32 End=0;End<2;++End)
+    {
+        const float Sign=End?1.f:-1.f;
+        TelescopeArms[End]->SetRelativeLocation(FVector(0,Sign*(CentreHalfLength+ArmLength*.5f),0));
+        TelescopeArms[End]->SetRelativeScale3D(FVector(125.f,ArmLength,34.f)/100.f);
+        SpreaderEndBeams[End]->SetRelativeLocation(FVector(0,Sign*EndY,0));
+    }
+    for(int32 Corner=0;Corner<4;++Corner)
+        TwistLocks[Corner]->SetRelativeLocation(FVector((Corner&1)?HalfWidth:-HalfWidth,(Corner&2)?EndY:-EndY,-35.f));
+    UpdateSpreaderSensors();
+}
+
 bool APortWorkingCrane::AGVAligned() const
 {
     if(!bExternalJobs) return true;
@@ -55,9 +125,11 @@ bool APortWorkingCrane::CargoSupported() const
     // RMG's fixed reservation pads are support surfaces owned by this actor.
     if(bSTS)Query.AddIgnoredActor(this);
     Query.AddIgnoredActor(CargoActor);
+    const float HalfLength=CargoActor->SensorHalfLengthCm();
+    const float HalfWidth=CargoActor->SensorHalfWidthCm();
     for(int32 I=0;I<4;++I)
     {
-        const FVector P=CargoActor->GetActorLocation()+Orientation.RotateVector(FVector((I&1)?100:-100,(I&2)?520:-520,0));
+        const FVector P=CargoActor->GetActorLocation()+Orientation.RotateVector(FVector((I&1)?HalfWidth:-HalfWidth,(I&2)?HalfLength:-HalfLength,0));
         FHitResult Hit;
         if(!GetWorld()->LineTraceSingleByChannel(Hit,P,P-FVector(0,0,129.5f+STSProfile.SupportTolerance),ECC_Visibility,Query) || Hit.ImpactNormal.Z<.8f) return false;
         if(bSTS && bExternalJobs && Stage==5 && Hit.GetActor()!=HandoverAGV) return false;
@@ -83,6 +155,8 @@ void APortWorkingCrane::SampleSTS(bool Force)
         FQuat::ErrorAutoNormalize(Orientation,CargoActor->GetActorQuat())<.02f;
     // Plant-side virtual load cells: dynamic force/moment balance, independent of controller estimates.
     const FVector CoG=CargoActor->CoGOffsetCm;
+    S.CornerHalfWidthCm=CargoActor->SensorHalfWidthCm();
+    S.CornerHalfLengthCm=CargoActor->SensorHalfLengthCm();
     const double EffectiveG=FMath::Max(.1,9.80665+PlantAcceleration.Z*.01);
     const float Weight=bCarrying?CargoActor->MassKg*EffectiveG:0;
     const double EX=CoG.X+(154.5-CoG.Z)*PlantAcceleration.X*.01/EffectiveG;
@@ -90,7 +164,7 @@ void APortWorkingCrane::SampleSTS(bool Force)
     for(int32 I=0;I<4;++I)
     {
         S.Locked[I]=CornerLocked[I];
-        S.CornerLoadsN[I]=FMath::Max(0.,Weight*(.5+((I&1)?1:-1)*EX/200.)*(.5+((I&2)?1:-1)*EY/1040.)+(bCarrying?STSProfile.MassBiasKg*9.80665/4:0));
+        S.CornerLoadsN[I]=FMath::Max(0.,Weight*(.5+((I&1)?1:-1)*EX/(2*S.CornerHalfWidthCm))*(.5+((I&2)?1:-1)*EY/(2*S.CornerHalfLengthCm))+(bCarrying?STSProfile.MassBiasKg*9.80665/4:0));
     }
     S.bAGVAligned=AGVAligned(); S.bCargoSupported=CargoSupported(); S.SwayDegrees=SuspensionState.SwayDegrees();
     S.SwayRate=SuspensionState.Rate; S.SkewDegrees=FMath::RadiansToDegrees(SuspensionState.Yaw);
@@ -109,6 +183,7 @@ void APortWorkingCrane::SampleSTS(bool Force)
         else if(Mount.Key==TEXT("gantry_encoder")) Value=S.DrivePosition.Y*.01;
         else if(Mount.Key==TEXT("sway_sensor")) Value=S.SwayDegrees;
         else if(Mount.Key==TEXT("hoist_encoder")) Value=(BeamZ-Head.Z)*.01;
+        else if(Mount.Key==TEXT("telescope_encoder")) Value=TelescopeLengthCm*.01;
         else if(Mount.Key==TEXT("twistlock_load")) for(double Load:S.CornerLoadsN) {if(Load<Mount.Minimum || Load>Mount.Maximum) S.bValid=false;}
         else Required=false;
         if(Required && Mount.Key!=TEXT("twistlock_load") && (Value<Mount.Minimum || Value>Mount.Maximum)) S.bValid=false;
@@ -206,33 +281,37 @@ FVector APortWorkingCrane::SpreaderVelocity() const
 void APortWorkingCrane::BuildSTSSensors()
 {
     auto* Cube=LoadObject<UStaticMesh>(nullptr,TEXT("/Engine/BasicShapes/Cube.Cube"));
-    for(const auto& Mount:STSProfile.Dynamics.Mounts)
+    for(int32 MountIndex=0;MountIndex<STSProfile.Dynamics.Mounts.Num();++MountIndex)
     {
+        const auto& Mount=STSProfile.Dynamics.Mounts[MountIndex];
         auto* Parent=Mount.Frame==TEXT("spreader")?Spreader.Get():(Mount.Frame==TEXT("trolley")?Trolley.Get():RootComponent.Get());
-        auto* Marker=NewObject<UStaticMeshComponent>(this,*FString::Printf(TEXT("Sensor_%s"),*Mount.Key));
-        Marker->SetStaticMesh(Cube); Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-        Marker->SetupAttachment(Parent); Marker->SetAbsolute(false,false,true);
-        Marker->SetRelativeLocation(Mount.Position*100/Parent->GetComponentScale()); Marker->SetRelativeRotation(Mount.Rotation);
-        Marker->SetWorldScale3D(FVector(.14)); Marker->RegisterComponent(); AddInstanceComponent(Marker); SensorMarkers.Add(Marker);
-        for(int32 ExtraIndex=0;ExtraIndex<Mount.AdditionalPositions.Num();++ExtraIndex)
+        auto AddMarker=[&](const FString& Name,FVector ConfiguredPosition)
         {
-            auto* Extra=NewObject<UStaticMeshComponent>(this,*FString::Printf(TEXT("Sensor_%s_extra_%d"),*Mount.Key,ExtraIndex));
-            Extra->SetStaticMesh(Cube); Extra->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-            Extra->SetupAttachment(Parent); Extra->SetAbsolute(false,false,true);
-            Extra->SetRelativeLocation(Mount.AdditionalPositions[ExtraIndex]*100/Parent->GetComponentScale()); Extra->SetRelativeRotation(Mount.Rotation);
-            Extra->SetWorldScale3D(FVector(.14)); Extra->RegisterComponent(); AddInstanceComponent(Extra);
-        }
+            auto* Marker=NewObject<UStaticMeshComponent>(this,*Name);
+            Marker->SetStaticMesh(Cube); Marker->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+            Marker->SetupAttachment(Parent); Marker->SetAbsolute(false,false,true);
+            const FVector Position=Mount.Frame==TEXT("spreader")?DynamicSpreaderMount(Mount,ConfiguredPosition):ConfiguredPosition;
+            Marker->SetRelativeLocation(Position*100/Parent->GetComponentScale()); Marker->SetRelativeRotation(Mount.Rotation);
+            Marker->SetWorldScale3D(FVector(.14)); Marker->RegisterComponent(); AddInstanceComponent(Marker);
+            if(Mount.Frame==TEXT("spreader"))
+            {
+                SpreaderSensorInstances.Add(Marker);
+                SpreaderSensorMountIndices.Add(MountIndex);
+                SpreaderSensorConfiguredPositions.Add(ConfiguredPosition);
+            }
+            return Marker;
+        };
+        SensorMarkers.Add(AddMarker(FString::Printf(TEXT("Sensor_%s"),*Mount.Key),Mount.Position));
+        for(int32 ExtraIndex=0;ExtraIndex<Mount.AdditionalPositions.Num();++ExtraIndex)
+            AddMarker(FString::Printf(TEXT("Sensor_%s_extra_%d"),*Mount.Key,ExtraIndex),Mount.AdditionalPositions[ExtraIndex]);
         if(Mount.Key==TEXT("twistlock_load") || Mount.Key==TEXT("twistlock_state") || Mount.Key==TEXT("landed"))
             for(int32 Corner=0;Corner<3;++Corner)
             {
-                auto* Extra=NewObject<UStaticMeshComponent>(this,*FString::Printf(TEXT("Sensor_%s_%d"),*Mount.Key,Corner));
-                Extra->SetStaticMesh(Cube); Extra->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-                Extra->SetupAttachment(Parent); Extra->SetAbsolute(false,false,true);
                 const FVector P((Corner&1)?Mount.Position.X:-Mount.Position.X,(Corner&2)?Mount.Position.Y:-Mount.Position.Y,Mount.Position.Z);
-                Extra->SetRelativeLocation(P*100/Parent->GetComponentScale()); Extra->SetRelativeRotation(Mount.Rotation);
-                Extra->SetWorldScale3D(FVector(.14)); Extra->RegisterComponent(); AddInstanceComponent(Extra);
+                AddMarker(FString::Printf(TEXT("Sensor_%s_%d"),*Mount.Key,Corner),P);
             }
     }
+    UpdateSpreaderSensors();
 }
 
 bool APortWorkingCrane::STSSensorContains(const FString& Key,FVector Point) const
@@ -241,7 +320,11 @@ bool APortWorkingCrane::STSSensorContains(const FString& Key,FVector Point) cons
     if(!SensorMarkers.IsValidIndex(Index)) return false;
     const auto& M=STSProfile.Dynamics.Mounts[Index]; const auto* Marker=SensorMarkers[Index].Get();
     TArray<FVector> Origins;Origins.Add(Marker->GetComponentLocation());
-    for(const FVector& Local:M.AdditionalPositions) Origins.Add(Marker->GetAttachParent()->GetComponentLocation()+Marker->GetAttachParent()->GetComponentQuat().RotateVector(Local*100));
+    for(FVector Local:M.AdditionalPositions)
+    {
+        Local=DynamicSpreaderMount(M,Local);
+        Origins.Add(Marker->GetAttachParent()->GetComponentLocation()+Marker->GetAttachParent()->GetComponentQuat().RotateVector(Local*100));
+    }
     for(const FVector& Origin:Origins)
     {
         const FVector Delta=Point-Origin;const double Distance=Delta.Size()*.01;

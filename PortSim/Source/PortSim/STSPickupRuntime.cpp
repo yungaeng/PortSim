@@ -3,11 +3,16 @@
 #include "Components/StaticMeshComponent.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
+#include "SpreaderTelescope.h"
 
 void APortWorkingCrane::SamplePickupGeometry()
 {
     // Virtual geometric pose/contact sensors. No image recognition or manufacturer accuracy claim.
     auto& O=Observation;const auto& C=STSProfile.Pickup;
+    const float CargoHalfLength=CargoActor->SensorHalfLengthCm();
+    const float CargoHalfWidth=CargoActor->SensorHalfWidthCm();
+    const float SpreaderHalfLength=PortSpreaderTelescope::TwistlockHalfLengthCm(TelescopeLengthCm);
+    const float SpreaderHalfWidth=PortSpreaderTelescope::TwistlockHalfWidthCm();
     O.bTargetVisible=STSSensorContains(TEXT("spreader_camera"),CargoActor->GetActorLocation());
     if(!bSTS)
     {
@@ -16,7 +21,7 @@ void APortWorkingCrane::SamplePickupGeometry()
         O.bTargetVisible=true;
         for(int32 I=0;I<4;++I)
             O.bTargetVisible &= STSSensorContains(TEXT("spreader_camera"),CargoActor->GetActorLocation()+
-                CargoActor->GetActorQuat().RotateVector(FVector((I&1)?100:-100,(I&2)?520:-520,0)));
+                CargoActor->GetActorQuat().RotateVector(FVector((I&1)?CargoHalfWidth:-CargoHalfWidth,(I&2)?CargoHalfLength:-CargoHalfLength,0)));
     }
     O.bTargetVisible &= !FParse::Param(FCommandLine::Get(),bSTS?TEXT("PortSimSTSPoseFault"):TEXT("PortSimRMGPoseFault"));
     const FQuat SpreaderRotation=Spreader->GetComponentQuat(), CargoRotation=CargoActor->GetActorQuat();
@@ -25,8 +30,9 @@ void APortWorkingCrane::SamplePickupGeometry()
     bool All=true;
     for(int32 I=0;I<4;++I)
     {
-        const FVector Corner((I&1)?100:-100,(I&2)?520:-520,0);
-        const FVector RotationGap=SpreaderRotation.RotateVector(Corner)-CargoRotation.RotateVector(Corner)-FVector(0,0,154.5);
+        const FVector SpreaderCorner((I&1)?SpreaderHalfWidth:-SpreaderHalfWidth,(I&2)?SpreaderHalfLength:-SpreaderHalfLength,0);
+        const FVector CargoCorner((I&1)?CargoHalfWidth:-CargoHalfWidth,(I&2)?CargoHalfLength:-CargoHalfLength,0);
+        const FVector RotationGap=SpreaderRotation.RotateVector(SpreaderCorner)-CargoRotation.RotateVector(CargoCorner)-FVector(0,0,154.5);
         const FVector ActualError=Orientation.UnrotateVector(HeadPosition()-CargoActor->GetActorLocation()+RotationGap);
         PhysicalSeating[I]=ActualError.Size2D()<=C.CornerTolerance && FMath::Abs(ActualError.Z)<=C.VerticalTolerance && O.TargetTiltDegrees<=C.TiltTolerance;
         O.CornerError[I]=Orientation.UnrotateVector(O.SpreaderPosition-O.CargoPosition+RotationGap);

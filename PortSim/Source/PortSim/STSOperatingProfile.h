@@ -52,6 +52,7 @@ struct FSTSObservation
     FVector CargoPosition = FVector::ZeroVector, CargoVelocity = FVector::ZeroVector;
     float SwayDegrees = 0;
     float CornerLoadsN[4] = {0,0,0,0}; // analytic virtual load cells including acceleration; not elastic contact reactions
+    float CornerHalfWidthCm=100, CornerHalfLengthCm=520;
     bool Locked[4] = {false,false,false,false};
     bool bLanded = false, bAGVAligned = false, bCargoSupported = false;
     bool bTargetVisible=false, CornerSeated[4]={false,false,false,false};

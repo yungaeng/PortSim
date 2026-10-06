@@ -60,6 +60,11 @@ private:
     FVector SuspendedOffset=FVector::ZeroVector;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SensorMarkers;
     void BuildSTSSensors();
+    void AdvanceTelescope(float Dt);
+    void UpdateSpreaderGeometry();
+    void UpdateSpreaderSensors();
+    FVector DynamicSpreaderMount(const FSTSSensorMount& Mount, FVector ConfiguredPosition) const;
+    bool TelescopeReady() const;
     bool STSSensorContains(const FString& Key,FVector Point) const;
     FVector SpreaderVelocity() const;
     FSTSOperatingProfile STSProfile;
@@ -80,6 +85,13 @@ private:
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Bogies;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> CrossBeams;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Ropes;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> TelescopeArms;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SpreaderEndBeams;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> TwistLocks;
+    UPROPERTY() TObjectPtr<UStaticMeshComponent> SpreaderCenter;
+    UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> SpreaderSensorInstances;
+    TArray<int32> SpreaderSensorMountIndices;
+    TArray<FVector> SpreaderSensorConfiguredPositions;
     UPROPERTY() TArray<TObjectPtr<UStaticMeshComponent>> Pads;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Trolley;
     UPROPERTY() TObjectPtr<UStaticMeshComponent> Spreader;
@@ -94,6 +106,8 @@ private:
     float BeamZ=2300.f;
     float SafeZ=1900.f;
     float Speed=0.f;
+    float TelescopeLengthCm=1219.2f;
+    float TelescopeTargetLengthCm=1219.2f;
     float SettleTime=0.f;
     float StageTime=0.f;
     int32 SourceSlot=0;

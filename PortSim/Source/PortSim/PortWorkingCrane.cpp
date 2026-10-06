@@ -8,6 +8,7 @@
 #include "Misc/CommandLine.h"
 #include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "SpreaderTelescope.h"
 
 namespace WorkingCrane { constexpr float LiftOffset=154.5f; }
 
@@ -28,7 +29,18 @@ APortWorkingCrane::APortWorkingCrane()
         Pads.Add(Pad);
     }
     Trolley=Box(TEXT("Trolley"),RootComponent,FVector::ZeroVector,FVector(420,1450,120));
-    Spreader=Box(TEXT("Spreader"),RootComponent,FVector::ZeroVector,FVector(244,1220,50));
+    // Spreader is the unscaled moving reference frame.  The visible centre,
+    // telescopic arms, end beams and twistlocks move within this common frame.
+    Spreader=Box(TEXT("Spreader"),RootComponent,FVector::ZeroVector,FVector(100));
+    Spreader->SetVisibility(false);
+    SpreaderCenter=Box(TEXT("SpreaderCenter"),Spreader,FVector::ZeroVector,FVector(243.8f,500.f,50.f));
+    for(int32 End=0;End<2;++End)
+    {
+        TelescopeArms.Add(Box(*FString::Printf(TEXT("TelescopeArm_%d"),End),Spreader,FVector::ZeroVector,FVector(125.f,350.f,34.f)));
+        SpreaderEndBeams.Add(Box(*FString::Printf(TEXT("SpreaderEndBeam_%d"),End),Spreader,FVector::ZeroVector,FVector(243.8f,40.f,60.f)));
+    }
+    for(int32 Corner=0;Corner<4;++Corner)
+        TwistLocks.Add(Box(*FString::Printf(TEXT("TwistLock_%d"),Corner),Spreader,FVector::ZeroVector,FVector(16.f,16.f,20.f)));
     Mast=Box(TEXT("Mast"),RootComponent,FVector::ZeroVector,FVector(100));
     NameLabel=Label(TEXT("CraneName"),FVector::ZeroVector);
     Tags.Add(TEXT("PortSim.WorkingCrane"));
@@ -86,6 +98,10 @@ void APortWorkingCrane::Configure(int32 Number,bool bQuayside,FVector Source,FVe
     Mast->SetMaterial(0,Material(TEXT("CraneYellow")));
     Trolley->SetMaterial(0,Material(bSTS?TEXT("CraneYellow"):TEXT("Target")));
     Spreader->SetMaterial(0,Material(bSTS?TEXT("CraneYellow"):TEXT("Target")));
+    SpreaderCenter->SetMaterial(0,Material(bSTS?TEXT("CraneYellow"):TEXT("Target")));
+    for(const auto& Part:TelescopeArms) Part->SetMaterial(0,Material(TEXT("Steel")));
+    for(const auto& Part:SpreaderEndBeams) Part->SetMaterial(0,Material(bSTS?TEXT("CraneYellow"):TEXT("Target")));
+    for(const auto& Part:TwistLocks) Part->SetMaterial(0,Material(TEXT("Steel")));
     if (bCreateCargo)
     {
     FActorSpawnParameters Params;
@@ -97,6 +113,7 @@ void APortWorkingCrane::Configure(int32 Number,bool bQuayside,FVector Source,FVe
     if(STSProfile.bReady) CargoActor->SetPhysicalParameters(STSProfile.ContainerMassKg,STSProfile.ContainerCoG);
     }
     bConfigured=true;
+    UpdateSpreaderGeometry();
 #if WITH_EDITOR
     SetActorLabel(FString::Printf(TEXT("Working_%s_%02d"),bSTS?TEXT("STS"):TEXT("RMG"),Number));
     SetFolderPath(TEXT("PortSim/WorkingEquipment"));
@@ -169,9 +186,12 @@ void APortWorkingCrane::UpdateParts()
     Trolley->SetRelativeLocation(FVector(Head.X,0,BeamZ));
     Spreader->SetRelativeLocation(FVector(Head.X,0,Head.Z)+SuspendedOffset);
     Spreader->SetRelativeRotation(FRotator(0,FMath::RadiansToDegrees(SuspensionState.Yaw),0));
+    UpdateSpreaderGeometry();
+    const float HalfLength=PortSpreaderTelescope::TwistlockHalfLengthCm(TelescopeLengthCm);
+    const float HalfWidth=PortSpreaderTelescope::TwistlockHalfWidthCm();
     for (int32 I=0;I<4;++I)
     {
-        const FVector Corner((I&1)?100:-100,(I&2)?520:-520,0);
+        const FVector Corner((I&1)?HalfWidth:-HalfWidth,(I&2)?HalfLength:-HalfLength,0);
         const FVector Top=FVector(Head.X,0,BeamZ)+Corner;
         const FVector Bottom=FVector(Head.X,0,Head.Z)+SuspendedOffset+Spreader->GetRelativeRotation().RotateVector(Corner);
         const FVector Delta=Top-Bottom;
@@ -192,7 +212,7 @@ bool APortWorkingCrane::DestinationClear() const
     Query.AddIgnoredActor(CargoActor);
     // Shrink by 2 cm so the supporting pad/ground is not treated as an obstruction.
     return !GetWorld()->OverlapBlockingTestByChannel(Slots[1-SourceSlot],Orientation,ECC_WorldDynamic,
-        FCollisionShape::MakeBox(FVector(120,608,127.5)),Query);
+        FCollisionShape::MakeBox(FVector(120,IsValid(CargoActor)?CargoActor->ExternalDimensionsCm.Y*.5f-2.f:608.f,127.5)),Query);
 }
 
 void APortWorkingCrane::Stop(const FString& Reason)
@@ -218,6 +238,7 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
     if(bJobActive) { JobSeconds+=Dt; if(bGlobalPaused || !bEnabled || !Fault.IsEmpty()) PausedSeconds+=Dt; }
     SetOperationPaused(bGlobalPaused || !bEnabled || !Fault.IsEmpty());
     if (bPaused || !bJobActive) return;
+    AdvanceTelescope(Dt);
     {
         SampleSTS();
         if(!STSProfile.bReady || !Observation.IsFresh(SimulationTime,STSProfile.SensorMaxAge))
@@ -258,9 +279,18 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
     if (Stage==5 && !bDestinationReady) { MoveSTS(Head,Dt); return; }
     StageTime+=Dt;
     if (StageTime>STSProfile.StageTimeout) { Stop(TEXT("Job stage timed out")); return; }
-    if(Stage==2){AdvancePickup(Dt);return;}
     const FVector Source=Stage==3?Local(Pickup.TrialOrigin):Local(Slots[SourceSlot]);
     const FVector Destination=Local(Slots[1-SourceSlot]);
+    if(Stage==2)
+    {
+        if(!TelescopeReady())
+        {
+            Pickup.Reason=TEXT("Adjusting telescopic spreader to container ISO corner positions");
+            MoveSTS(FVector(Source.X,Source.Y,SafeZ),Dt);
+            return;
+        }
+        AdvancePickup(Dt);return;
+    }
     FVector Target=Head;
     switch(Stage)
     {
@@ -352,12 +382,14 @@ bool APortWorkingCrane::AssignCargo(APortContainerActor* Cargo,FVector Source,FV
     }
     ClearSTSState(); HandoverAGV=HandoverVehicle;
     CargoActor=Cargo; Slots[0]=Source; Slots[1]=Destination; SourceSlot=Stage=0;
+    TelescopeTargetLengthCm=Cargo->ExternalDimensionsCm.Y;
     bDestinationReady=true;
     bJobActive=true; bCarrying=false; Speed=StageTime=SettleTime=0; JobStartHead=Head;
     for (int32 I=0;I<2;++I)
     {
         const bool Support=I==0?SourceSupport:DestinationSupport;
         Pads[I]->SetWorldLocationAndRotation(Slots[I]-FVector(0,0,139.5f),Orientation);
+        Pads[I]->SetWorldScale3D(FVector(Cargo->ExternalDimensionsCm.X+66.f,Cargo->ExternalDimensionsCm.Y+80.f,20.f)/100.f);
         Pads[I]->SetCollisionEnabled(Support?ECollisionEnabled::QueryAndPhysics:ECollisionEnabled::NoCollision);
         Pads[I]->SetVisibility(Support);
     }

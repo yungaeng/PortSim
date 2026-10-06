@@ -18,9 +18,11 @@ void APortWorkingCrane::SampleRMGEnvironment()
         FCollisionQueryParams ProfileQuery(SCENE_QUERY_STAT(RMGStackProfile),false);
         ProfileQuery.AddIgnoredActor(CargoActor); // Keep the fixed reservation pad.
         bool Valid=true;
+        const float HalfLength=IsValid(CargoActor)?CargoActor->SensorHalfLengthCm():520.f;
+        const float HalfWidth=IsValid(CargoActor)?CargoActor->SensorHalfWidthCm():113.f;
         for(int32 I=0;I<4;++I)
         {
-            const FVector Point=Slots[1-SourceSlot]+Orientation.RotateVector(FVector((I&1)?100:-100,(I&2)?520:-520,0));
+            const FVector Point=Slots[1-SourceSlot]+Orientation.RotateVector(FVector((I&1)?HalfWidth:-HalfWidth,(I&2)?HalfLength:-HalfLength,0));
             const FVector Origin(Point.X,Point.Y,Home.Z+BeamZ-100);
             FHitResult Hit;
             const bool Found=GetWorld()->LineTraceSingleByChannel(Hit,Origin,FVector(Point.X,Point.Y,Home.Z-100),ECC_Visibility,ProfileQuery);

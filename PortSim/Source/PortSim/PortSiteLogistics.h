@@ -26,7 +26,7 @@ struct FSiteShipCargo
 {
     FTransform Transform;
     TWeakObjectPtr<APortContainerActor> Actor;
-    int32 STS=0, ID=0, State=0; // same actor: 0 aboard, 1 transfer, 2 yard
+    int32 STS=0, ID=0, State=0, PlannedSlot=INDEX_NONE; // same actor: 0 aboard, 1 transfer, 2 yard
     uint8 HandoverMask=0; // STS->AGV, AGV->RMG, RMG->yard
     double StartedAt=0, PreparedPausedSeconds=0;
 };
@@ -131,6 +131,7 @@ private:
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
     void PrepareNextCargo(int32 Lane);
     bool ReserveYard(int32 Lane);
+    bool PlanYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);
     bool Drive(int32 Lane,float Dt);
     void Freeze(bool Paused);

@@ -62,9 +62,16 @@ void AQuayCrane::TickSiteTest(float Dt)
         if(!Crane->bSTS && Crane->HasSTSProfile()) { Finish(false,TEXT("STS reference incorrectly assigned to RMG")); return; }
         if(!Crane->bSTS && !Crane->HasRMGProfile()) { Finish(false,TEXT("Site RMG missing independent reference profile")); return; }
     }
+    int32 SizeCounts[3]={0,0,0};
     for(const auto& Container:SiteLogistics->ShipContainers)
-        if(!FMath::IsNearlyEqual(Container->MassKg,STSProfile.ContainerMassKg,1.f) || !Container->CoGOffsetCm.Equals(STSProfile.ContainerCoG))
-        { Finish(false,TEXT("Site container mass/CoG profile mismatch")); return; }
+    {
+        if(!FMath::IsNearlyEqual(Container->MassKg,Container->TareMassKg+Container->CargoMassKg,1.f) ||
+            !Container->CoGOffsetCm.Equals(STSProfile.ContainerCoG))
+        { Finish(false,TEXT("Site container gross mass/CoG specification mismatch")); return; }
+        SizeCounts[Container->LengthFt==20?0:Container->LengthFt==40?1:2]++;
+    }
+    if(SiteLogistics->ShipContainers.Num()>=10 && (!SizeCounts[0] || !SizeCounts[1] || !SizeCounts[2]))
+    { Finish(false,TEXT("20/40/45 ft mixed manifest is incomplete")); return; }
     if (!SiteLogistics->Validate(Error)) { Finish(false,Error); return; }
     if(FParse::Param(FCommandLine::Get(),TEXT("PortSimSTSAGVFault")))
         for(const auto& Crane:WorkingCranes)
@@ -98,8 +105,10 @@ void AQuayCrane::TickSiteTest(float Dt)
     }
     else if (SiteTestStage==5 && SiteLogistics->Delivered==Expected && SiteLogistics->IsIdle())
     {
-        for (const auto& Vehicle:SiteLogistics->Vehicles)
-            if (Vehicle->CompletedJobs<1) { Finish(false,TEXT("Not every AGV performed a handover")); return; }
+        int32 UsedAGVs=0,MinimumJobs=MAX_int32,MaximumJobs=0;
+        for (const auto& Vehicle:SiteLogistics->Vehicles) if(Vehicle->CompletedJobs>0)
+        { ++UsedAGVs; MinimumJobs=FMath::Min(MinimumJobs,Vehicle->CompletedJobs); MaximumJobs=FMath::Max(MaximumJobs,Vehicle->CompletedJobs); }
+        if(UsedAGVs<(bUnifiedTerminal?9:8)) { Finish(false,TEXT("Cost-aware dispatch used too few AGVs for concurrent STS service")); return; }
         if (SiteLogistics->PeakMovingVehicles<2 || SiteLogistics->PrefetchedJobs<(bUnifiedTerminal?9:6))
         { Finish(false,TEXT("AGVs did not move concurrently or STSs did not prepare ahead")); return; }
         if (bUnifiedTerminal && SiteLogistics->QueuedHandoffs<9)
@@ -107,9 +116,10 @@ void AQuayCrane::TickSiteTest(float Dt)
         if (Full && (SiteLogistics->ShipRemaining()!=0 || SiteLogistics->InTransit()!=0 || SiteLogistics->PlacedContainers.Num()!=Expected))
         { Finish(false,TEXT("Full vessel inventory was not physically stored")); return; }
         UE_LOG(LogTemp,Display,TEXT("RECEIVING_METRICS: capacity=%d delivered=%d queued_handoffs=%d elapsed_simulation=%.1f"),SiteLogistics->ReceivingCapacity,SiteLogistics->Delivered,SiteLogistics->QueuedHandoffs,SiteTestTime);
-        UE_LOG(LogTemp,Display,TEXT("DISPATCH_METRICS: peak_moving_agvs=%d prefetched_jobs=%d"),SiteLogistics->PeakMovingVehicles,SiteLogistics->PrefetchedJobs);
-        const FString Summary=FString::Printf(TEXT("yard %d -> %d; %d vessel containers; %d AGVs, %d complete STS/AGV/RMG shipments; equal vessel inventories, concurrent traffic, STS prefetch, physical placement, pause/E-stop and reset"),
-            SiteLogistics->BaselineYard,SiteLogistics->InitialYard,SiteLogistics->InitialShipCount(),SiteLogistics->Vehicles.Num(),SiteLogistics->Delivered);
+        UE_LOG(LogTemp,Display,TEXT("DISPATCH_METRICS: peak_moving_agvs=%d prefetched_jobs=%d used_agvs=%d jobs_per_used_agv=%d..%d"),
+            SiteLogistics->PeakMovingVehicles,SiteLogistics->PrefetchedJobs,UsedAGVs,MinimumJobs,MaximumJobs);
+        const FString Summary=FString::Printf(TEXT("yard %d -> %d; %d vessel containers; %d/%d AGVs selected by ETA plus bounded fairness, %d complete planned STS/AGV/RMG shipments; mixed sizes, concurrent traffic, STS prefetch, physical placement, pause/E-stop and reset"),
+            SiteLogistics->BaselineYard,SiteLogistics->InitialYard,SiteLogistics->InitialShipCount(),UsedAGVs,SiteLogistics->Vehicles.Num(),SiteLogistics->Delivered);
         SiteLogistics->ResetLogistics();
         if (!SiteLogistics->Validate(Error) || SiteLogistics->Delivered || SiteLogistics->InTransit())
         { Finish(false,TEXT("Completed reset: ")+Error); return; }

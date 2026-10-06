@@ -50,14 +50,18 @@ foreach ($case in $cases) {
             if ($rows.Count -ne 120) { continue }
             $completed++
             if (@($rows.STSLane | Sort-Object -Unique).Count -ne 9) { throw 'Not all nine STSs completed shipments' }
-            if (@($rows.AGVID | Sort-Object -Unique).Count -ne 60) { throw 'Not all sixty AGVs completed shipments' }
+            if (@($rows.AGVID | Sort-Object -Unique).Count -lt 9) { throw 'Cost-aware dispatch did not sustain concurrent STS service' }
             if (@($rows | Where-Object { [int]$_.STSLane -lt 1 -or [int]$_.STSLane -gt 9 -or [int]$_.RMGID -lt 1 -or [int]$_.RMGID -gt 46 }).Count) { throw 'Invalid crane ID in shipment report' }
+            if (@($rows.LengthFt | Sort-Object -Unique).Count -ne 3) { throw '20/40/45 ft manifest coverage missing' }
+            if (@($rows.PlannedSlot | Sort-Object -Unique).Count -ne $rows.Count) { throw 'Planned yard destinations are not unique' }
             foreach ($row in $rows) {
                 $duration = [double]$row.FinalPlacementAtSeconds - [double]$row.StartedAtSeconds
                 if ([Math]::Abs($duration - [double]$row.ShipmentSeconds) -gt .0001 -or
                     [double]$row.STSHandoverAtSeconds -lt [double]$row.StartedAtSeconds -or
                     [double]$row.FinalPlacementAtSeconds -lt [double]$row.STSHandoverAtSeconds -or
-                    [double]$row.STSSeconds -gt [double]$row.ShipmentSeconds -or [double]$row.PayloadKg -ne 12000) {
+                    [double]$row.STSSeconds -gt [double]$row.ShipmentSeconds -or
+                    [double]$row.GrossKg -ne ([double]$row.TareKg+[double]$row.CargoKg) -or
+                    [int]$row.LengthFt -notin @(20,40,45) -or [int]$row.PlannedYardBlock -lt 1 -or [int]$row.PlannedYardBlock -gt 18) {
                     throw "Site timing/mass mismatch: $($row.ContainerID)"
                 }
             }

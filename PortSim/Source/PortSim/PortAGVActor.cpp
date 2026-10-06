@@ -28,7 +28,7 @@ void APortAGVActor::InitializeVehicle(int32 Number)
 
 void APortAGVActor::ResetVehicle(FVector Position)
 {
-    Speed=0; CompletedJobs=0;
+    Speed=0; CompletedJobs=0; PayloadKg=0;
     SetActorLocationAndRotation(Position,FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
 }
 
@@ -41,8 +41,9 @@ bool APortAGVActor::MoveToX(float X,float Dt)
 {
     FVector P=GetActorLocation();
     const float Distance=FMath::Abs(X-P.X);
-    const float Desired=FMath::Min(450.f,FMath::Sqrt(2.f*180.f*Distance));
-    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,180.f);
+    const float Acceleration=AccelerationCmPerSecondSquared();
+    const float Desired=FMath::Min(SpeedLimitCmPerSecond(),FMath::Sqrt(2.f*Acceleration*Distance));
+    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,Acceleration);
     P.X+=FMath::Sign(X-P.X)*FMath::Min(Distance,Speed*Dt);
     SetActorLocation(P);
     if (FMath::Abs(X-P.X)<.1f) { Speed=0; return true; }
@@ -53,9 +54,23 @@ bool APortAGVActor::MoveToX(float X,float Dt)
 bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
 {
     const float Distance=FVector::Dist(GetActorLocation(),Target);
-    const float Desired=StopAtTarget?FMath::Min(450.f,FMath::Sqrt(2.f*180.f*Distance)):450.f;
-    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,180.f);
+    const float Acceleration=AccelerationCmPerSecondSquared();
+    const float Limit=SpeedLimitCmPerSecond();
+    const float Desired=StopAtTarget?FMath::Min(Limit,FMath::Sqrt(2.f*Acceleration*Distance)):Limit;
+    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,Acceleration);
     SetActorLocation(FMath::VInterpConstantTo(GetActorLocation(),Target,Dt,Speed));
     if (FVector::Dist(GetActorLocation(),Target)>.1f) return false;
     SetActorLocation(Target); if (StopAtTarget) Speed=0; return true;
+}
+
+float APortAGVActor::SpeedLimitCmPerSecond() const
+{
+    // Loaded operation trades a small amount of travel speed for stable handover.
+    return FMath::Lerp(450.f,350.f,FMath::Clamp(PayloadKg/30000.f,0.f,1.f));
+}
+
+float APortAGVActor::AccelerationCmPerSecondSquared() const
+{
+    constexpr float EmptyVehicleMassKg=28000.f;
+    return 180.f*EmptyVehicleMassKg/(EmptyVehicleMassKg+PayloadKg);
 }
