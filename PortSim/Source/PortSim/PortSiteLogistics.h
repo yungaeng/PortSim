@@ -42,6 +42,8 @@ struct FSiteTransfer
     bool bYardReleased=false, bRMGReserved=false;
     double TrafficWaitSeconds=0, YardWaitSeconds=0, LastRerouteAt=-10;
     int32 Reroutes=0;
+    int32 ReturnSTS=INDEX_NONE, ReturnCargo=INDEX_NONE;
+    int32 YardEntryWaypoint=INDEX_NONE;
 };
 
 /** One manifest, conserved cargo IDs and reserved yard slots across STS -> AGV -> RMG. */
@@ -134,6 +136,7 @@ private:
     void Dispatch(int32 Lane);
     void ScheduleFleet();
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
+    void AssignReturnSTS(int32 Vehicle);
     void PrepareNextCargo(int32 Lane);
     bool ReserveYardApproach(int32 Lane);
     bool ReserveYard(int32 Lane);

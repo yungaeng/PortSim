@@ -1,4 +1,4 @@
-﻿#if WITH_DEV_AUTOMATION_TESTS
+#if WITH_DEV_AUTOMATION_TESTS
 #include "TerminalLayout.h"
 
 
@@ -19,12 +19,20 @@ bool FAGVBoundsTest::RunTest(const FString& Parameters)
     for(float X:{5500.f,16500.f}) Check(Fits(SiteCmX(X),AGVNorthCrossY,210,730),"north crossing footprint");
     for(float X:{3500.f,12500.f}) Check(Fits(SiteCmX(X),AGVSouthLoadedY,210,730),"south loaded footprint");
     for(float X:{10000.f,14500.f}) Check(Fits(SiteCmX(X),AGVSouthReturnY,730,210),"return crossing footprint");
-    for(int I=0;I<60;++I) Check(Fits(SiteCmX(8000+(I/30)*2000),AGVParkFirstY+(I%30)*AGVParkPitch,210,730),"fleet parking footprint");
-    Check(AGVParkFirstY+29*AGVParkPitch+730 < AGVNorthCrossY-730,"north crossing clears parked fleet");
+    for(int I=0;I<60;++I) Check(Fits(SiteCmX(AGVParkX(I)),AGVParkY(I),210,730),"fleet parking footprint");
+    Check(AGVParkY(AGVParkBays-1)+730 < AGVNorthCrossY-730,"north crossing clears parked fleet");
     Check(AGVSouthLoadedY-AGVSouthReturnY>1460,"south crossings clear full vehicle lengths");
     Check(AGVParkFirstY-AGVSouthLoadedY>1460,"south crossing clears idle parking");
     Check(Fits(SiteCmX(9000),AGVSouthReturnY,210,730),"empty return keeps full length inside south boundary");
     Check(SiteCmX(9000)-SiteCmX(8000)>420 && SiteCmX(10000)-SiteCmX(9000)>420,"parking aisle clears both occupied rows");
+    for(int Gap=0;Gap<AGVParkBays-1;++Gap)
+    {
+        const float Y=AGVParkCrossingY(Gap);
+        for(int Vehicle=0;Vehicle<60;++Vehicle)
+            Check(FMath::Abs(Y-AGVParkY(Vehicle))>1460.f,"crossing clears every parked AGV envelope");
+        for(float X:{3500.f,8000.f,10000.f,11200.f,16500.f})
+            Check(Fits(SiteCmX(X),Y,210,730),"internal crossing stays inside road bounds");
+    }
     for(int B=0;B<YardBlockCount;++B) for(float X:{18000.f,42000.f})
     {
         Check(Fits(SiteCmX(X),BlockY(B)*100+1320,730,210),"yard handover footprint");

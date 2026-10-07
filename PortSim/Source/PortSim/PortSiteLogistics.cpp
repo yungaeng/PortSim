@@ -77,11 +77,9 @@ FVector APortSiteLogistics::YardHandover(const FSiteYardSlot& Slot) const
 FVector APortSiteLogistics::FleetPark(int32 Vehicle) const
 {
     if(LaneCount!=9) return QuayPark(Vehicle);
-    // Two 30-vehicle rows stay entirely west of the worker-rest apron (Y=238 m).
-    // 23 m pitch clears the physical 13.8 m vehicle length. Spawn, return and
-    // reset all share these positions, so parked vehicles cannot spill east.
-    const float Y=TerminalLayout::AGVParkFirstY+(Vehicle%30)*TerminalLayout::AGVParkPitch;
-    return FVector(TerminalLayout::SiteCmX(8000+(Vehicle/30)*2000),Y,0);
+    // Spawn, parking return, reset and road geometry share one bay layout.
+    return FVector(TerminalLayout::SiteCmX(TerminalLayout::AGVParkX(Vehicle)),
+        TerminalLayout::AGVParkY(Vehicle),0);
 }
 
 void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>& Cranes,TArray<FSiteYardSlot> Slots,
@@ -206,6 +204,7 @@ void APortSiteLogistics::PrepareNextCargo(int32 Lane)
 void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
 {
     auto& Job=Jobs[Vehicle];
+    Job=FSiteTransfer();
     Job.Cargo=PreparedCargo[STS]; Job.Actor=Manifest[Job.Cargo].Actor; Job.STS=STS;
     Job.Stage=6; Job.Waypoint=0;
     Job.StartedAt=Manifest[Job.Cargo].StartedAt; Job.Time=SimulationTime-Job.StartedAt;
@@ -213,8 +212,34 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
     Equipment[YardCraneCount+STS]->SetHandoverVehicle(Vehicles[Vehicle]);
     PreparedCargo[STS]=INDEX_NONE; PreparedStarted[STS]=false; STSOwners[STS]=Vehicle;
     if (FromQueue) { NextVehicles[STS]=INDEX_NONE; ++QueuedHandoffs; }
-    {
     if(!PlanRoadRoute(Vehicle,false)) Stop(TEXT("No road route to STS handover"));
+}
+
+void APortSiteLogistics::AssignReturnSTS(int32 Vehicle)
+{
+    if(LaneCount!=9) return;
+    auto& Job=Jobs[Vehicle];
+    int32 Best=INDEX_NONE;
+    double BestScore=TNumericLimits<double>::Max();
+    for(int32 S=0;S<LaneCount;++S)
+    {
+        PrepareNextCargo(S);
+        if(!Fault.IsEmpty()) return;
+        if(PreparedCargo[S]==INDEX_NONE) continue;
+        const int32 Queued=NextVehicles[S];
+        // Only replace a parked, empty standby. An AGV already returning to an
+        // assigned berth keeps that assignment and its prepared container.
+        if(Queued!=INDEX_NONE && Jobs[Queued].Stage!=8) continue;
+        const double Score=FVector::Dist2D(Vehicles[Vehicle]->GetActorLocation(),CargoQuay(PreparedCargo[S]))+
+            (STSOwners[S]!=INDEX_NONE?15000.:0.);
+        if(Score<BestScore) { BestScore=Score; Best=S; }
+    }
+    if(Best==INDEX_NONE) return;
+    if(const int32 Queued=NextVehicles[Best]; Queued!=INDEX_NONE) Jobs[Queued]=FSiteTransfer();
+    Job.ReturnSTS=Best; Job.ReturnCargo=PreparedCargo[Best];
+    NextVehicles[Best]=Vehicle;
+    UE_LOG(LogTemp,Display,TEXT("AGV_DIRECT_RETURN: V%d -> STS%d C%d"),
+        Vehicles[Vehicle]->VehicleID,Best+1,Manifest[Job.ReturnCargo].ID);
 }
 
 void APortSiteLogistics::ScheduleFleet()
@@ -383,32 +408,41 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested)
     Network.Add(P(5500,South),P(5500,North));
     Network.Add(P(7200,North),P(7200,South));
     Network.Add(P(9000,South),P(9000,North));
-    // Cross parking only beyond its ends. Never invent a diagonal through cargo.
+    // Perimeter links remain available when the internal crossings are congested.
     Network.Add(P(3500,TerminalLayout::AGVSouthLoadedY),P(16500,TerminalLayout::AGVSouthLoadedY));
     Network.Add(P(16500,South),P(3500,South));
     Network.Add(P(5500,North),P(16500,North));
     Network.Add(P(9000,North),P(7200,North));
+    // Cross between, never through, occupied parking bays. Alternating one-way
+    // crossings avoid head-on queues and give loaded and returning AGVs shortcuts.
+    for(int32 Gap=0;Gap<TerminalLayout::AGVParkBays-1;++Gap)
+    {
+        const float Y=TerminalLayout::AGVParkCrossingY(Gap);
+        if(TerminalLayout::AGVParkCrossingToYard(Gap)) Network.Add(P(3500,Y),P(16500,Y));
+        else Network.Add(P(16500,Y),P(3500,Y));
+    }
     for(int32 Block=0;Block<TerminalLayout::YardBlockCount;++Block)
     {
         const float Y=TerminalLayout::BlockY(Block)*100;
         Network.Add(P(12500,Y+2050),P(16500,Y+2050));
         Network.Add(P(16500,Y+2500),P(12500,Y+2500));
     }
-    const FVector Quay=CargoQuay(Job.Cargo),Park=FleetPark(Lane);
+    const int32 DestinationCargo=Job.Stage==5 && Job.ReturnCargo!=INDEX_NONE?Job.ReturnCargo:Job.Cargo;
+    const FVector Quay=CargoQuay(DestinationCargo),Park=FleetPark(Lane);
     Network.Add(P(3500,Quay.Y),P(5500,Quay.Y),true);
     Network.Add(P(7200,Quay.Y),Quay);
-    Network.Add(Park,P(Lane>=30?9000:7200,Park.Y));
-    Network.Add(P(9000,Park.Y),Park);
+    Network.Add(Park,P(TerminalLayout::AGVParkExitX(Lane),Park.Y));
+    Network.Add(P(TerminalLayout::AGVParkReturnX(Lane),Park.Y),Park);
     FVector Goal=Quay;
     if(Job.Stage==3 || Job.Stage==5)
     {
         const auto& Slot=Yard[Job.Slot]; const FVector Dock=YardHandover(Slot);
         const float Y=TerminalLayout::BlockY(Slot.Block)*100;
-        const FVector Entry(Dock.X,Y+2050,0),Exit(Dock.X,Y+2500,0);
+        const FVector Entry(Dock.X+1800,Y+2050,0),Exit(Dock.X,Y+2500,0);
         Network.Add(P(12500,Entry.Y),Entry);
         Network.Add(Dock,Exit);
         Network.Add(Exit,P(12500,Exit.Y));
-        Goal=Job.Stage==3?Entry:Park;
+        Goal=Job.Stage==3?Entry:(Job.ReturnSTS!=INDEX_NONE?Quay:Park);
     }
     const int32 ID=Vehicle->VehicleID;
     auto Cost=[&](FVector A,FVector B)
@@ -444,12 +478,18 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested)
             for(int32 I=Begin;I<End;++I) { Sum+=FVector::Dist2D(From,Route[I])+Cost(From,Route[I]); From=Route[I]; }
             return Sum;
         };
-        const int32 End=Job.Stage==3?Job.Route.Num()-1:Job.Route.Num();
+        const int32 End=Job.Stage==3?Job.YardEntryWaypoint+1:Job.Route.Num();
         if(Total(Candidate,0,Candidate.Num())+500>=Total(Job.Route,Job.Waypoint,End)) return false;
         ++Job.Reroutes;
         UE_LOG(LogTemp,Display,TEXT("AGV_REROUTE: V%d stage=%d count=%d"),ID,Job.Stage,Job.Reroutes);
     }
-    if(Job.Stage==3) Candidate.Add(YardHandover(Yard[Job.Slot]));
+    if(Job.Stage==3)
+    {
+        Job.YardEntryWaypoint=Candidate.Num()-1;
+        const FVector Dock=YardHandover(Yard[Job.Slot]);
+        Candidate.Add(FVector(Dock.X,Goal.Y,0));
+        Candidate.Add(Dock);
+    }
     Job.Route=MoveTemp(Candidate); Job.Waypoint=0;
     return true;
 }
@@ -462,67 +502,22 @@ void APortSiteLogistics::PrepareRoute(int32 Lane,bool Return)
         if(!PlanRoadRoute(Lane,false)) Stop(TEXT("No road route between berth and yard"));
         return;
     }
-    auto& Job=Jobs[Lane]; const FVector Quay=CargoQuay(Job.Cargo), YardPoint=YardHandover(Yard[Job.Slot]);
+    auto& Job=Jobs[Lane];
+    const FVector Quay=CargoQuay(Job.Cargo),Dock=YardHandover(Yard[Job.Slot]);
     const float BlockY=TerminalLayout::BlockY(Yard[Job.Slot].Block)*100.f;
     Job.Route.Reset(); Job.Waypoint=0;
-    if (!Return)
+    if(!Return)
     {
-        if (LaneCount==9)
-        {
-            // Separate inbound aisle (65 m) and outbound aisle (35 m).
-            // Cross behind the south end of the fleet parking strip.
-            if (Quay.Y>0)
-            {
-                // Cross before the worker-rest apron, not beyond the right-hand road.
-                Job.Route.Add(FVector(TerminalLayout::SiteCmX(5500),Quay.Y,0));
-                for (float Y=Quay.Y+3000;Y<TerminalLayout::AGVNorthCrossY-1600;Y+=3000) Job.Route.Add(FVector(TerminalLayout::SiteCmX(5500),Y,0));
-                Job.Route.Add(FVector(TerminalLayout::SiteCmX(5500),TerminalLayout::AGVNorthCrossY,0));
-                Job.Route.Add(FVector(TerminalLayout::SiteCmX(16500),TerminalLayout::AGVNorthCrossY,0));
-                for (float Y=TerminalLayout::AGVNorthCrossY-3000;Y>BlockY+2050+1600;Y-=3000) Job.Route.Add(FVector(TerminalLayout::SiteCmX(16500),Y,0));
-                Job.Route.Add(FVector(TerminalLayout::SiteCmX(16500),BlockY+2050,0));
-                Job.Route.Add(FVector(YardPoint.X,BlockY+2050,0));
-                Job.Route.Add(YardPoint);
-                return;
-            }
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(3500),Quay.Y,0));
-            for (float Y=Quay.Y-3000;Y>TerminalLayout::AGVSouthLoadedY+1600;Y-=3000) Job.Route.Add(FVector(TerminalLayout::SiteCmX(3500),Y,0));
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(3500),TerminalLayout::AGVSouthLoadedY,0));
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(12500),TerminalLayout::AGVSouthLoadedY,0));
-            for (float Y=TerminalLayout::AGVSouthLoadedY+3000;Y<BlockY+2050-1600;Y+=3000) Job.Route.Add(FVector(TerminalLayout::SiteCmX(12500),Y,0));
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(12500),BlockY+2050,0));
-            Job.Route.Add(FVector(YardPoint.X,BlockY+2050,0));
-            Job.Route.Add(YardPoint);
-            return;
-        }
         const float RoadX=TerminalLayout::SiteCmX(BlockY+2050>=Quay.Y?12500.f:16500.f);
-        Job.Route.Add(FVector(RoadX,Quay.Y,0));
-        Job.Route.Add(FVector(RoadX,BlockY+2050,0));
-        Job.Route.Add(FVector(YardPoint.X,BlockY+2050,0));
-        Job.Route.Add(YardPoint);
+        Job.Route={FVector(RoadX,Quay.Y,0),FVector(RoadX,BlockY+2050,0),
+            FVector(Dock.X+1800,BlockY+2050,0),FVector(Dock.X,BlockY+2050,0),Dock};
+        Job.YardEntryWaypoint=2;
     }
     else
     {
-        if (LaneCount==9)
-        {
-            const FVector Park=FleetPark(Lane);
-            const float RoadX=TerminalLayout::SiteCmX(14500.f);
-            Job.Route={FVector(YardPoint.X,BlockY+2500,0),FVector(RoadX,BlockY+2500,0)};
-            for (float Y=BlockY+2500-3000;Y>TerminalLayout::AGVSouthReturnY+1600;Y-=3000)
-                Job.Route.Add(FVector(RoadX,Y,0));
-            Job.Route.Add(FVector(RoadX,TerminalLayout::AGVSouthReturnY,0));
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(9000),TerminalLayout::AGVSouthReturnY,0));
-            for (float Y=TerminalLayout::AGVSouthReturnY+3000;Y<Park.Y-1600;Y+=3000)
-                Job.Route.Add(FVector(TerminalLayout::SiteCmX(9000),Y,0));
-            Job.Route.Add(FVector(TerminalLayout::SiteCmX(9000),Park.Y,0));
-            Job.Route.Add(Park);
-            return;
-        }
-        Job.Route.Add(FVector(YardPoint.X,BlockY+2500,0));
         const float RoadX=TerminalLayout::SiteCmX(Quay.Y+2000>=BlockY+2500?12500.f:16500.f);
-        Job.Route.Add(FVector(RoadX,BlockY+2500,0));
-        Job.Route.Add(FVector(RoadX,Quay.Y+2000,0));
-        Job.Route.Add(FVector(Quay.X,Quay.Y+2000,0));
-        Job.Route.Add(Quay);
+        Job.Route={FVector(Dock.X,BlockY+2500,0),FVector(RoadX,BlockY+2500,0),
+            FVector(RoadX,Quay.Y+2000,0),FVector(Quay.X,Quay.Y+2000,0),Quay};
     }
 }
 
@@ -608,7 +603,7 @@ bool APortSiteLogistics::MoveVehicle(APortAGVActor* Vehicle,FVector Target,float
         if (Jobs.IsValidIndex(FleetIndex))
         {
             const auto& Job=Jobs[FleetIndex];
-            const int32 RouteEnd=(Job.Stage==3 && !Job.bRMGReserved)?Job.Route.Num()-1:Job.Route.Num();
+            const int32 RouteEnd=(Job.Stage==3 && !Job.bRMGReserved)?Job.YardEntryWaypoint+1:Job.Route.Num();
             TrafficJunctionPolicy::AppendExitCorridor(Segments,Job.Route,Job.Waypoint,RouteEnd,
                 [&](int32 NextIndex)
                 {
@@ -664,6 +659,11 @@ bool APortSiteLogistics::MoveVehicle(APortAGVActor* Vehicle,FVector Target,float
 bool APortSiteLogistics::Drive(int32 Lane,float Dt)
 {
     auto& Job=Jobs[Lane]; auto* Vehicle=Vehicles[Lane].Get();
+    // Never enter an occupied STS handover. The assigned cargo stays in the
+    // prepared slot until this empty vehicle arrives and takes ownership.
+    if(Job.Stage==5 && Job.ReturnSTS!=INDEX_NONE && Job.Waypoint==Job.Route.Num()-1 &&
+        (STSOwners[Job.ReturnSTS]!=INDEX_NONE || !PreparedStarted[Job.ReturnSTS]))
+    { Vehicle->Speed=0; return false; }
     if(LaneCount==9)
     {
         const FVector P=Vehicle->GetActorLocation(),Target=Job.Route[Job.Waypoint];
@@ -691,7 +691,7 @@ bool APortSiteLogistics::Drive(int32 Lane,float Dt)
     if (LaneCount!=9 && Job.Stage==3 && Job.Waypoint==Job.Route.Num()-3) Vehicle->SetActorRotation(FRotator(0,90,0));
     ++Job.Waypoint;
     // Stop off the spine at the existing yard entry point, clear of the handover and exit lanes.
-    if(Job.Stage==3 && !Job.bRMGReserved && Job.Waypoint==Job.Route.Num()-1) return true;
+    if(Job.Stage==3 && !Job.bRMGReserved && Job.Waypoint==Job.YardEntryWaypoint+1) return true;
     if (Job.Waypoint<Job.Route.Num()) return false;
     if (Job.Stage==5) Vehicle->SetActorRotation(FRotator::ZeroRotator);
     return true;
@@ -817,7 +817,14 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
             Job.Stage=3; break;
         case 3:
             if (!Drive(Lane,Dt)) break;
-            if(!Job.bRMGReserved) { Job.Stage=9; break; }
+            if(!Job.bRMGReserved)
+            {
+                Job.Stage=9;
+                const int32 ID=Vehicle->VehicleID;
+                RoadReservations.Remove(ID); ReservationIndex.Remove(ID); RoadTargets.Remove(ID);
+                FinishedRoadSegments.Remove(ID);
+                break;
+            }
             YardApproachOwners[Yard[Job.Slot].Block]=INDEX_NONE;
             // Keep the twist locks engaged until the RMG actually picks up the box.
             if (!Equipment[Job.RMG]->AssignCargo(Cargo,Vehicle->CargoPosition(),Yard[Job.Slot].Position,false,true,Vehicle))
@@ -844,11 +851,22 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
             if(!SaveReports()) { Stop(TEXT("Could not save site STS shipment report")); return; }
             UE_LOG(LogTemp,Display,TEXT("SITE_DELIVERED: C%d via AGV%d -> RMG%d; total=%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1,Delivered);
             Job.Actor=nullptr;
+            AssignReturnSTS(Lane);
+            if(!Fault.IsEmpty()) return;
             PrepareRoute(Lane,true); Job.Stage=5; break;
         case 5:
             if (!Drive(Lane,Dt)) break;
             if (!Job.bYardReleased) RMGBusy[Job.RMG]=false;
-            Job=FSiteTransfer(); break;
+            if(Job.ReturnSTS!=INDEX_NONE)
+            {
+                const int32 STS=Job.ReturnSTS;
+                if(NextVehicles[STS]!=Lane || PreparedCargo[STS]!=Job.ReturnCargo)
+                { Stop(TEXT("Direct return lost assigned STS cargo")); return; }
+                ActivateVehicle(Lane,STS,true);
+                if(!Fault.IsEmpty()) return;
+            }
+            else Job=FSiteTransfer();
+            break;
         default: Stop(TEXT("Unknown dispatch stage")); return;
         }
     }
@@ -985,6 +1003,10 @@ bool APortSiteLogistics::Validate(FString& Error) const
             { Error=TEXT("Queued AGV moved without a road reservation"); return false; }
             continue;
         }
+        if(Job.ReturnSTS!=INDEX_NONE &&
+            (Job.Stage!=5 || NextVehicles[Job.ReturnSTS]!=Lane || PreparedCargo[Job.ReturnSTS]!=Job.ReturnCargo ||
+                Job.Actor.IsValid() || Job.Route.IsEmpty() || !Job.Route.Last().Equals(CargoQuay(Job.ReturnCargo),.1f)))
+        { Error=TEXT("Invalid direct STS return assignment"); return false; }
         if (JobCargo.Contains(Job.Cargo)) { Error=TEXT("Duplicate job cargo"); return false; }
         JobCargo.Add(Job.Cargo);
         if (!Manifest.IsValidIndex(Job.Cargo)) { Error=TEXT("Missing job manifest entry"); return false; }
@@ -1007,7 +1029,7 @@ bool APortSiteLogistics::Validate(FString& Error) const
         if(Job.Slot!=INDEX_NONE && !Job.bRMGReserved &&
             ((Job.Stage!=3 && Job.Stage!=9) || YardApproachOwners[Yard[Job.Slot].Block]!=Lane))
         { Error=TEXT("Missing yard approach admission"); return false; }
-        if(Job.Stage==9 && (Vehicles[Lane]->Speed>.1f || Job.Waypoint!=Job.Route.Num()-1 ||
+        if(Job.Stage==9 && (Vehicles[Lane]->Speed>.1f || Job.Waypoint!=Job.YardEntryWaypoint+1 ||
             !Vehicles[Lane]->GetActorLocation().Equals(Job.Route[Job.Waypoint-1],.1f)))
         { Error=TEXT("AGV is not stopped inside its yard entry bay"); return false; }
         if (Job.Actor.IsValid())

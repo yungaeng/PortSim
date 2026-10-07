@@ -1,4 +1,4 @@
-﻿#include "QuayCrane.h"
+#include "QuayCrane.h"
 #include "PortWorkingCrane.h"
 #include "PortSiteLogistics.h"
 #include "TerminalLayout.h"
@@ -127,6 +127,34 @@ void AQuayCrane::BuildTerminalSite()
     Box(Roads,FVector(145,0,.24),FVector(50,1020,.06));
     for(int32 I=0;I<85;++I)
         Box(White,FVector(145,-500+I*12,.29),FVector(.15,5,.02));
+    // Paint the same parking-crossing network used by the AGV path planner.
+    for(int32 Gap=0;Gap<TerminalLayout::AGVParkBays-1;++Gap)
+    {
+        const float Y=TerminalLayout::AGVParkCrossingY(Gap)/100.f;
+        const float Width=TerminalLayout::AGVParkCrossingWidthM;
+        Box(Roads,FVector(100,Y,.25f),FVector(130,Width,.06f));
+        for(float Side:{-1.f,1.f})
+            Box(PaintYellow,FVector(100,Y+Side*Width*.5f,.30f),FVector(130,.12f,.02f));
+        const float Direction=TerminalLayout::AGVParkCrossingToYard(Gap)?1.f:-1.f;
+        for(float X:{65.f,105.f,145.f})
+        {
+            const float WorldX=TerminalLayout::SiteX(X);
+            OrientedBox(White,FVector(WorldX,Y,.31f),FVector(4,.18f,.02f),0);
+            for(float Side:{-1.f,1.f})
+                OrientedBox(White,FVector(WorldX+Direction*1.25f,Y+Side*.65f,.31f),
+                    FVector(1.8f,.18f,.02f),-Direction*Side*45.f);
+        }
+    }
+    for(int32 Vehicle=0;Vehicle<TerminalLayout::AGVParkRows*TerminalLayout::AGVParkBays;++Vehicle)
+    {
+        const float X=TerminalLayout::SiteCmX(TerminalLayout::AGVParkX(Vehicle))/100.f;
+        const float Y=TerminalLayout::AGVParkY(Vehicle)/100.f;
+        for(float Side:{-1.f,1.f})
+        {
+            OrientedBox(White,FVector(X+Side*2.5f,Y,.30f),FVector(.12f,16.f,.02f),0);
+            OrientedBox(White,FVector(X,Y+Side*8.f,.30f),FVector(5.f,.12f,.02f),0);
+        }
+    }
     // Rounded quay-side corners join the straight inland service road.
     BezierRoad(Roads,{145,-480},{145,-505},{170,-505},{195,-505},18,10);
     RoadSegment(Roads,{195,-505},{595,-505},18);

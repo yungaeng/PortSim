@@ -111,7 +111,24 @@ namespace TerminalLayout
     constexpr float AGVSouthLoadedY = -48750.f;
     constexpr float AGVSouthReturnY = -50250.f;
     constexpr float AGVParkFirstY = -46000.f;
-    constexpr float AGVParkPitch = 2300.f;
+    // Three 20-bay rows leave room for a full AGV envelope between parked bays.
+    constexpr int AGVParkRows=3, AGVParkBays=20;
+    constexpr float AGVParkPitch = 3300.f;
+    constexpr float AGVParkCrossingWidthM=18.f;
+    constexpr float AGVParkX(int Vehicle)
+    { return Vehicle/AGVParkBays==0?8000.f:(Vehicle/AGVParkBays==1?10000.f:11200.f); }
+    constexpr float AGVParkY(int Vehicle)
+    { return AGVParkFirstY+(Vehicle%AGVParkBays)*AGVParkPitch; }
+    constexpr float AGVParkExitX(int Vehicle)
+    { return Vehicle/AGVParkBays==0?7200.f:(Vehicle/AGVParkBays==1?9000.f:12500.f); }
+    constexpr float AGVParkReturnX(int Vehicle)
+    { return Vehicle/AGVParkBays==2?12500.f:9000.f; }
+    constexpr float AGVParkCrossingY(int Gap)
+    { return AGVParkFirstY+(Gap+.5f)*AGVParkPitch; }
+    constexpr bool AGVParkCrossingToYard(int Gap) { return Gap%2==0; }
+    static_assert(AGVParkRows*AGVParkBays==60,"All fleet vehicles need a parking bay");
+    static_assert(AGVParkPitch*.5f>2*730.f+150.f,"Crossings clear parked and moving AGV envelopes");
+    static_assert(AGVParkY(AGVParkBays-1)+730.f<23800.f,"Parking stays below the worker-rest apron");
     inline bool AGVEnvelopeInside(double MinX,double MaxX,double MinY,double MaxY)
     {
         if (MinX<SiteCmX(2000.f) || MaxX>SiteCmX(62000.f) || MinY<-51000.f || MaxY>36000.f)
