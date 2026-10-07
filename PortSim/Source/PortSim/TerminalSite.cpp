@@ -3,7 +3,9 @@
 #include "PortSiteLogistics.h"
 #include "TerminalLayout.h"
 #include "Components/HierarchicalInstancedStaticMeshComponent.h"
-#include "Components/TextRenderComponent.h"
+#include "Components/WidgetComponent.h"
+#include "Widgets/Text/STextBlock.h"
+#include "Styling/CoreStyle.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 #include "Materials/MaterialInterface.h"
@@ -111,49 +113,34 @@ void AQuayCrane::BuildTerminalSite()
     };
     auto Label=[&](const FString& Name,FVector Position,float Size=4.f)
     {
-        auto* Text=NewObject<UTextRenderComponent>(SiteActor);
-        SiteActor->AddInstanceComponent(Text);
+        // Slate uses composite-font fallback so Korean glyphs render on world labels.
+        auto* Text=NewObject<UWidgetComponent>(SiteActor);
         Text->SetupAttachment(Root);
         Position.X=TerminalLayout::SiteX(Position.X); Text->SetRelativeLocation(Position*100.);
         Text->SetRelativeRotation(FRotator(90,0,0));
-        Text->SetHorizontalAlignment(EHTA_Center);
-        Text->SetWorldSize(Size*100.f);
-        Text->SetTextRenderColor(FColor::White);
-        Text->SetText(FText::FromString(Name));
+        Text->SetDrawSize(FVector2D(FMath::Max(256,Name.Len()*80),128));
+        Text->SetPivot(FVector2D(.5f,.5f));
+        Text->SetRelativeScale3D(FVector(Size*100.f/80.f));
+        Text->SetTwoSided(true);
+        Text->SetTickWhenOffscreen(true);
         Text->RegisterComponent();
+        Text->SetSlateWidget(SNew(STextBlock)
+            .Text(FText::FromString(Name))
+            .Font(FCoreStyle::GetDefaultFontStyle("Regular",48))
+            .ColorAndOpacity(FLinearColor::White)
+            .Justification(ETextJustify::Center));
     };
     // The approved plan has a continuous yard loop and a bent inland road
     // into the gate. No diagonal roads cut across the open cargo hardstand.
     Box(Roads,FVector(145,0,.24),FVector(50,1020,.06));
     for(int32 I=0;I<85;++I)
         Box(White,FVector(145,-500+I*12,.29),FVector(.15,5,.02));
-    // Paint the same parking-crossing network used by the AGV path planner.
+    // Keep AGV crossing pavement without arrows, yellow edges or waiting-bay outlines.
     for(int32 Gap=0;Gap<TerminalLayout::AGVParkBays-1;++Gap)
     {
         const float Y=TerminalLayout::AGVParkCrossingY(Gap)/100.f;
         const float Width=TerminalLayout::AGVParkCrossingWidthM;
         Box(Roads,FVector(100,Y,.25f),FVector(130,Width,.06f));
-        for(float Side:{-1.f,1.f})
-            Box(PaintYellow,FVector(100,Y+Side*Width*.5f,.30f),FVector(130,.12f,.02f));
-        const float Direction=TerminalLayout::AGVParkCrossingToYard(Gap)?1.f:-1.f;
-        for(float X:{65.f,105.f,145.f})
-        {
-            const float WorldX=TerminalLayout::SiteX(X);
-            OrientedBox(White,FVector(WorldX,Y,.31f),FVector(4,.18f,.02f),0);
-            for(float Side:{-1.f,1.f})
-                OrientedBox(White,FVector(WorldX+Direction*1.25f,Y+Side*.65f,.31f),
-                    FVector(1.8f,.18f,.02f),-Direction*Side*45.f);
-        }
-    }
-    for(int32 Vehicle=0;Vehicle<TerminalLayout::AGVParkRows*TerminalLayout::AGVParkBays;++Vehicle)
-    {
-        const float X=TerminalLayout::SiteCmX(TerminalLayout::AGVParkX(Vehicle))/100.f;
-        const float Y=TerminalLayout::AGVParkY(Vehicle)/100.f;
-        for(float Side:{-1.f,1.f})
-        {
-            OrientedBox(White,FVector(X+Side*2.5f,Y,.30f),FVector(.12f,16.f,.02f),0);
-            OrientedBox(White,FVector(X,Y+Side*8.f,.30f),FVector(5.f,.12f,.02f),0);
-        }
     }
     // Rounded quay-side corners join the straight inland service road.
     BezierRoad(Roads,{145,-480},{145,-505},{170,-505},{195,-505},18,10);
@@ -226,7 +213,7 @@ void AQuayCrane::BuildTerminalSite()
             for (float Side:{-1.f,1.f})
                 Box(White,FVector(HX,Y+13.2f+Side*1.8f,.30),FVector(15,.12,.02));
         }
-        const TCHAR* ZoneCode=TEXT("CY");
+        const TCHAR* ZoneCode=TEXT("야드");
         Label(FString::Printf(TEXT("%s %02d"),ZoneCode,Block+1),FVector(177,Y,.4),2.5f);
     }
     // Reefer blocks use the same slot markings; no overlapping zone rectangle.
@@ -235,11 +222,11 @@ void AQuayCrane::BuildTerminalSite()
     RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},16);
     for(float X=185;X<620;X+=12)
         Box(White,FVector(X,TerminalLayout::CentralRoadY,.39),FVector(5,.18,.025));
-    Label(TEXT("LEFT YARD 01-09"),FVector(610,-325,.4),3.f);
-    Label(TEXT("RIGHT YARD 10-23"),FVector(610,92.5,.4),3.f);
+    Label(TEXT("좌측 야드 01-09"),FVector(610,-325,.4),3.f);
+    Label(TEXT("우측 야드 10-23"),FVector(610,92.5,.4),3.f);
     // Facility 7 from the marked satellite: inland ends of five central blocks.
     // Reefer identity is shown by its label and equipment, without lines crossing slots.
-    Label(TEXT("7 REEFER CONTAINER AREA"),FVector(515,-65,22),3.5f);
+    Label(TEXT("7 냉동 컨테이너 구역"),FVector(515,-65,22),3.5f);
     for(int32 B=9;B<14;++B)
     {
         const float Y=TerminalLayout::BlockY(B)-12.f;
@@ -258,8 +245,7 @@ void AQuayCrane::BuildTerminalSite()
         if (bUnifiedTerminal)
         {
             Box(Roads,FVector(55,Y+28,.25),FVector(4.2,15,.06));
-            for (float Side:{-1.f,1.f}) Box(White,FVector(55+Side*2.1f,Y+28,.31),FVector(.12,15,.02));
-            Label(TEXT("AGV APPROACH"),FVector(55,Y+28,.4),1.f);
+            Label(TEXT("무인운반차 진입"),FVector(55,Y+28,.4),1.f);
         }
         auto* Crane=GetWorld()->SpawnActor<APortWorkingCrane>(FVector(1200,Y*100,0),FRotator::ZeroRotator,Params);
         WorkingCranes.Add(Crane);
@@ -298,7 +284,7 @@ void AQuayCrane::BuildTerminalSite()
     auto Building=[&](const TCHAR* Name,float X,float Y,FVector Size)
     {
         OrientedBox(Buildings,FVector(TerminalLayout::SiteX(X),Y,.2+Size.Z*.5),Size,0);
-        auto* Roof=(FCString::Strstr(Name,TEXT("OPERATIONS")) || FCString::Strstr(Name,TEXT("CONTROL")) || FCString::Strstr(Name,TEXT("SUBSTATION")))?White:Blue;
+        auto* Roof=(FCString::Strstr(Name,TEXT("운영동")) || FCString::Strstr(Name,TEXT("관제동")) || FCString::Strstr(Name,TEXT("주변전소")))?White:Blue;
         OrientedBox(Roof,FVector(TerminalLayout::SiteX(X),Y,.4+Size.Z),FVector(Size.X+1,Size.Y+1,.35),0);
         Label(Name,FVector(X,Y,Size.Z+1),3.f);
     };
@@ -311,12 +297,10 @@ void AQuayCrane::BuildTerminalSite()
     // Footprints and open areas follow the approved top-down plan V3.
     // Published quay length and area set scale; the drawing is not a cadastral survey.
     // Shrink rear edges to X=700, inside the narrowest site boundary (X=705).
-    ZoneOutline(White,{Operations.X-8,Operations.Y},{38,60});
-    Building(TEXT("1 OPERATIONS"),Operations.X,Operations.Y,FVector(24,36,8));
-    Building(TEXT("1 CONTROL"),Operations.X+7,Operations.Y-7,FVector(12,14,22));
+    Building(TEXT("1 운영동"),Operations.X,Operations.Y,FVector(24,36,8));
+    Building(TEXT("1 관제동"),Operations.X+7,Operations.Y-7,FVector(12,14,22));
     Parking({Operations.X,Operations.Y-35},{42,16},6);
-    Building(TEXT("6 SUBSTATION"),Substation.X,Substation.Y,FVector(18,88,6));
-    ZoneOutline(White,Substation,{44,110});
+    Building(TEXT("6 주변전소"),Substation.X,Substation.Y,FVector(18,88,6));
     // Replace the two rear road stretches beside the substation with parking.
     // Physical 5 m-deep bays on both sides leave a central circulation aisle.
     auto RearParking=[&](float CenterY,float Length,int32 Bays)
@@ -335,8 +319,7 @@ void AQuayCrane::BuildTerminalSite()
     RearParking(-235,62,14);
 
     // 2 is on the quay-side strip, clear of the operational AGV lanes.
-    ZoneOutline(White,Rest,{40,74});
-    Building(TEXT("2 WORKER REST"),Rest.X,Rest.Y,FVector(14,44,5));
+    Building(TEXT("2 작업자 대기소"),Rest.X,Rest.Y,FVector(14,44,5));
 
     // Open paved staff parking east of the rest building, below maintenance.
     // Two rows of 5 m-deep bays flank a generous central circulation apron.
@@ -349,37 +332,37 @@ void AQuayCrane::BuildTerminalSite()
             Box(White,FVector(X,350+Bay*5,.31),FVector(10,.15,.03));
         Box(White,FVector(X+(X<72?-5:5),390,.31),FVector(.25,80,.03));
     }
-    Label(TEXT("STAFF PARKING"),FVector(72,391,.4),2.5f);
+    Label(TEXT("직원 주차장"),FVector(72,391,.4),2.5f);
 
     // Three distinct blue roofs identified in close-up 2.
     // Shared maintenance apron: retain parking markings without an oversized perimeter box.
-    Building(TEXT("3 MAINTENANCE"),Maintenance.X,Maintenance.Y,FVector(72,28,12));
-    Building(TEXT("3 QUAY SIDE"),Maintenance.X-85,Maintenance.Y+15,FVector(73.f*127.f/154.f-1.f,29.f*52.f/61.f-1.f,8));
-    Building(TEXT("3 GATE SIDE"),Maintenance.X+130,Maintenance.Y+5,FVector(18,16,7));
+    Building(TEXT("3 정비동"),Maintenance.X,Maintenance.Y,FVector(72,28,12));
+    Building(TEXT("3 안벽측 정비동"),Maintenance.X-85,Maintenance.Y+15,FVector(73.f*127.f/154.f-1.f,29.f*52.f/61.f-1.f,8));
+    Building(TEXT("3 게이트측 정비동"),Maintenance.X+130,Maintenance.Y+5,FVector(18,16,7));
     // Maintenance apron intentionally has no internal pavement markings.
     for(int I=0;I<6;++I)
         OrientedBox(White,FVector(TerminalLayout::SiteX(Maintenance.X)-30+I*12,Maintenance.Y-14.2,4.2),FVector(7,.3,8),0);
     // Equipment parking shares the apron; no extra outline across the access road.
-    Label(TEXT("PARKED SUPPORT EQUIPMENT"),FVector(755,395,.5),3);
+    Label(TEXT("지원 장비 주차장"),FVector(755,395,.5),3);
     // CIS and unused cargo facility 8 share one continuous rectangular block.
     // Extend the shared block to the inland edge of the 22 m service road.
     // Road width is rendered at 75%; Box scales authored X coordinates.
     constexpr float SharedApronRoadEdgeX=635.f+(22.f*.75f*.5f)/TerminalLayout::PlanDepthScale;
     Box(Roads,FVector((SharedApronRoadEdgeX+850.f)*.5f,435,.23),
         FVector(850.f-SharedApronRoadEdgeX,270,.04));
-    Building(TEXT("5 CIS"),CIS.X,CIS.Y,FVector(24,25.f*110.f/62.f-1.f,7));
+    Building(TEXT("5 컨테이너 검사소"),CIS.X,CIS.Y,FVector(24,25.f*110.f/62.f-1.f,7));
     Parking({CIS.X,CIS.Y-36},{40,12},8);
 
     // Exactly two small blue-roof buildings. Adjacent long rectangles in the photo are cargo.
     // Keep one work-pad outline clear of the service-road junction.
-    Building(TEXT("10 REPAIR"),RepairWash.X,RepairWash.Y-7,FVector(8,7,4));
-    Building(TEXT("10 WASH"),RepairWash.X,RepairWash.Y+7,FVector(8,7,4));
+    Building(TEXT("10 수리장"),RepairWash.X,RepairWash.Y-7,FVector(8,7,4));
+    Building(TEXT("10 세척장"),RepairWash.X,RepairWash.Y+7,FVector(8,7,4));
     // Wash-pad paint is drawn below, clear of the empty-yard perimeter.
-    Label(TEXT("10 REPAIR / WASH WORK AREA"),FVector(RepairWash.X-22,RepairWash.Y+17,.50),1.6f);
+    Label(TEXT("10 수리·세척 작업 구역"),FVector(RepairWash.X-22,RepairWash.Y+17,.50),1.6f);
     // 8 occupies the inland/eastern hardstand; the gate is below it on the
     // side boundary rather than at the rear edge.
     // The shared apron is created with CIS above, without a narrow connector.
-    Label(TEXT("8 NON-STANDARD CARGO"),FVector(840,500,.5),4);
+    Label(TEXT("8 비규격 화물 구역"),FVector(840,500,.5),4);
     // Overview registration: inland entrance, canopy perpendicular to the X approach.
     OrientedBox(Blue,FVector(TerminalLayout::SiteX(TerminalLayout::GateX),TerminalLayout::GateY,7),FVector(10,20,.6),0);
     for(int32 Lane=0;Lane<=4;++Lane)
@@ -397,7 +380,7 @@ void AQuayCrane::BuildTerminalSite()
         Box(White,FVector(8,Y,.39),FVector(.18,5,.025));
     Box(White,FVector(-6,0,.39),FVector(.35,1050,.06));
     RoadSegment(Roads,{20,630},{145,630},16);
-    Label(TEXT("4 GATE"),FVector(TerminalLayout::GateX,TerminalLayout::GateY,11),4);
+    Label(TEXT("4 출입구"),FVector(TerminalLayout::GateX,TerminalLayout::GateY,11),4);
     // Asphalt is continuous; thin paint defines circulation and work areas.
 
 
@@ -437,7 +420,7 @@ void AQuayCrane::BuildTerminalSite()
     // Sea is at smaller X; the reference is rotated 180 degrees from plan view.
     ZoneOutline(White,{309,471},{230,30});
     ZoneOutline(White,{469,471},{58,30});
-    Label(TEXT("9 EMPTY CONTAINER YARD"),FVector(395,447,.45),3.f);
+    Label(TEXT("9 빈 컨테이너 야드"),FVector(395,447,.45),3.f);
     auto RoadPaint=[&](UHierarchicalInstancedStaticMeshComponent* Mesh,FVector2D A,FVector2D B,float Width=.18f)
     {
         A.X=TerminalLayout::SiteX(A.X); B.X=TerminalLayout::SiteX(B.X);
@@ -611,7 +594,7 @@ void AQuayCrane::BuildTerminalSite()
     }
     for(float X=195;X<600;X+=12)
         RoadPaint(White,{X,-505},{X+5,-505});
-    Label(TEXT("DGT | BUSAN NEW PORT 7 | 1,050 m"),FVector(72,-200,.4),5.f);
+    Label(TEXT("부산항 신항 7부두 | 1,050 미터"),FVector(72,-200,.4),5.f);
     SiteLogistics->Initialize(WorkingCranes,MoveTemp(YardSlots),{Blue,Yellow,Red,Green},bUnifiedTerminal?0:24,FixedYard);
     SiteLogistics->RegisterBerthVehicles(AGVActors);
     if (bUnifiedTerminal) BuildSupportFleet();
