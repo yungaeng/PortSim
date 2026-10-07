@@ -4,6 +4,7 @@
 #include "PortWorkingCrane.h"
 #include "PortContainerActor.h"
 #include "PortAGVActor.h"
+#include "AGVReference.h"
 #include "SpreaderTelescope.h"
 #include "Components/SceneComponent.h"
 #include "Components/StaticMeshComponent.h"
@@ -341,6 +342,20 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
     Root->SetNumberField(TEXT("receiving_capacity"),ReceivingCapacity);
     Root->SetNumberField(TEXT("peak_moving_agvs"),PeakMovingVehicles);
     Root->SetNumberField(TEXT("prefetched_jobs"),PrefetchedJobs);
+    TArray<TSharedPtr<FJsonValue>> ReturnCorridors;
+    static const TCHAR* ReturnNames[]={TEXT("south"),TEXT("central"),TEXT("north")};
+    for(int32 Corridor=0;Corridor<TerminalLayout::AGVReturnCorridorCount;++Corridor)
+    {
+        auto O=Object();
+        O->SetStringField(TEXT("name"),ReturnNames[Corridor]);
+        O->SetNumberField(TEXT("cross_y_m"),TerminalLayout::AGVReturnCrossY(Corridor)*.01f);
+        O->SetNumberField(TEXT("assigned_returns"),ReturnRouteCounts[Corridor]);
+        int32 Active=0;
+        for(const auto& Job:Jobs) Active+=Job.Stage==5 && Job.ReturnCorridor==Corridor;
+        O->SetNumberField(TEXT("active_returns"),Active);
+        ReturnCorridors.Add(Value(O));
+    }
+    Root->SetArrayField(TEXT("agv_return_corridors"),ReturnCorridors);
     TSharedPtr<FJsonObject> Profile;
     if(FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(STSProfile.SnapshotJson),Profile)) Root->SetObjectField(TEXT("applied_profile"),Profile);
     TMap<AActor*,APortContainerActor*> AttachedCargo;
@@ -385,6 +400,35 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
             O->SetNumberField(TEXT("completed"),V->CompletedJobs);
             O->SetStringField(TEXT("state"),V->Speed>0?TEXT("working"):TEXT("idle"));
             O->SetNumberField(TEXT("payload_kg"),0);
+            O->SetNumberField(TEXT("reference_payload_max_kg"),AGVReference::MaximumPayloadKg);
+            Vector(O,TEXT("reference_vehicle_dimensions_m"),FVector(AGVReference::VehicleLengthCm,
+                AGVReference::VehicleWidthCm,AGVReference::VehicleHeightCm),.01f);
+            O->SetNumberField(TEXT("reference_straight_speed_max_mps"),AGVReference::ReferenceStraightSpeedCmPerSecond*.01f);
+            O->SetNumberField(TEXT("reference_curve_speed_max_mps"),AGVReference::ReferenceCurveSpeedCmPerSecond*.01f);
+            O->SetNumberField(TEXT("source_crab_speed_not_applied_mps"),AGVReference::SourceCrabSpeedNotAppliedCmPerSecond*.01f);
+            O->SetBoolField(TEXT("lateral_motion_enabled"),AGVReference::LateralMotionEnabled);
+            O->SetStringField(TEXT("motion_model"),TEXT("longitudinal_forward_reverse_steering"));
+            Vector(O,TEXT("estimated_position_m"),V->Sensors.EstimatedPosition,.01f);
+            Vector(O,TEXT("transponder_position_m"),V->Sensors.LastAbsolutePosition,.01f);
+            O->SetNumberField(TEXT("position_error_mm"),V->Sensors.PositionErrorCm*10.f);
+            O->SetNumberField(TEXT("position_accuracy_limit_mm"),AGVReference::PositionAccuracyCm*10.f);
+            O->SetNumberField(TEXT("wheel_odometry_m"),V->Sensors.WheelOdometryCm*.01f);
+            O->SetNumberField(TEXT("steering_angle_deg"),V->Sensors.SteeringAngleDegrees);
+            O->SetNumberField(TEXT("lateral_slip_mm"),V->Sensors.LateralSlipCm*10.f);
+            O->SetBoolField(TEXT("reversing"),V->Sensors.bReversing);
+            O->SetNumberField(TEXT("transponder_id"),V->Sensors.CurrentTransponderID);
+            O->SetBoolField(TEXT("transponder_locked"),V->Sensors.bTransponderLocked);
+            O->SetBoolField(TEXT("fms_connected"),V->Sensors.bFMSConnected);
+            O->SetBoolField(TEXT("fms_hold"),V->Sensors.bFMSHold);
+            O->SetNumberField(TEXT("fms_node_index"),V->Sensors.FMSNodeIndex);
+            O->SetNumberField(TEXT("fms_node_count"),V->Sensors.FMSNodeCount);
+            Vector(O,TEXT("fms_next_node_m"),V->Sensors.FMSNextNode,.01f);
+            O->SetNumberField(TEXT("lidar_front_obstacle_m"),V->Sensors.FrontObstacleDistanceCm<0?-1:V->Sensors.FrontObstacleDistanceCm*.01f);
+            O->SetNumberField(TEXT("lidar_rear_obstacle_m"),V->Sensors.RearObstacleDistanceCm<0?-1:V->Sensors.RearObstacleDistanceCm*.01f);
+            O->SetNumberField(TEXT("lidar_safety_distance_m"),V->Sensors.LiDARSafetyDistanceCm*.01f);
+            O->SetNumberField(TEXT("lidar_blocking_agv"),V->Sensors.LiDARBlockingVehicleID);
+            O->SetBoolField(TEXT("lidar_clear"),V->Sensors.bLiDARClear);
+            O->SetBoolField(TEXT("controlled_stop"),V->Sensors.bControlledStop);
             if (auto* const* C=AttachedCargo.Find(V))
             { O->SetStringField(TEXT("cargo"),(*C)->GetName()); O->SetNumberField(TEXT("payload_kg"),(*C)->MassKg); CargoPlan(O,*C); }
             const int32 Lane=Vehicles.IndexOfByKey(V);
@@ -399,9 +443,12 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
                 const int32 CargoIndex=J.Cargo!=INDEX_NONE?J.Cargo:
                     (PreparedCargo.IsValidIndex(J.STS)?PreparedCargo[J.STS]:INDEX_NONE);
                 if (Manifest.IsValidIndex(CargoIndex)) Vector(O,TEXT("handover_position_m"),CargoQuay(CargoIndex),.01f);
-                O->SetStringField(TEXT("state"),!Fault.IsEmpty()?TEXT("fault"):(Paused?TEXT("paused"):(J.Stage?TEXT("working"):TEXT("idle"))));
+                O->SetStringField(TEXT("state"),!Fault.IsEmpty()?TEXT("fault"):(Paused?TEXT("paused"):
+                    (V->Sensors.bControlledStop?TEXT("lidar_stop"):(V->Sensors.bFMSHold?TEXT("fms_hold"):(J.Stage?TEXT("working"):TEXT("idle"))))));
                 if(J.STS!=INDEX_NONE) O->SetStringField(TEXT("sts"),Equipment[YardCraneCount+J.STS]->GetName());
                 O->SetNumberField(TEXT("job_seconds"),J.Time);
+                if(J.ReturnCorridor!=INDEX_NONE)
+                    O->SetStringField(TEXT("return_corridor"),ReturnNames[J.ReturnCorridor]);
                 TArray<TSharedPtr<FJsonValue>> Route;
                 double Remaining=0; FVector P=V->GetActorLocation();
                 for(int32 I=J.Waypoint;I<J.Route.Num();++I)

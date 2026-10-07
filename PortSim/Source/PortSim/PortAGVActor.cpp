@@ -1,4 +1,5 @@
 #include "PortAGVActor.h"
+#include "AGVReference.h"
 #include "TerminalLayout.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
@@ -11,6 +12,12 @@ APortAGVActor::APortAGVActor()
     for (int32 Side:{-1,1}) for (int32 Axle:{-1,0,1})
         Box(*FString::Printf(TEXT("Bogie_AGV_%d_%d"),Side,Axle),RootComponent,FVector(Side*170,Axle*480,75),FVector(75,160,110));
     Box(TEXT("AGV_Sensor"),RootComponent,FVector(0,670,265),FVector(110,45,90));
+    Box(TEXT("Front_LiDAR"),RootComponent,FVector(0,700,250),FVector(70,35,55));
+    Box(TEXT("Rear_LiDAR"),RootComponent,FVector(0,-700,250),FVector(70,35,55));
+    Box(TEXT("Transponder_Antenna"),RootComponent,FVector(0,0,20),FVector(80,80,15));
+    Box(TEXT("Wheel_Encoder_Left"),RootComponent,FVector(-180,0,75),FVector(30,30,30));
+    Box(TEXT("Wheel_Encoder_Right"),RootComponent,FVector(180,0,75),FVector(30,30,30));
+    Box(TEXT("Steering_Encoder"),RootComponent,FVector(0,500,75),FVector(35,35,35));
     NameLabel=Label(TEXT("AGVLabel"),FVector(0,0,230));
     NameLabel->SetText(FText::FromString(TEXT("AGV")));
     Tags.Add(TEXT("PortSim.AGV"));
@@ -29,7 +36,11 @@ void APortAGVActor::InitializeVehicle(int32 Number)
 void APortAGVActor::ResetVehicle(FVector Position)
 {
     Speed=0; CompletedJobs=0; PayloadKg=0;
-    SetActorLocationAndRotation(Position,FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
+    // Park perpendicular to the aisle.  The first dispatch can therefore pull
+    // out longitudinally instead of requiring crab motion between neighbours.
+    SetActorLocationAndRotation(Position,FRotator(0,90,0),false,nullptr,ETeleportType::TeleportPhysics);
+    Sensors=FAGVSensorState(); Sensors.EstimatedPosition=Sensors.LastAbsolutePosition=Position;
+    DockingAxis=FVector::ZeroVector;
 }
 
 FVector APortAGVActor::CargoPosition() const
@@ -39,38 +50,187 @@ FVector APortAGVActor::CargoPosition() const
 
 bool APortAGVActor::MoveToX(float X,float Dt)
 {
-    FVector P=GetActorLocation();
-    const float Distance=FMath::Abs(X-P.X);
-    const float Acceleration=AccelerationCmPerSecondSquared();
-    const float Desired=FMath::Min(SpeedLimitCmPerSecond(),FMath::Sqrt(2.f*Acceleration*Distance));
-    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,Acceleration);
-    P.X+=FMath::Sign(X-P.X)*FMath::Min(Distance,Speed*Dt);
-    SetActorLocation(P);
-    if (FMath::Abs(X-P.X)<.1f) { Speed=0; return true; }
-    return false;
+    const FVector P=GetActorLocation(),Target(X,P.Y,P.Z);
+    SetFMSCommand(Target,0,1,true);
+    return MoveToPosition(Target,Dt,true);
 }
 
+FVector APortAGVActor::PlannedMotionDirection(FVector Target) const
+{
+    const FVector Longitudinal=GetActorRightVector().GetSafeNormal2D();
+    return Sensors.bReversing?-Longitudinal:Longitudinal;
+}
 
 bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
 {
-    const float Distance=FVector::Dist(GetActorLocation(),Target);
+    const FVector Previous=GetActorLocation();
+    const FVector ToTarget=Target-Previous;
+    const float Distance=ToTarget.Size2D();
+    const float Acceptance=Sensors.bDockingNode?AGVReference::DockingAccuracyCm:FMSAcceptanceCm;
+    const float AxialDot=DockingAxis.IsNearlyZero()?1.f:FMath::Abs(FVector::DotProduct(
+        GetActorRightVector().GetSafeNormal2D(),DockingAxis));
+    const float DockingHeadingError=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(AxialDot,0.f,1.f)));
+    const bool HeadingAligned=!Sensors.bDockingNode ||
+        DockingHeadingError<=AGVReference::DockingHeadingToleranceDegrees;
+    if(Distance<=Acceptance && HeadingAligned)
+    {
+        // No waypoint teleport is used.  Final docking keeps the supplied
+        // +/-50 mm limit; intermediate road nodes use the steering sweep.
+        CorrectAtTransponder(Previous);
+        Sensors.SteeringAngleDegrees=0;
+        Sensors.LateralSlipCm=0;
+        if(StopAtTarget) Speed=0;
+        return true;
+    }
+    FVector DesiredDirection=ToTarget.GetSafeNormal2D();
+    if(Sensors.bDockingNode && !DockingAxis.IsNearlyZero())
+    {
+        // Track the final FMS axis instead of chasing the docking point in a
+        // circle.  If the vehicle passes the longitudinal station it changes
+        // gear at zero speed and makes a normal car-like correction.
+        const float Along=FVector::DotProduct(ToTarget,DockingAxis);
+        const FVector LineCorrection=ToTarget-DockingAxis*Along;
+        const FVector CurrentAxis=Sensors.bReversing?-GetActorRightVector():GetActorRightVector();
+        // A car-like chassis cannot erase residual cross-track error by sliding
+        // sideways at the handover point.  Keep driving through the station and
+        // perform a short forward/reverse shunt until the longitudinal centreline
+        // is inside the 50 mm docking tolerance.
+        const float CrossTrackError=LineCorrection.Size2D();
+        const float CrossTrackBand=CrossTrackError>AGVReference::DockingAccuracyCm?
+            FMath::Clamp(CrossTrackError*10.f,100.f,300.f):AGVReference::DockingAccuracyCm;
+        const float HeadingBand=DockingHeadingError>AGVReference::DockingHeadingToleranceDegrees?
+            FMath::Clamp(2.f*AGVReference::MinimumInnerTurnRadiusCm*
+                FMath::DegreesToRadians(DockingHeadingError),50.f,300.f):AGVReference::DockingAccuracyCm;
+        const float ReversalBand=FMath::Max(CrossTrackBand,HeadingBand);
+        const float TravelSign=FMath::Abs(Along)>ReversalBand?(Along>=0.f?1.f:-1.f):
+            (FVector::DotProduct(CurrentAxis,DockingAxis)>=0.f?1.f:-1.f);
+        const FVector TravelAxis=DockingAxis*TravelSign;
+        const float LookAhead=FMath::Clamp(FMath::Abs(Along),100.f,1000.f);
+        DesiredDirection=(TravelAxis*LookAhead+LineCorrection).GetSafeNormal2D();
+        const bool Reverse=FVector::DotProduct(GetActorRightVector(),DesiredDirection)<0.f;
+        if(Reverse!=Sensors.bReversing)
+        {
+            if(Speed>.1f) { Speed=0; return false; }
+            Sensors.bReversing=Reverse;
+        }
+    }
+    const FVector MotionDirection=PlannedMotionDirection(Target);
+    Sensors.bReversing=FVector::DotProduct(MotionDirection,GetActorRightVector())<0;
+    const float Dot=FMath::Clamp(FVector::DotProduct(MotionDirection,DesiredDirection),-1.f,1.f);
+    const float Cross=MotionDirection.X*DesiredDirection.Y-MotionDirection.Y*DesiredDirection.X;
+    const float HeadingError=FMath::Atan2(Cross,Dot);
     const float Acceleration=AccelerationCmPerSecondSquared();
-    const float Limit=SpeedLimitCmPerSecond();
-    const float Desired=StopAtTarget?FMath::Min(Limit,FMath::Sqrt(2.f*Acceleration*Distance)):Limit;
+    const float Limit=FMath::Abs(HeadingError)>FMath::DegreesToRadians(5.f)?
+        FMath::Min(SpeedLimitCmPerSecond(),AGVReference::ReferenceCurveSpeedCmPerSecond):SpeedLimitCmPerSecond();
+    float Desired=StopAtTarget?FMath::Min(Limit,FMath::Sqrt(2.f*Acceleration*Distance)):Limit;
+    if((Sensors.bDockingNode || FMSAcceptanceCm<=100.f) &&
+        Distance<=AGVReference::DockingApproachDistanceCm)
+        Desired=FMath::Min(Desired,AGVReference::DockingSpeedCmPerSecond);
     Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,Acceleration);
-    SetActorLocation(FMath::VInterpConstantTo(GetActorLocation(),Target,Dt,Speed));
-    if (FVector::Dist(GetActorLocation(),Target)>.1f) return false;
-    SetActorLocation(Target); if (StopAtTarget) Speed=0; return true;
+    const float Travel=FMath::Min(Distance,Speed*Dt);
+    // Pure-pursuit curvature steers the longitudinal vehicle axis through the
+    // target.  Curvature is capped by the published 5.8 m inner turn radius.
+    // Use normal road smoothing between coarse FMS nodes.  During the final
+    // low-speed shunt, use the pure-pursuit look-ahead directly so small
+    // cross-track errors still produce useful steering.  Both paths remain
+    // capped by the same published 5.8 m inner turning radius below.
+    // Pure pursuit uses the actual distance to the active FMS point. Inflating
+    // this to two turn radii made a vehicle circle a nearby road node because
+    // its steering became weaker as it approached. The curvature clamp below
+    // remains the single physical 5.8 m minimum-radius constraint.
+    const float CurvatureLookAhead=FMath::Max(Distance,100.f);
+    const float RequestedCurvature=2.f*FMath::Sin(HeadingError)/CurvatureLookAhead;
+    const float Curvature=FMath::Clamp(RequestedCurvature,
+        -1.f/AGVReference::MinimumInnerTurnRadiusCm,1.f/AGVReference::MinimumInnerTurnRadiusCm);
+    const float YawStepRadians=Travel*Curvature;
+    AddActorWorldRotation(FRotator(0,FMath::RadiansToDegrees(YawStepRadians),0));
+    const FVector DrivenAxis=Sensors.bReversing?-GetActorRightVector():GetActorRightVector();
+    const FVector Delta=DrivenAxis.GetSafeNormal2D()*Travel;
+    SetActorLocation(Previous+Delta);
+    const FVector Lateral(-DrivenAxis.Y,DrivenAxis.X,0);
+    Sensors.LateralSlipCm=FMath::Abs(FVector::DotProduct(Delta,Lateral));
+    Sensors.SteeringAngleDegrees=FMath::RadiansToDegrees(FMath::Atan(
+        AGVReference::EffectiveWheelbaseCm*Curvature));
+    UpdateOdometry(Previous);
+    return false;
+}
+
+void APortAGVActor::SetFMSCommand(FVector Target,int32 NodeIndex,int32 NodeCount,bool Docking,float AcceptanceCm)
+{
+    const bool NewNode=!Sensors.FMSNextNode.Equals(Target,.01f) || Sensors.FMSNodeIndex!=NodeIndex;
+    if(NewNode)
+    {
+        if(Docking)
+        {
+            const FVector Axis=(Target-Sensors.FMSNextNode).GetSafeNormal2D();
+            if(!Axis.IsNearlyZero()) DockingAxis=Axis;
+        }
+        const FVector Desired=(Target-GetActorLocation()).GetSafeNormal2D();
+        if(!Desired.IsNearlyZero())
+        {
+            const bool Reverse=FVector::DotProduct(GetActorRightVector(),Desired)<0;
+            // Non-collinear route nodes stop before the next command, so gear
+            // changes occur at zero speed.  Collinear pass-through nodes retain
+            // the same direction and never reverse while moving.
+            if(Reverse!=Sensors.bReversing && Speed>.1f) Speed=0;
+            Sensors.bReversing=Reverse;
+        }
+    }
+    Sensors.FMSNextNode=Target; Sensors.FMSNodeIndex=NodeIndex; Sensors.FMSNodeCount=NodeCount;
+    Sensors.bFMSConnected=true; Sensors.bDockingNode=Docking;
+    FMSAcceptanceCm=AcceptanceCm>0.f?AcceptanceCm:AGVReference::WaypointAcceptanceCm;
+    if(!GetActorLocation().Equals(Target,AGVReference::DockingAccuracyCm)) Sensors.bTransponderLocked=false;
+}
+
+void APortAGVActor::SetFMSHold(bool Hold)
+{
+    Sensors.bFMSHold=Hold;
+    if(Hold) Speed=0;
+}
+
+void APortAGVActor::UpdateLiDARObservation(float FrontDistanceCm,float RearDistanceCm,float SafetyDistanceCm,
+    bool ControlledStop,int32 BlockingVehicleID)
+{
+    Sensors.FrontObstacleDistanceCm=FrontDistanceCm;
+    Sensors.RearObstacleDistanceCm=RearDistanceCm;
+    Sensors.LiDARSafetyDistanceCm=SafetyDistanceCm;
+    Sensors.LiDARBlockingVehicleID=BlockingVehicleID;
+    Sensors.bLiDARClear=!ControlledStop;
+    Sensors.bControlledStop=ControlledStop;
+    if(ControlledStop) Speed=0;
+}
+
+void APortAGVActor::UpdateOdometry(FVector PreviousPosition)
+{
+    const FVector Delta=GetActorLocation()-PreviousPosition;
+    Sensors.WheelOdometryCm+=Delta.Size2D();
+    Sensors.EstimatedPosition+=Delta;
+    Sensors.PositionErrorCm=FVector::Dist2D(Sensors.EstimatedPosition,GetActorLocation());
+}
+
+void APortAGVActor::CorrectAtTransponder(FVector Position)
+{
+    const int32 X=FMath::RoundToInt(Position.X);
+    const int32 Y=FMath::RoundToInt(Position.Y);
+    Sensors.CurrentTransponderID=int32(HashCombine(GetTypeHash(X),GetTypeHash(Y))&0x7fffffff);
+    Sensors.LastAbsolutePosition=Position;
+    const float Phase=VehicleID*.61803398875f+X*.0001f+Y*.00013f;
+    const FVector BoundedError(FMath::Sin(Phase),FMath::Cos(Phase),0);
+    Sensors.EstimatedPosition=Position+BoundedError*AGVReference::PositionAccuracyCm;
+    Sensors.PositionErrorCm=AGVReference::PositionAccuracyCm;
+    Sensors.bTransponderLocked=true;
 }
 
 float APortAGVActor::SpeedLimitCmPerSecond() const
 {
-    // Loaded operation trades a small amount of travel speed for stable handover.
-    return FMath::Lerp(450.f,350.f,FMath::Clamp(PayloadKg/30000.f,0.f,1.f));
+    // Existing site speeds remain authoritative and stay below the 7 m/s reference maximum.
+    return AGVReference::SiteSpeedLimit(PayloadKg);
 }
 
 float APortAGVActor::AccelerationCmPerSecondSquared() const
 {
-    constexpr float EmptyVehicleMassKg=28000.f;
-    return 180.f*EmptyVehicleMassKg/(EmptyVehicleMassKg+PayloadKg);
+    return AGVReference::AccelerationLimit(PayloadKg);
 }
+
+bool APortAGVActor::PayloadWithinReferenceLimit() const
+{ return PayloadKg<=AGVReference::MaximumPayloadKg+KINDA_SMALL_NUMBER; }

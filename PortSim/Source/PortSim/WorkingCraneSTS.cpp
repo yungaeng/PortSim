@@ -1,6 +1,7 @@
 #include "PortWorkingCrane.h"
 #include "PortContainerActor.h"
 #include "PortAGVActor.h"
+#include "AGVReference.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Engine/StaticMesh.h"
@@ -115,7 +116,7 @@ bool APortWorkingCrane::AGVAligned() const
     return IsValid(HandoverAGV) && HandoverAGV->Speed<=0.1f &&
         HandoverAGV->CargoPosition().Equals(Slots[bSTS?1-SourceSlot:SourceSlot],STSProfile.AGVTolerance) &&
         ((bSTS?Stage<5:Stage<2) || STSSensorContains(TEXT("agv_position_lidar"),HandoverAGV->CargoPosition())) &&
-        FMath::Abs(FMath::FindDeltaAngleDegrees(HandoverAGV->GetActorRotation().Yaw,Orientation.Rotator().Yaw))<=STSProfile.AGVHeadingTolerance;
+        AGVReference::AxialHeadingErrorDegrees(HandoverAGV->GetActorRotation().Yaw,Orientation.Rotator().Yaw)<=STSProfile.AGVHeadingTolerance;
 }
 
 bool APortWorkingCrane::CargoSupported() const

@@ -75,7 +75,8 @@ bool AQuayCrane::MoveAGV(EFleetDestination Destination,float Dt)
         if (ToYard)
         {
             const float RoadX=Yard.Y+730>=P.Y?12500.f:16500.f;
-            FleetRoute.Add(FVector(RoadX,P.Y,0));
+            const float DepartY=P.Y+(Yard.Y+730>=P.Y?1600.f:-1600.f);
+            FleetRoute.Add(FVector(RoadX,DepartY,0));
             FleetRoute.Add(FVector(RoadX,Yard.Y+730,0));
             FleetRoute.Add(FVector(Yard.X,Yard.Y+730,0));
             FleetRoute.Add(Yard);
@@ -89,14 +90,21 @@ bool AQuayCrane::MoveAGV(EFleetDestination Destination,float Dt)
             FleetRoute.Add(FVector(Quay.X,Quay.Y+1200,0));
             FleetRoute.Add(Quay);
         }
-        else FleetRoute.Add(Quay);
+        else
+        {
+            // Leave enough longitudinal approach for a real steering turn.
+            // Park/quay X changes are never performed as crab motion.
+            const float ApproachY=Quay.Y-1600.f;
+            FleetRoute.Add(FVector(P.X,ApproachY,0));
+            FleetRoute.Add(FVector(Quay.X,ApproachY,0));
+            FleetRoute.Add(Quay);
+        }
         bFleetRouteActive=true;
     }
+    Vehicle->SetFMSCommand(FleetRoute[FleetWaypoint],FleetWaypoint,FleetRoute.Num(),FleetWaypoint==FleetRoute.Num()-1);
     const bool Arrived=SiteLogistics->MoveVehicle(Vehicle,FleetRoute[FleetWaypoint],Dt);
     if (Arrived)
     {
-        if (FleetRoute.Num()>1 && FleetWaypoint==0 && ToYard) Vehicle->SetActorRotation(FRotator(0,90,0));
-        if (FleetRoute.Num()>1 && FleetWaypoint==FleetRoute.Num()-1 && !ToYard) Vehicle->SetActorRotation(FRotator::ZeroRotator);
         ++FleetWaypoint;
     }
     if (bAGVHasCargo) Cargo->SetWorldLocationAndRotation(AGVCargoPosition(),Vehicle->GetActorRotation());

@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "TerminalLayout.h"
+#include "AGVReference.h"
 
 
 #include "Misc/AutomationTest.h"
@@ -33,6 +34,11 @@ bool FAGVBoundsTest::RunTest(const FString& Parameters)
         for(float X:{3500.f,8000.f,10000.f,11200.f,16500.f})
             Check(Fits(SiteCmX(X),Y,210,730),"internal crossing stays inside road bounds");
     }
+    Check(FMath::IsNearlyEqual(AGVReference::MaximumPayloadKg,65000.f),"supplied 65 t payload reference");
+    Check(FMath::IsNearlyEqual(AGVReference::ReferenceStraightSpeedCmPerSecond,700.f),"supplied 7 m/s straight speed reference");
+    Check(FMath::IsNearlyEqual(AGVReference::ReferenceCurveSpeedCmPerSecond,250.f),"supplied 2.5 m/s curve speed reference");
+    Check(!AGVReference::LateralMotionEnabled,"lateral crab motion is disabled by project requirement");
+    Check(FMath::IsNearlyEqual(AGVReference::PositionAccuracyCm,2.5f),"supplied 25 mm position accuracy reference");
     for(int B=0;B<YardBlockCount;++B) for(float X:{18000.f,42000.f})
     {
         Check(Fits(SiteCmX(X),BlockY(B)*100+1320,730,210),"yard handover footprint");

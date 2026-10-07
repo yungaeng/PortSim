@@ -129,6 +129,53 @@ namespace TerminalLayout
     static_assert(AGVParkRows*AGVParkBays==60,"All fleet vehicles need a parking bay");
     static_assert(AGVParkPitch*.5f>2*730.f+150.f,"Crossings clear parked and moving AGV envelopes");
     static_assert(AGVParkY(AGVParkBays-1)+730.f<23800.f,"Parking stays below the worker-rest apron");
+    // Compatibility names used by the sensor-aware dispatcher and dashboard.
+    // They map onto the same directed road network used by FAGVRoadNetwork.
+    constexpr int AGVsPerParkRow=AGVParkBays;
+    constexpr int AGVParkRow(int Vehicle) { return Vehicle/AGVParkBays; }
+    constexpr float AGVParkAisleX(int Vehicle) { return AGVParkExitX(Vehicle); }
+    constexpr float AGVReturnParkAisleX=9000.f;
+    constexpr float AGVParkingInnerAisleX=9000.f;
+    constexpr float AGVBerthApproachX=7200.f;
+    constexpr float AGVBerthApproachOffset=3000.f;
+    constexpr float AGVSouthInboundY=AGVSouthLoadedY;
+    constexpr float AGVCentralReturnY=AGVParkCrossingY(8);
+    constexpr float AGVCentralInboundY=AGVParkCrossingY(10);
+    constexpr float AGVCentralLoadedY=AGVCentralInboundY;
+    constexpr float AGVNorthReturnY=AGVParkCrossingY(17);
+    constexpr float AGVNorthInboundY=AGVParkCrossingY(18);
+    constexpr int AGVReturnCorridorCount=3;
+    constexpr float AGVReturnCongestionPenaltyCm=18000.f;
+    constexpr int AGVBerthGroup(int STS) { return STS/3; }
+    constexpr float AGVInboundCrossY(int STS)
+    {
+        return AGVBerthGroup(STS)==0?AGVSouthLoadedY:
+            (AGVBerthGroup(STS)==1?AGVCentralInboundY:AGVNorthInboundY);
+    }
+    constexpr float AGVLoadedCrossY(int STS)
+    {
+        return AGVBerthGroup(STS)==0?AGVSouthLoadedY:
+            (AGVBerthGroup(STS)==1?AGVCentralLoadedY:AGVNorthCrossY);
+    }
+    constexpr float AGVLoadedAisleX(int STS) { return 12500.f; }
+    constexpr float AGVReturnCrossY(int Corridor)
+    {
+        return Corridor==0?AGVSouthReturnY:(Corridor==1?AGVCentralReturnY:AGVNorthReturnY);
+    }
+    inline int ChooseAGVReturnCorridor(float DepartureY,float ParkY,int SouthTraffic,int CentralTraffic,int NorthTraffic)
+    {
+        const int Traffic[AGVReturnCorridorCount]={SouthTraffic,CentralTraffic,NorthTraffic};
+        int Best=0;
+        float BestCost=TNumericLimits<float>::Max();
+        for(int Corridor=0;Corridor<AGVReturnCorridorCount;++Corridor)
+        {
+            const float CrossY=AGVReturnCrossY(Corridor);
+            const float Cost=FMath::Abs(DepartureY-CrossY)+FMath::Abs(ParkY-CrossY)+
+                Traffic[Corridor]*AGVReturnCongestionPenaltyCm;
+            if(Cost<BestCost) { Best=Corridor; BestCost=Cost; }
+        }
+        return Best;
+    }
     inline bool AGVEnvelopeInside(double MinX,double MaxX,double MinY,double MaxY)
     {
         if (MinX<SiteCmX(2000.f) || MaxX>SiteCmX(62000.f) || MinY<-51000.f || MaxY>36000.f)

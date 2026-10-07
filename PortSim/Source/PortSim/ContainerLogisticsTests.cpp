@@ -42,12 +42,12 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FAGVDispatchPolicyTest,"PortSim.Logistics.CostA
 bool FAGVDispatchPolicyTest::RunTest(const FString& Parameters)
 {
     const FVector Target(4500,0,0);
-    const double NearUsed=AGVDispatchPolicy::Score(FVector(6500,0,0),Target,6,5);
-    const double FarUnused=AGVDispatchPolicy::Score(FVector(6500,20000,0),Target,5,5);
+    const double NearUsed=AGVDispatchPolicy::Score(FVector(6500,0,0),Target,4,6,5);
+    const double FarUnused=AGVDispatchPolicy::Score(FVector(6500,20000,0),Target,4,5,5);
     TestTrue(TEXT("A very distant unused AGV does not beat a nearby vehicle solely for equal work counts"),NearUsed<FarUnused);
 
-    const double NearUsedClose=AGVDispatchPolicy::Score(FVector(6500,0,0),Target,6,5);
-    const double NearUnused=AGVDispatchPolicy::Score(FVector(6500,3000,0),Target,5,5);
+    const double NearUsedClose=AGVDispatchPolicy::Score(FVector(6500,0,0),Target,4,6,5);
+    const double NearUnused=AGVDispatchPolicy::Score(FVector(6500,3000,0),Target,4,5,5);
     TestTrue(TEXT("Fairness resolves close ETA choices toward the less-used AGV"),NearUnused<NearUsedClose);
     return true;
 }

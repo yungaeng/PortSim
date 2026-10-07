@@ -25,14 +25,21 @@ void APortWorkingCrane::SamplePickupGeometry()
     }
     O.bTargetVisible &= !FParse::Param(FCommandLine::Get(),bSTS?TEXT("PortSimSTSPoseFault"):TEXT("PortSimRMGPoseFault"));
     const FQuat SpreaderRotation=Spreader->GetComponentQuat(), CargoRotation=CargoActor->GetActorQuat();
-    O.RelativeYawDegrees=FMath::FindDeltaAngleDegrees(CargoRotation.Rotator().Yaw,SpreaderRotation.Rotator().Yaw);
+    const FRotator CargoAngles=CargoRotation.Rotator();
+    const float RawYaw=FMath::FindDeltaAngleDegrees(CargoAngles.Yaw,SpreaderRotation.Rotator().Yaw);
+    // ISO corner castings are invariant under a 180 degree box reversal.  An
+    // AGV may legitimately reverse into the handover, so compare the spreader
+    // with the equivalent cargo orientation instead of demanding one end label.
+    const float EquivalentCargoYaw=CargoAngles.Yaw+(RawYaw>90.f?180.f:(RawYaw<-90.f?-180.f:0.f));
+    const FQuat CornerRotation=FRotator(CargoAngles.Pitch,EquivalentCargoYaw,CargoAngles.Roll).Quaternion();
+    O.RelativeYawDegrees=FMath::FindDeltaAngleDegrees(EquivalentCargoYaw,SpreaderRotation.Rotator().Yaw);
     O.TargetTiltDegrees=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(CargoActor->GetActorUpVector().Z,-1.,1.)));
     bool All=true;
     for(int32 I=0;I<4;++I)
     {
         const FVector SpreaderCorner((I&1)?SpreaderHalfWidth:-SpreaderHalfWidth,(I&2)?SpreaderHalfLength:-SpreaderHalfLength,0);
         const FVector CargoCorner((I&1)?CargoHalfWidth:-CargoHalfWidth,(I&2)?CargoHalfLength:-CargoHalfLength,0);
-        const FVector RotationGap=SpreaderRotation.RotateVector(SpreaderCorner)-CargoRotation.RotateVector(CargoCorner)-FVector(0,0,154.5);
+        const FVector RotationGap=SpreaderRotation.RotateVector(SpreaderCorner)-CornerRotation.RotateVector(CargoCorner)-FVector(0,0,154.5);
         const FVector ActualError=Orientation.UnrotateVector(HeadPosition()-CargoActor->GetActorLocation()+RotationGap);
         PhysicalSeating[I]=ActualError.Size2D()<=C.CornerTolerance && FMath::Abs(ActualError.Z)<=C.VerticalTolerance && O.TargetTiltDegrees<=C.TiltTolerance;
         O.CornerError[I]=Orientation.UnrotateVector(O.SpreaderPosition-O.CargoPosition+RotationGap);
