@@ -392,6 +392,8 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
             {
                 const auto& J=Jobs[Lane];
                 O->SetNumberField(TEXT("stage"),J.Stage);
+                O->SetNumberField(TEXT("traffic_wait_seconds"),J.TrafficWaitSeconds);
+                O->SetNumberField(TEXT("yard_wait_seconds"),J.YardWaitSeconds);
                 const int32 CargoIndex=J.Cargo!=INDEX_NONE?J.Cargo:
                     (PreparedCargo.IsValidIndex(J.STS)?PreparedCargo[J.STS]:INDEX_NONE);
                 if (Manifest.IsValidIndex(CargoIndex)) Vector(O,TEXT("handover_position_m"),CargoQuay(CargoIndex),.01f);

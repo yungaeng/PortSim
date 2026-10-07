@@ -1,4 +1,4 @@
-﻿#pragma once
+#pragma once
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "STSOperatingProfile.h"
@@ -39,7 +39,9 @@ struct FSiteTransfer
     int32 LastStage=-1;
     TWeakObjectPtr<APortContainerActor> Actor;
     TArray<FVector> Route;
-    bool bYardReleased=false;
+    bool bYardReleased=false, bRMGReserved=false;
+    double TrafficWaitSeconds=0, YardWaitSeconds=0, LastRerouteAt=-10;
+    int32 Reroutes=0;
 };
 
 /** One manifest, conserved cargo IDs and reserved yard slots across STS -> AGV -> RMG. */
@@ -112,6 +114,7 @@ private:
     TArray<FSiteTransfer> Jobs;
     TArray<bool> BlocksBusy;
     TArray<bool> RMGBusy;
+    TArray<int32> YardApproachOwners; // One inbound/waiting AGV per block, independent of crane ownership.
     TArray<int32> PreparedCargo;
     TArray<int32> STSOwners;
     TArray<int32> NextVehicles;
@@ -119,6 +122,8 @@ private:
     TMap<int32,TArray<FBox>> RoadReservations;
     TMap<int32,FVector> RoadTargets;
     TMap<int32,int32> RoadBlockers;
+    TMap<int32,double> RoadWaitSince;
+    double TrafficClock=0;
     float NoProgressTime=0;
     int32 LastProgressDelivered=0;
     TSet<int32> FinishedRoadSegments;
@@ -130,9 +135,11 @@ private:
     void ScheduleFleet();
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
     void PrepareNextCargo(int32 Lane);
+    bool ReserveYardApproach(int32 Lane);
     bool ReserveYard(int32 Lane);
     bool PlanYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);
+    bool PlanRoadRoute(int32 Lane,bool Congested);
     bool Drive(int32 Lane,float Dt);
     void Freeze(bool Paused);
     void Stop(const FString& Reason);

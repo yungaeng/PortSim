@@ -111,7 +111,7 @@ function overviewDetails(a){
  if(a.fault)html=`<div class="fault-message">${esc(a.fault)}</div>`+html;
  html+=`<div class="detail-subhead">현재 동작 <span>${live?'실행 데이터':'저장 기록'}</span></div>`;
  if(['sts','rmg'].includes(a.type))html+=kv('작업 단계',a.busy?`${a.stage+1}. ${stages[a.stage]}`:'작업 대기')+kv('인계 준비',a.destination_ready?'준비됨':'AGV 복귀 대기')+(a.agv_alignment_wait_seconds>0?kv('AGV 정렬 재확인',`${num(a.agv_alignment_wait_seconds,2)} s`):'')+kv('목표까지 직선거리',`${num(a.distance_to_destination_m)} m`)+kv('스프레더 좌표 X / Y / Z',`${vector(a.head_position_m)} m`)+kv('스프레더 현재 / 목표 길이',`${num(a.spreader_length_m,3)} / ${num(a.spreader_target_length_m,3)} m`)+kv('신축 체결 준비',a.telescope_ready?'완료':'조정 중');
- if(a.type==='agv')html+=kv('현재 속도',`${num(a.speed_mps,2)} m/s`)+kv('남은 경로 거리',`${num(a.route_remaining_m)} m`)+kv('작업 단계',['대기','STS 인계 대기','야드 예약','야드 이동','RMG 인계','복귀'][a.stage]||'—');
+ if(a.type==='agv')html+=kv('현재 속도',`${num(a.speed_mps,2)} m/s`)+kv('남은 경로 거리',`${num(a.route_remaining_m)} m`)+kv('교통 대기 누적',`${num(a.traffic_wait_seconds,1)} s`)+kv('야드 대기 누적',`${num(a.yard_wait_seconds,1)} s`)+kv('작업 단계',['대기','STS 인계 대기','야드 진입 대기','야드 이동','RMG 인계','복귀','STS 접근','STS 대기열 이동','STS 배차 대기','야드 입구 RMG 대기'][a.stage]||'—');
  html+=kv('위치 X / Y / Z',`${vector(a.position_m)} m`);
  if(a.cargo && a.cargo!=='None')html+=`<div class="kv-row"><span>연결 화물</span>${actorLink(a.cargo)}</div>`;
  if(a.agv && a.agv!=='None')html+=`<div class="kv-row"><span>인계 AGV</span>${actorLink(a.agv)}</div>`;
