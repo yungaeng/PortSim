@@ -1,4 +1,5 @@
 #include "QuayCrane.h"
+#include "AGVReference.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/World.h"
 #include "Misc/Paths.h"
@@ -120,7 +121,7 @@ void AQuayCrane::SampleSTSSensors(bool Force)
         const auto* Vehicle=AGVActors[ActiveAGV].Get();
         const FVector Expected=bAutoLoading?AutoSource:AutoDestination;
         S.bAGVAligned=Vehicle->Speed<=0.1f && FVector::Dist(AGVCargoPosition(),Expected)<=STSProfile.AGVTolerance &&
-            FMath::Abs(FMath::FindDeltaAngleDegrees(Vehicle->GetActorRotation().Yaw,0.f))<=STSProfile.AGVHeadingTolerance;
+            AGVReference::AxialHeadingErrorDegrees(Vehicle->GetActorRotation().Yaw,0.f)<=STSProfile.AGVHeadingTolerance;
     }
 }
 

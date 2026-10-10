@@ -20,22 +20,40 @@ void AQuayCrane::TickSiteOperations(float Dt)
     const bool Testing=Full || FParse::Param(FCommandLine::Get(),TEXT("PortSimSiteTest"));
     if (Testing) SiteLogistics->DispatchLimit=Full?SiteLogistics->InitialShipCount():SiteLogistics->Vehicles.Num()*2;
     const bool FirstWave=FParse::Param(FCommandLine::Get(),TEXT("PortSimFirstWaveTest"));
+    const bool CarLike=FParse::Param(FCommandLine::Get(),TEXT("PortSimCarLikeTest"));
     if (FirstWave) SiteLogistics->DispatchLimit=9;
+    else if (CarLike) SiteLogistics->DispatchLimit=1;
     SiteLogistics->Advance(Dt,bAutoPaused || bEmergencyStop);
-    if (FirstWave)
+    if (FirstWave || CarLike)
     {
         SiteTestTime+=Dt;
         FString Error;
         if (!SiteLogistics->Validate(Error) || SiteTestTime>5000)
         {
-            UE_LOG(LogTemp,Error,TEXT("PORTSIM_FIRST_WAVE_FAIL: %s"),*Error);
+            UE_LOG(LogTemp,Error,TEXT("%s_FAIL: %s"),CarLike?TEXT("PORTSIM_AGV_CARLIKE"):TEXT("PORTSIM_FIRST_WAVE"),
+                Error.IsEmpty()?TEXT("simulation time limit exceeded"):*Error);
             FPlatformMisc::RequestExitWithStatus(false,1);
+        }
+        else if (CarLike && SiteLogistics->LoadedVehicle()!=nullptr)
+        {
+            SiteLogistics->ExportDashboard(false,true);
+            UE_LOG(LogTemp,Display,TEXT("PORTSIM_AGV_CARLIKE_PASS: sts_to_agv=1 vehicle=%d lateral_motion=disabled simulation_seconds=%.6f step=%.6f"),
+                SiteLogistics->LoadedVehicle()->VehicleID,SiteTestTime,Dt);
+            FPlatformMisc::RequestExitWithStatus(false,0);
         }
         else if (SiteLogistics->Delivered==9)
         {
+            if (!SiteLogistics->ReturnCorridorUse(1) || !SiteLogistics->ReturnCorridorUse(2))
+            {
+                UE_LOG(LogTemp,Error,TEXT("PORTSIM_FIRST_WAVE_FAIL: alternate AGV return corridors unused (south=%d central=%d north=%d)"),
+                    SiteLogistics->ReturnCorridorUse(0),SiteLogistics->ReturnCorridorUse(1),SiteLogistics->ReturnCorridorUse(2));
+                FPlatformMisc::RequestExitWithStatus(false,1);
+                return;
+            }
             SiteLogistics->ExportDashboard(false,true);
-            UE_LOG(LogTemp,Display,TEXT("PORTSIM_FIRST_WAVE_PASS: policy=%s delivered=9 simulation_seconds=%.6f step=%.6f"),
-                SiteLogistics->UsesCargoAlignedHandover()?TEXT("cargo_aligned"):TEXT("fixed"),SiteTestTime,Dt);
+            UE_LOG(LogTemp,Display,TEXT("PORTSIM_FIRST_WAVE_PASS: policy=%s delivered=9 simulation_seconds=%.6f step=%.6f return_routes=%d/%d/%d"),
+                SiteLogistics->UsesCargoAlignedHandover()?TEXT("cargo_aligned"):TEXT("fixed"),SiteTestTime,Dt,
+                SiteLogistics->ReturnCorridorUse(0),SiteLogistics->ReturnCorridorUse(1),SiteLogistics->ReturnCorridorUse(2));
             FPlatformMisc::RequestExitWithStatus(false,0);
         }
         return;

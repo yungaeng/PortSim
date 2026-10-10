@@ -55,10 +55,10 @@
   },
   "pickup_control": {
     "kind": "unvalidated_simulation_assumptions",
-    "corner_tolerance_m": 0.02,
-    "vertical_tolerance_m": 0.02,
-    "relative_speed_mps": 0.03,
-    "yaw_tolerance_deg": 0.25,
+    "corner_tolerance_m": 0.05,
+    "vertical_tolerance_m": 0.04,
+    "relative_speed_mps": 0.05,
+    "yaw_tolerance_deg": 0.5,
     "tilt_tolerance_deg": 0.5,
     "seat_time_s": 0.7,
     "lock_time_s": 0.3,
@@ -70,7 +70,7 @@
     "trial_timeout_s": 60,
     "minimum_corner_fraction": 0.03,
     "mass_stability_fraction": 0.02,
-    "max_attempts": 2,
+    "max_attempts": 3,
     "pose_bias_x_m": 0,
     "pose_bias_y_m": 0,
     "pose_bias_z_m": 0
