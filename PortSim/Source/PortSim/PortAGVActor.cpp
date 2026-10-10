@@ -36,9 +36,10 @@ void APortAGVActor::InitializeVehicle(int32 Number)
 void APortAGVActor::ResetVehicle(FVector Position)
 {
     Speed=0; CompletedJobs=0; PayloadKg=0;
-    // Park perpendicular to the aisle.  The first dispatch can therefore pull
-    // out longitudinally instead of requiring crab motion between neighbours.
-    SetActorLocationAndRotation(Position,FRotator(0,90,0),false,nullptr,ETeleportType::TeleportPhysics);
+    // Park along the marked bay. Adjacent rows are separated for the vehicle
+    // width in this pose; the steering controller then turns into the crossroad
+    // through the 33 m gap between vehicles without any lateral crab motion.
+    SetActorLocationAndRotation(Position,FRotator::ZeroRotator,false,nullptr,ETeleportType::TeleportPhysics);
     Sensors=FAGVSensorState(); Sensors.EstimatedPosition=Sensors.LastAbsolutePosition=Position;
     DockingAxis=FVector::ZeroVector;
 }
@@ -134,11 +135,13 @@ bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
     // low-speed shunt, use the pure-pursuit look-ahead directly so small
     // cross-track errors still produce useful steering.  Both paths remain
     // capped by the same published 5.8 m inner turning radius below.
-    // Pure pursuit uses the actual distance to the active FMS point. Inflating
-    // this to two turn radii made a vehicle circle a nearby road node because
-    // its steering became weaker as it approached. The curvature clamp below
-    // remains the single physical 5.8 m minimum-radius constraint.
-    const float CurvatureLookAhead=FMath::Max(Distance,100.f);
+    // A road node may be hundreds of metres away. Using that full distance as
+    // pure-pursuit look-ahead makes an initial 90-degree turn radius equally
+    // huge and lets the AGV drift off the road before it aligns. Cap only the
+    // far look-ahead; nearby arc points retain their actual distance so the
+    // controller does not circle them.
+    const float CurvatureLookAhead=FMath::Clamp(Distance,100.f,
+        2.f*AGVReference::MinimumInnerTurnRadiusCm);
     const float RequestedCurvature=2.f*FMath::Sin(HeadingError)/CurvatureLookAhead;
     const float Curvature=FMath::Clamp(RequestedCurvature,
         -1.f/AGVReference::MinimumInnerTurnRadiusCm,1.f/AGVReference::MinimumInnerTurnRadiusCm);
@@ -166,12 +169,13 @@ void APortAGVActor::SetFMSCommand(FVector Target,int32 NodeIndex,int32 NodeCount
             if(!Axis.IsNearlyZero()) DockingAxis=Axis;
         }
         const FVector Desired=(Target-GetActorLocation()).GetSafeNormal2D();
-        if(!Desired.IsNearlyZero())
+        // Select forward/reverse once at the first node and keep that gear for
+        // the full FMS route. Re-evaluating it at every sampled corner could
+        // flip the longitudinal axis halfway through an arc and send the AGV
+        // outside the road while it tried to turn back to the next node.
+        if(NodeIndex==0 && !Desired.IsNearlyZero())
         {
             const bool Reverse=FVector::DotProduct(GetActorRightVector(),Desired)<0;
-            // Non-collinear route nodes stop before the next command, so gear
-            // changes occur at zero speed.  Collinear pass-through nodes retain
-            // the same direction and never reverse while moving.
             if(Reverse!=Sensors.bReversing && Speed>.1f) Speed=0;
             Sensors.bReversing=Reverse;
         }

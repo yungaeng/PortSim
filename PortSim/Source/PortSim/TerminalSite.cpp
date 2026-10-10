@@ -145,6 +145,8 @@ void AQuayCrane::BuildTerminalSite()
                     FVector(1.8f,.18f,.02f),-Direction*Side*45.f);
         }
     }
+    const float NorthParkingAccessY=(TerminalLayout::AGVParkY(TerminalLayout::AGVParkBays-1)+3000.f)/100.f;
+    RoadSegment(Roads,{50,NorthParkingAccessY},{167,NorthParkingAccessY},18);
     for(int32 Vehicle=0;Vehicle<TerminalLayout::AGVParkRows*TerminalLayout::AGVParkBays;++Vehicle)
     {
         const float X=TerminalLayout::SiteCmX(TerminalLayout::AGVParkX(Vehicle))/100.f;
@@ -160,7 +162,12 @@ void AQuayCrane::BuildTerminalSite()
     RoadSegment(Roads,{195,-505},{595,-505},18);
     BezierRoad(Roads,{595,-505},{635,-505},{635,-485},{635,-465},18,10);
     // Straight service road beneath the combined CIS/cargo block.
-    RoadSegment(Roads,{635,-465},{635,480},22);
+    RoadSegment(Roads,{635,-465},{635,480},26);
+    // RoadSegment displays 75% of its nominal width. These paved junction
+    // aprons cover the full swept chassis at the widened inland lane turns.
+    for(float CrossY:{TerminalLayout::AGVCentralReturnY/100.f,
+        TerminalLayout::AGVNorthCrossY/100.f})
+        Box(Roads,FVector(635,CrossY,.24),FVector(32,32,.06));
     RoadSegment(Roads,{195,620},{910,620},22);
     BezierRoad(Roads,{145,550},{145,620},{170,620},{195,620},22,12);
     // Gate approach provides the road surface here; no second overlapping strip.
@@ -206,7 +213,7 @@ void AQuayCrane::BuildTerminalSite()
                     const int32 Zone=FourZones?(Bay<7?0:Bay<15?1:Bay<22?2:3):Slot.Half;
                     Slot.Crane=WorkingCranes.Num()+Zone;
                     const float DockX=FourZones?(205.f+(Zone==0?0:Zone==1?7:Zone==2?15:22)*13.f):(Slot.Half?420.f:180.f);
-                    Slot.Handover=FVector((FourZones?TerminalLayout::SiteX(DockX):TerminalLayout::RMGHandoverX(Slot.Half))*100,(Y+13.2f)*100,0);
+                    Slot.Handover=FVector((FourZones?TerminalLayout::SiteX(DockX):TerminalLayout::RMGHandoverX(Slot.Half))*100,TerminalLayout::RMGHandoverY(Block)*100,0);
                     YardSlots.Add(Slot);
                 }
         // Two disjoint work reservations per block: no shared gantry travel zone.
@@ -222,9 +229,9 @@ void AQuayCrane::BuildTerminalSite()
         for (int32 Half=0;Half<ZoneCount;++Half)
         {
             const float HX=ZoneCount==4?(205.f+(Half==0?0:Half==1?7:Half==2?15:22)*13.f):(Half?420.f:180.f);
-            Box(Roads,FVector(HX,Y+13.2f,.25),FVector(15,3.6,.06));
+            Box(Roads,FVector(HX,TerminalLayout::RMGHandoverY(Block),.25),FVector(15,3.6,.06));
             for (float Side:{-1.f,1.f})
-                Box(White,FVector(HX,Y+13.2f+Side*1.8f,.30),FVector(15,.12,.02));
+                Box(White,FVector(HX,TerminalLayout::RMGHandoverY(Block)+Side*1.8f,.30),FVector(15,.12,.02));
         }
         const TCHAR* ZoneCode=TEXT("CY");
         Label(FString::Printf(TEXT("%s %02d"),ZoneCode,Block+1),FVector(177,Y,.4),2.5f);
@@ -232,9 +239,17 @@ void AQuayCrane::BuildTerminalSite()
     // Reefer blocks use the same slot markings; no overlapping zone rectangle.
     ZoneOutline(White,{395,-325},{430,314});
     ZoneOutline(White,{395,92.5f},{430,489});
-    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},16);
+    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{650,TerminalLayout::CentralRoadY},28);
     for(float X=185;X<620;X+=12)
         Box(White,FVector(X,TerminalLayout::CentralRoadY,.39),FVector(5,.18,.025));
+    // Northern member of the south/central/north AGV circulation network.
+    // Its centre is shared with the FMS graph, immediately above yard 23.
+    const float AGVNorthRoadY=TerminalLayout::AGVNorthCrossY/100.f;
+    RoadSegment(Roads,{145,AGVNorthRoadY},{650,AGVNorthRoadY},16);
+    RoadSegment(Roads,{145,TerminalLayout::AGVNorthReturnY/100.f},
+        {650,TerminalLayout::AGVNorthReturnY/100.f},6);
+    for(float X=185;X<620;X+=12)
+        Box(White,FVector(X,AGVNorthRoadY,.39),FVector(5,.18,.025));
     Label(TEXT("LEFT YARD 01-09"),FVector(610,-325,.4),3.f);
     Label(TEXT("RIGHT YARD 10-23"),FVector(610,92.5,.4),3.f);
     // Facility 7 from the marked satellite: inland ends of five central blocks.

@@ -10,7 +10,11 @@ $cases = if ($Mode -eq 'All') { @('Normal','SensorFault','LockFault','Overload',
     elseif ($Mode -eq 'Faults') { @('SensorFault','LockFault','Overload','AGVFault') } else { @($Mode) }
 foreach ($case in $cases) {
     $started = Get-Date
-    $testLog = Join-Path $root "Saved\Logs\SiteTest_$case.log"
+    # A terminated Unreal process can leave the previous log handle pending in
+    # Windows for a short time. Use a per-run file so that stale handles never
+    # prevent the next verification from starting.
+    $testLog = Join-Path $root "Saved\Logs\SiteTest_${case}_$PID.log"
+    if (Test-Path -LiteralPath $testLog) { Remove-Item -LiteralPath $testLog -Force }
     $arguments = @("`"$project`"", '/Engine/Maps/Entry','-game','-nullrhi','-nosound','-unattended','-nosplash','-benchmark',"-fps=$FixedFPS",'-PortSimSiteTest',"`"-abslog=$testLog`"")
     $expected = $null
     if ($case -eq 'SensorFault') { $arguments += '-PortSimSTSSensorFault'; $expected = 'Required STS sensor observation invalid/stale' }

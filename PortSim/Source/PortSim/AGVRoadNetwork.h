@@ -15,6 +15,10 @@ public:
     }
     static bool Contains(const FSegment& S,FVector P)
     {
+        // Sensor docking may stop a few hundredths of a centimetre past an
+        // endpoint.  Treat the same 1 mm point tolerance as part of the road;
+        // the normalized T tolerance alone shrinks on long terminal segments.
+        if(P.Equals(S.A,.1f) || P.Equals(S.B,.1f)) return true;
         const FVector D=S.B-S.A;
         const double T=FVector::DotProduct(P-S.A,D)/D.SizeSquared();
         return T>=-1.e-6 && T<=1.+1.e-6 && (S.A+D*T).Equals(P,.1);

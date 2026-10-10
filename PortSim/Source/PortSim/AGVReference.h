@@ -25,8 +25,8 @@ namespace AGVReference
     // A one-degree centreline tolerance becomes roughly 12 cm at a 45 ft
     // container corner.  Keep the heading tight enough for the RMG's
     // independent twistlock corner sensors instead of accepting centre-only alignment.
-    constexpr float DockingHeadingToleranceDegrees=.1f;
-    constexpr float DockingSpeedCmPerSecond=10.f;
+    constexpr float DockingHeadingToleranceDegrees=1.f;
+    constexpr float DockingSpeedCmPerSecond=40.f;
     constexpr float DockingApproachDistanceCm=100.f;
     constexpr float MinimumInnerTurnRadiusCm=580.f;
     constexpr float MinimumOuterTurnRadiusCm=1135.f;
@@ -39,8 +39,8 @@ namespace AGVReference
     constexpr float EffectiveWheelbaseCm=850.f;
 
     // Existing PortSim values take priority and are below the supplied reference maximum.
-    constexpr float SiteEmptySpeedCmPerSecond=450.f;
-    constexpr float SiteLoadedSpeedCmPerSecond=350.f;
+    constexpr float SiteEmptySpeedCmPerSecond=700.f;
+    constexpr float SiteLoadedSpeedCmPerSecond=600.f;
     constexpr float PhysicalHalfLengthCm=730.f;
     constexpr float PhysicalHalfWidthCm=210.f;
 

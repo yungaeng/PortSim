@@ -15,6 +15,11 @@ bool FTrafficJunctionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Occupied downstream exit blocks admission before entering junction"),Occupancy.Query(Exit).Contains(4));
     Occupancy.Remove(4);
     TestTrue(TEXT("Cleared exit permits admission"),Occupancy.Query(Exit).IsEmpty());
+    TArray<FVector> LongRoad;
+    for(int32 I=0;I<12;++I) LongRoad.Add(FVector(I*3000,0,0));
+    Exit.Reset();
+    TrafficJunctionPolicy::AppendExitCorridor(Exit,LongRoad,0,LongRoad.Num(),[](int32){return FVector(730,210,250);});
+    TestEqual(TEXT("Straight road permits following AGVs after a bounded claim"),Exit.Num(),2);
     Exit.Reset();
     TrafficJunctionPolicy::AppendExitCorridor(Exit,Route,0,2,[](int32){return FVector(730,210,250);});
     TestEqual(TEXT("Staging stop never claims unowned crane handover"),Exit.Num(),1);

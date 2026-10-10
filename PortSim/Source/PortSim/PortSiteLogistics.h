@@ -119,7 +119,7 @@ private:
     TArray<FSiteTransfer> Jobs;
     TArray<bool> BlocksBusy;
     TArray<bool> RMGBusy;
-    TArray<int32> YardApproachOwners; // One inbound/waiting AGV per block, independent of crane ownership.
+    TArray<int32> YardApproachOwners; // One inbound/waiting AGV per RMG (legacy eight-STS mode: per block).
     TArray<int32> PreparedCargo;
     TArray<int32> STSOwners;
     TArray<int32> NextVehicles;
@@ -143,6 +143,8 @@ private:
     void AssignReturnSTS(int32 Vehicle);
     void PrepareNextCargo(int32 Lane);
     bool ReserveYardApproach(int32 Lane);
+    bool YardApproachAvailable(int32 Cargo) const;
+    int32 YardApproachKey(const FSiteYardSlot& Slot) const { return LaneCount==9?Slot.Crane:Slot.Block; }
     bool ReserveYard(int32 Lane);
     bool PlanYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);

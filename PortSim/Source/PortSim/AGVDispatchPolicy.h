@@ -5,7 +5,7 @@
 
 namespace AGVDispatchPolicy
 {
-    constexpr double CruiseSpeedCmPerSecond=450.;
+    constexpr double CruiseSpeedCmPerSecond=600.;
     constexpr double FairnessSecondsPerExtraJob=12.;
 
     inline double EstimatedApproachDistanceCm(FVector From,FVector Target,int32 STS)

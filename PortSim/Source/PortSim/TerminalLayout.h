@@ -91,6 +91,10 @@ namespace TerminalLayout
 
 
     constexpr float BlockY(int Index) { return YardFirstY+Index*YardBlockPitch+(Index>=LeftYardCount?15.f:0.f); }
+    // The northernmost block hands over on its south aisle. Its north aisle
+    // would coincide with the terminal-wide empty return road.
+    constexpr float RMGHandoverY(int Block)
+    { return BlockY(Block)+(Block==YardBlockCount-1?-13.2f:13.2f); }
     constexpr float ReeferZoneX = 395.f;
     constexpr float ReeferZoneY = -72.5f;
     constexpr float ReeferZoneDepth = 430.f;
@@ -107,7 +111,9 @@ namespace TerminalLayout
     static_assert(EmptyZoneLength==4.f*YardBlockPitch, "Empty yard must span four yard pitches");
     static_assert(BlockY(22)+25.f<=EmptyZoneY-EmptyZoneLength*.5f, "Yard departure must clear empty hardstand");
     // Unified AGV routes, centimetres; keep physical envelopes inside the site.
-    constexpr float AGVNorthCrossY = 35000.f;
+    // Three paved east/west circulation corridors.  Separate lane centres keep
+    // inbound and returning AGVs from meeting head-on on the same centre line.
+    constexpr float AGVNorthCrossY = 34700.f;
     constexpr float AGVSouthLoadedY = -48750.f;
     constexpr float AGVSouthReturnY = -50250.f;
     constexpr float AGVParkFirstY = -46000.f;
@@ -136,14 +142,32 @@ namespace TerminalLayout
     constexpr float AGVParkAisleX(int Vehicle) { return AGVParkExitX(Vehicle); }
     constexpr float AGVReturnParkAisleX=9000.f;
     constexpr float AGVParkingInnerAisleX=9000.f;
+    // Loaded departures and empty arrivals use separate north/south spines.
+    // The 10 m plan separation clears both 4.2 m chassis. Empty arrivals
+    // travel south only; northbound empty traffic uses the service spine.
+    constexpr float AGVQuayHandoverX=6000.f;
+    constexpr float AGVQuayOutboundLaneX=AGVQuayHandoverX;
+    constexpr float AGVQuayInboundLaneX=5000.f;
+    constexpr float AGVQuayWaitingBayX=7000.f;
+    constexpr float STSLandsideSupportWorldX=3398.f;
+    constexpr float STSSupportHalfWidthCm=50.f;
     constexpr float AGVBerthApproachX=7200.f;
-    constexpr float AGVBerthApproachOffset=3000.f;
+    constexpr float AGVBerthApproachOffset=1600.f;
     constexpr float AGVSouthInboundY=AGVSouthLoadedY;
-    constexpr float AGVCentralReturnY=AGVParkCrossingY(8);
-    constexpr float AGVCentralInboundY=AGVParkCrossingY(10);
-    constexpr float AGVCentralLoadedY=AGVCentralInboundY;
-    constexpr float AGVNorthReturnY=AGVParkCrossingY(17);
-    constexpr float AGVNorthInboundY=AGVParkCrossingY(18);
+    // Keep the return lane clear of the last southern RMG's +13.2 m
+    // handover aisle, while retaining 13.5 m between opposite traffic.
+    constexpr float AGVCentralReturnY=CentralRoadY*100.f-450.f;
+    constexpr float AGVCentralInboundY=CentralRoadY*100.f+900.f;
+    // The quay-side access jog precedes the inland central road. Forcing a
+    // loaded vehicle to the inland road's Y while still on the quay spine
+    // creates a U-turn back to this access aisle.
+    constexpr float AGVCentralLoadedY=AGVParkCrossingY(8);
+    constexpr float AGVNorthReturnY=33350.f;
+    constexpr float AGVNorthInboundY=AGVNorthCrossY;
+    // The inland north/south service road is the only legal way to reach the
+    // far RMG half.  These centres sit inside the rendered 22 m road at X=635 m.
+    constexpr float AGVInlandInboundX=62700.f;
+    constexpr float AGVInlandReturnX=64300.f;
     constexpr int AGVReturnCorridorCount=3;
     constexpr float AGVReturnCongestionPenaltyCm=18000.f;
     constexpr int AGVBerthGroup(int STS) { return STS/3; }
@@ -178,10 +202,10 @@ namespace TerminalLayout
     }
     inline bool AGVEnvelopeInside(double MinX,double MaxX,double MinY,double MaxY)
     {
-        if (MinX<SiteCmX(2000.f) || MaxX>SiteCmX(62000.f) || MinY<-51000.f || MaxY>36000.f)
+        if (MinX<QuayLeftX || MaxX>SiteCmX(66000.f) || MinY<-52000.f || MaxY>36000.f)
             return false;
         // Only the quay/spine corridor extends beyond the operational yard.
-        return MaxX<=SiteCmX(18000.f) || (MinY>=-49700.f && MaxY<=34800.f);
+        return MaxX<=SiteCmX(18000.f) || (MinY>=-51700.f && MaxY<=35500.f);
     }
 
     constexpr float YardSlotX(int Index)
