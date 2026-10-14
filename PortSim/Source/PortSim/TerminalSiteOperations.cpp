@@ -11,6 +11,81 @@ void AQuayCrane::ResetSiteOperations()
 {
     if (SiteLogistics) SiteLogistics->ResetLogistics();
 }
+
+bool AQuayCrane::HasFaultedEquipment() const
+{
+    for(const auto& Crane:WorkingCranes)
+        if(IsValid(Crane) && !Crane->Fault.IsEmpty()) return true;
+    return false;
+}
+
+FString AQuayCrane::GetEquipmentFaultStatus() const
+{
+    for(int32 Index=0;Index<WorkingCranes.Num();++Index)
+    {
+        const auto* Crane=WorkingCranes[Index].Get();
+        if(!IsValid(Crane) || Crane->Fault.IsEmpty()) continue;
+        int32 FaultCount=0;
+        for(const auto& Candidate:WorkingCranes)
+            FaultCount+=IsValid(Candidate) && !Candidate->Fault.IsEmpty();
+        return FString::Printf(TEXT("장비 오류 %s %02d: %s%s"),Crane->bSTS?TEXT("STS"):TEXT("RMG"),
+            Crane->CraneID,*Crane->Fault,FaultCount>1?*FString::Printf(TEXT(" 외 %d대"),FaultCount-1):TEXT(""));
+    }
+    return FString();
+}
+
+bool AQuayCrane::ReplaceFaultedEquipment()
+{
+    if(!SiteLogistics)
+    {
+        Status=TEXT("장비 교체 실패: 물류 시스템을 찾을 수 없습니다.");
+        return false;
+    }
+    TArray<int32> FaultedIndices;
+    TArray<APortWorkingCrane*> OldCranes;
+    TArray<APortWorkingCrane*> Replacements;
+    for(int32 Index=0;Index<WorkingCranes.Num();++Index)
+    {
+        auto* Crane=WorkingCranes[Index].Get();
+        if(!IsValid(Crane) || Crane->Fault.IsEmpty()) continue;
+        if(!SiteLogistics->Equipment.IsValidIndex(Index) || SiteLogistics->Equipment[Index]!=Crane)
+        {
+            Status=TEXT("장비 교체 실패: 장비 등록 정보가 일치하지 않습니다.");
+            return false;
+        }
+        FaultedIndices.Add(Index);
+        OldCranes.Add(Crane);
+    }
+    for(auto* Crane:OldCranes)
+    {
+        auto* Replacement=Crane->CreateReplacement();
+        if(!Replacement)
+        {
+            for(auto* Spawned:Replacements) Spawned->Destroy();
+            Status=TEXT("장비 교체 실패: 새 장비를 생성할 수 없습니다.");
+            return false;
+        }
+        Replacements.Add(Replacement);
+    }
+    if(FaultedIndices.IsEmpty()) return false;
+
+    for(int32 I=0;I<FaultedIndices.Num();++I)
+    {
+        const int32 Index=FaultedIndices[I];
+        WorkingCranes[Index]=Replacements[I];
+        SiteLogistics->Equipment[Index]=Replacements[I];
+        if(RMGActor==OldCranes[I]) RMGActor=Replacements[I];
+    }
+    SiteLogistics->ResetLogistics();
+    for(auto* Crane:OldCranes) Crane->Destroy();
+    bAutoRunning=false;
+    bAutoPaused=false;
+    AutoElapsed=0;
+    Status=FString::Printf(TEXT("고장 장비 %d대를 교체하고 물류 작업을 초기화했습니다. 실행 버튼으로 다시 시작하세요."),
+        Replacements.Num());
+    return true;
+}
+
 void AQuayCrane::TickSiteOperations(float Dt)
 {
     if (RMGActor) RMGActor->SetOperationPaused(bAutoPaused || bEmergencyStop || AutoStage==ETerminalStage::Fault);

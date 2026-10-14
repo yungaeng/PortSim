@@ -125,6 +125,18 @@ void APortWorkingCrane::Configure(int32 Number,bool bQuayside,FVector Source,FVe
     if(!STSProfile.bReady) Stop(TEXT("Crane profile unavailable: ")+STSProfile.Error);
 }
 
+APortWorkingCrane* APortWorkingCrane::CreateReplacement()
+{
+    FActorSpawnParameters Params;
+    Params.Owner=GetOwner();
+    Params.SpawnCollisionHandlingOverride=ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+    auto* Replacement=GetWorld()->SpawnActor<APortWorkingCrane>(GetActorLocation(),GetActorRotation(),Params);
+    if(!Replacement) return nullptr;
+    if(bSTS) Replacement->SetSTSProfile(STSProfile);
+    Replacement->Configure(CraneID,bSTS,Slots[0],Slots[1],false);
+    return Replacement;
+}
+
 FVector APortWorkingCrane::Local(FVector World) const { return Orientation.UnrotateVector(World-Home); }
 FVector APortWorkingCrane::HeadPosition() const { return Home+Orientation.RotateVector(Head+SuspendedOffset); }
 

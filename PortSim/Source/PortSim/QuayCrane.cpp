@@ -811,7 +811,9 @@ void APortSimHUD::DrawHUD()
             { if(PC->GetMousePosition(MX,MY)) UpdateSlider(MX); }
             else { DragSlider=-2; CranePawn->SaveRunSettings(); }
         }
-        DrawRect(FLinearColor(.015f,.03f,.05f,.94f),16,16,650*Scale,(351+CranePawn->PendingShips*62)*Scale);
+        const bool bHasFaultedEquipment=CranePawn->HasFaultedEquipment();
+        DrawRect(FLinearColor(.015f,.03f,.05f,.94f),16,16,650*Scale,
+            (351+CranePawn->PendingShips*62+(bHasFaultedEquipment?26:0))*Scale);
         float Y=28;
         auto Text=[&](const FString& T,FLinearColor C=FLinearColor::White)
         { DrawText(T,C,30,Y,GEngine->GetSmallFont(),Scale); Y+=26*Scale; };
@@ -843,6 +845,7 @@ void APortSimHUD::DrawHUD()
             CranePawn->bRunSettingsSaved?TEXT("설정 자동 저장"):TEXT("저장 실패 — 다시 조정해 주세요")),FLinearColor(1,.85f,.25f));
         int32 ActiveTotal=0; for(int32 I=0;I<CranePawn->ConfiguredShips;++I) ActiveTotal+=CranePawn->ConfiguredCargo[I];
         Text(FString::Printf(TEXT("현재 실행: 선박 %d대 · %d개 / 하역 완료 %d개"),CranePawn->ConfiguredShips,ActiveTotal,CranePawn->Deliveries));
+        if(bHasFaultedEquipment) Text(CranePawn->GetEquipmentFaultStatus(),FLinearColor(1.f,.35f,.25f));
         const float BY=Y;
         auto Button=[&](float X,float W,const TCHAR* Label,const TCHAR* Name)
         {
@@ -855,6 +858,7 @@ void APortSimHUD::DrawHUD()
         Button(30+204*Scale,84,TEXT("정지"),TEXT("StopSimulation"));
         Button(30+298*Scale,70,TEXT("배속 −"),TEXT("SpeedDown"));
         Button(30+378*Scale,70,TEXT("배속 +"),TEXT("SpeedUp"));
+        if(bHasFaultedEquipment) Button(30+460*Scale,145,TEXT("오류 장비 교체"),TEXT("ReplaceFaultedEquipment"));
         Y+=43*Scale;
         Text(FString::Printf(TEXT("배속: %.0f배 · 실행시간: %s"),CranePawn->SimulationSpeed,*CranePawn->ElapsedText()),FLinearColor(1,.85f,.25f));
         Text(CranePawn->Status,FLinearColor(.65f,.85f,.7f));
@@ -938,6 +942,7 @@ void APortSimHUD::NotifyHitBoxClick(FName BoxName)
     else if(BoxName==TEXT("StopSimulation")) C->StopSimulation();
     else if(BoxName==TEXT("SpeedDown")) C->DecreaseSimulationSpeed();
     else if(BoxName==TEXT("SpeedUp")) C->IncreaseSimulationSpeed();
+    else if(BoxName==TEXT("ReplaceFaultedEquipment")) C->ReplaceFaultedEquipment();
     else
     {
         for(int32 I=0;I<C->PendingShips;++I)

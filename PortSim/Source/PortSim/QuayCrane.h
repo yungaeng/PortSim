@@ -109,6 +109,9 @@ public:
     void StartAutomatic(bool bLoad);
 
     FString GetFleetStatus() const;
+    bool HasFaultedEquipment() const;
+    FString GetEquipmentFaultStatus() const;
+    bool ReplaceFaultedEquipment();
     FString GetAGVStatus() const;
     int32 GetShipCargoCount() const;
     const TCHAR* GetAutoStageName() const;

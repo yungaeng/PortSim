@@ -19,6 +19,7 @@ class PORTSIM_API APortWorkingCrane : public APortEquipmentActor
 public:
     APortWorkingCrane();
     void Configure(int32 Number, bool bQuayside, FVector Source, FVector Destination, bool bCreateCargo=true);
+    APortWorkingCrane* CreateReplacement();
     void Advance(float Dt, bool bGlobalPaused);
     bool AssignCargo(APortContainerActor* Cargo, FVector Source, FVector Destination, bool SourceSupport, bool DestinationSupport, APortAGVActor* HandoverVehicle=nullptr);
     void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }
