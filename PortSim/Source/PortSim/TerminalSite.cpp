@@ -253,7 +253,7 @@ void AQuayCrane::BuildTerminalSite()
     // Reefer blocks use the same slot markings; no overlapping zone rectangle.
     ZoneOutline(White,{395,-325},{430,314});
     ZoneOutline(White,{395,92.5f},{430,489});
-    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},16);
+    RoadSegment(Roads,{145,TerminalLayout::CentralRoadY},{635,TerminalLayout::CentralRoadY},TerminalLayout::CentralRoadWidthM);
     for(float X=185;X<620;X+=12)
         Box(White,FVector(X,TerminalLayout::CentralRoadY,.39),FVector(5,.18,.025));
     Label(TEXT("좌측 야드 01-09"),FVector(610,-325,.4),3.f);

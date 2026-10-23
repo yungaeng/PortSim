@@ -11,6 +11,10 @@ bool FAGVApronRoadTest::RunTest(const FString& Parameters)
 {
     using namespace TerminalLayout;
     auto Clear=[](FVector,FVector){ return 0.; };
+    TestTrue(TEXT("Both central road lanes include the whole chassis inside the rendered pavement"),
+        FMath::Abs(AGVCentralInboundY-CentralRoadY*100)+210<CentralRoadWidthM*50 &&
+        FMath::Abs(AGVCentralReturnY-CentralRoadY*100)+210<CentralRoadWidthM*50);
+    TestTrue(TEXT("Opposing central road reservations do not overlap"),AGVCentralInboundY-AGVCentralReturnY>2*(210+170));
     TestTrue(TEXT("Opposing loaded lanes have full reservation clearance"),
         SiteCmX(AGVApronSouthX-AGVApronNorthX)>2*(210.f+170.f));
     TestTrue(TEXT("Empty return spine stays separate from loaded traffic"),
@@ -50,6 +54,8 @@ bool FAGVApronRoadTest::RunTest(const FString& Parameters)
     for(float Y:{AGVSouthLoadedY,AGVCentralInboundY,AGVNorthInboundY})
         TestTrue(TEXT("All three cross-terminal roads have direct apron access"),Directed.Find(
             AGVApronRoads::P(AGVApronSouthX,Y),AGVApronRoads::P(AGVInlandReturnX,Y),Route,Clear));
+    TestTrue(TEXT("Central corridor traverses the full gap between both yard regions"),Directed.Find(
+        AGVApronRoads::P(AGVApronNorthX,AGVCentralInboundY),AGVApronRoads::P(AGVInlandInboundX,AGVCentralInboundY),Route,Clear));
     return true;
 }
 

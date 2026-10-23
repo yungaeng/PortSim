@@ -1,0 +1,36 @@
+.terminal-overview .panel-head{align-items:flex-start;flex-wrap:wrap}
+.map-view-controls{display:flex;gap:5px;flex-wrap:wrap}
+.terminal-map-wrap{background:#e5f0f1;padding:12px;overflow:hidden}
+.terminal-world-map{display:block;width:100%;height:660px;isolation:isolate}
+.terminal-overview[data-map-mode="gap"] .terminal-world-map{height:420px}
+.terminal-land{fill:#eef1eb;stroke:#b5c9c2;stroke-width:1}
+.terminal-pavement{fill:#d8dfdb}
+.terminal-markings{fill:#f9fcfa;opacity:.85}
+.terminal-markings .paint-yellow{fill:#e6ca8b}
+.terminal-buildings{fill:#bdcdca;stroke:#a9bcb8;stroke-width:.5}
+.yard-slot-outline{fill:#d6e3d9;stroke:#779785;stroke-width:.6}
+.yard-slot-lines{fill:none;stroke:#91ac9a;stroke-width:.35}
+.yard-block-label{fill:#537066;font:8px Arial,sans-serif}
+.yard-selection rect{fill:#19aa8b22;stroke:#07957a;stroke-width:1.3}
+.central-road-label{fill:#42645d;paint-order:stroke;stroke:#d8dfdb;stroke-width:4;font:7px 'Malgun Gothic',sans-serif}
+.map-vessel{fill:#719ca5;stroke:#497783;stroke-width:.8}
+.vessel-map-label{fill:#f5fbfb;font:9px Arial,sans-serif;pointer-events:none}
+.map-yard-cargo{fill:#72a68b;stroke:#456f58;stroke-width:.25}
+.map-agv{fill:#557fa8;stroke:#f0f8fb;stroke-width:.55}
+.map-agv.loaded{fill:#365c82}
+.terminal-overview .map-item.selected .map-agv{stroke-width:.8}
+.map-crane.sts{fill:#4e8b78;stroke:#326957;stroke-width:.5}
+.map-crane.rmg{fill:#c6a060;stroke:#96763d;stroke-width:.4}
+.crane-map-label{fill:#386858;font:7px Arial,sans-serif;paint-order:stroke;stroke:#eef4ef;stroke-width:1.4;pointer-events:none}
+.map-scale{stroke:#4a6964;fill:#4a6964;stroke-width:1}
+.map-scale text{stroke:none;font:10px Arial,sans-serif}
+.map-test-worker{fill:#b83c46;font:9px 'Malgun Gothic',sans-serif}
+.map-plan-key{display:flex;flex-wrap:wrap;gap:14px;padding:11px 18px;border-top:1px solid var(--line);font-size:10px;color:#617b74}
+.map-plan-key span{display:flex;align-items:center;gap:5px}
+.map-plan-key i{width:11px;height:7px;border:1px solid #bccdc5;border-radius:1px}
+.key-road{background:#d8dfdb}.key-yard{background:#d6e3d9}.key-agv{background:#557fa8}
+.terminal-overview .map-caption{padding:10px 18px;gap:10px;flex-wrap:wrap;line-height:1.7}
+.map-unavailable{min-height:360px;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:25px;gap:12px;text-align:center;color:#678278;line-height:1.8;background:#f4f8f5}
+@media(min-width:1650px){.terminal-world-map{height:780px}}
+@media(max-width:800px){.terminal-world-map{height:600px}}
+@media(max-width:520px){.terminal-world-map{height:520px}.terminal-map-wrap{padding:4px}}

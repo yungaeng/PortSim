@@ -16,7 +16,7 @@ export function renderFrictionDetails(actor){
   html+=row('외풍·공기저항 여유분',number(f.wind_reserve_n,' N'));
   html+=row('제동 감속 한계',number(f.braking_mps2,' m/s²'))+row('코너 속도 상한',number(f.curve_speed_mps,' m/s'));
   html+=row('현재 속도의 계산 제동거리',f.traction_available===false?'접지력 부족':number(f.stopping_distance_m,' m'));
-  html+='<div class="note">접지 한계를 가속·제동·선회 계획에 적용합니다. 타이어 슬립 강체 해석은 포함하지 않으며, FMS·LiDAR의 기존 즉시 안전정지는 별도입니다.</div>';
+  html+=`<div class="note">${actor.agv_physics?'타이어 토크·결합 슬립·CoG 하중 분배를 실제 주행에 적용합니다. 아래 실제 제동 기록은 완료한 물리 제동만 표시합니다.':'이 기록은 타이어 상세 물리 도입 전 데이터입니다.'} FMS·LiDAR의 기존 즉시 안전정지는 별도 제약이며 돌발 장애물 통합은 다음 단계입니다.</div>`;
  }else{
   html+=row('레일 μ 정지 / 운동',pair('rail'))+row('트롤리 / 갠트리 가속 한계',`${number(f.trolley_acceleration_limit_mps2)} / ${number(f.gantry_acceleration_limit_mps2)} m/s²`);
   html+=row('스프레더 접촉 상태',f.mechanically_locked?'트위스트록 기계 결합':f.seating_active?(f.seating_grip_ok?'안착 마찰 조건 충족':'안착 마찰 부족 · 잠금 대기'):'안착 판정 비활성');

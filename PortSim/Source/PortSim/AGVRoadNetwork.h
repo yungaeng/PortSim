@@ -8,6 +8,9 @@ class FAGVRoadNetwork
 public:
     struct FSegment { FVector A,B; bool Both; };
     TArray<FSegment> Roads;
+    float NarrowEastY=MAX_flt,NarrowWestY=MAX_flt;
+    void RestrictNarrowCrossing(float EastboundY,float WestboundY)
+    { NarrowEastY=EastboundY; NarrowWestY=WestboundY; }
     void Add(FVector A,FVector B,bool Both=false)
     {
         if(!A.Equals(B,.1) && (FMath::IsNearlyEqual(A.X,B.X,.1) || FMath::IsNearlyEqual(A.Y,B.Y,.1)))
@@ -60,26 +63,72 @@ public:
                 if(S.Both) Edges[B].Add({A,Length+FMath::Max(0.,Penalty(Points[B],Points[A]))});
             }
         }
-        TArray<double> Distance; Distance.Init(TNumericLimits<double>::Max(),Points.Num());
-        TArray<int32> Previous; Previous.Init(INDEX_NONE,Points.Num());
-        TArray<bool> Closed; Closed.Init(false,Points.Num()); Distance[Source]=0;
-        for(int32 Count=0;Count<Points.Num();++Count)
+        // Remember entry from a narrow crossing until the vehicle clears its
+        // opposite lane. Two same-side turns across that short gap cannot be
+        // rounded at the real minimum radius. A node-only search loses this
+        // history and repeatedly chooses an impossible U-turn.
+        const bool Narrow=NarrowEastY<MAX_flt && NarrowWestY<MAX_flt;
+        const int32 Modes=Narrow?4:1,StateCount=Points.Num()*Modes;
+        auto InitialMode=[&]()
         {
-            int32 Best=INDEX_NONE; double Score=TNumericLimits<double>::Max();
-            for(int32 I=0;I<Points.Num();++I) if(!Closed[I] && Distance[I]<TNumericLimits<double>::Max())
+            if(!Narrow) return 0;
+            if(FMath::IsNearlyEqual(Start.Y,double(NarrowEastY),.1)) return 1;
+            if(FMath::IsNearlyEqual(Start.Y,double(NarrowWestY),.1)) return 2;
+            return Start.Y>NarrowWestY && Start.Y<NarrowEastY?3:0;
+        };
+        const int32 SourceState=Source*Modes+InitialMode();
+        TArray<double> Distance; Distance.Init(TNumericLimits<double>::Max(),StateCount);
+        TArray<int32> Previous; Previous.Init(INDEX_NONE,StateCount);
+        TArray<bool> Closed; Closed.Init(false,StateCount); Distance[SourceState]=0;
+        struct FOpen { int32 State; double Score; };
+        TArray<FOpen> Open;
+        auto Earlier=[](const FOpen& A,const FOpen& B){return A.Score<B.Score || (A.Score==B.Score && A.State<B.State);};
+        auto Push=[&](int32 State,double Score)
+        {
+            int32 I=Open.Add({State,Score});
+            while(I>0) { const int32 Parent=(I-1)/2; if(!Earlier(Open[I],Open[Parent])) break; Open.Swap(I,Parent); I=Parent; }
+        };
+        auto Pop=[&]()
+        {
+            const FOpen Result=Open[0]; Open[0]=Open.Last(); Open.Pop(EAllowShrinking::No);
+            for(int32 I=0;I<Open.Num();)
             {
-                const double F=Distance[I]+FVector::Dist2D(Points[I],Goal);
-                if(F<Score) { Score=F; Best=I; }
+                int32 Child=I*2+1; if(Child>=Open.Num()) break;
+                if(Child+1<Open.Num() && Earlier(Open[Child+1],Open[Child])) ++Child;
+                if(!Earlier(Open[Child],Open[I])) break; Open.Swap(I,Child); I=Child;
             }
-            if(Best==INDEX_NONE) return false;
+            return Result.State;
+        };
+        Push(SourceState,FVector::Dist2D(Start,Goal));
+        while(!Open.IsEmpty())
+        {
+            const int32 BestState=Pop(),Best=BestState/Modes,Mode=BestState%Modes;
+            if(Closed[BestState]) continue;
             if(Best==Destination)
             {
-                for(int32 I=Destination;I!=Source;I=Previous[I]) Route.Insert(Points[I],0);
+                for(int32 I=BestState;I!=SourceState;I=Previous[I]) Route.Insert(Points[I/Modes],0);
                 return true;
             }
-            Closed[Best]=true;
-            for(const auto& E:Edges[Best]) if(Distance[Best]+E.Cost<Distance[E.To])
-            { Distance[E.To]=Distance[Best]+E.Cost; Previous[E.To]=Best; }
+            Closed[BestState]=true;
+            for(const auto& E:Edges[Best])
+            {
+                const FVector A=Points[Best],B=Points[E.To]; int32 NextMode=Mode;
+                if(Narrow)
+                {
+                    const bool East=B.X>A.X+.1 && FMath::IsNearlyEqual(A.Y,double(NarrowEastY),.1);
+                    const bool West=B.X<A.X-.1 && FMath::IsNearlyEqual(A.Y,double(NarrowWestY),.1);
+                    if((East && (Mode&2)) || (West && (Mode&1))) continue;
+                    if(East) NextMode=1;
+                    else if(West) NextMode=2;
+                    else if(B.Y<NarrowWestY-.1 || B.Y>NarrowEastY+.1 || FMath::Abs(B.X-A.X)>.1) NextMode=0;
+                }
+                const int32 To=E.To*Modes+NextMode;
+                if(Distance[BestState]+E.Cost<Distance[To])
+                {
+                    Distance[To]=Distance[BestState]+E.Cost; Previous[To]=BestState;
+                    Push(To,Distance[To]+FVector::Dist2D(B,Goal));
+                }
+            }
         }
         return false;
     }

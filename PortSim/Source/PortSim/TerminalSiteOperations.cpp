@@ -122,8 +122,10 @@ void AQuayCrane::TickSiteTest(float Dt)
     int32 SizeCounts[3]={0,0,0};
     for(const auto& Container:SiteLogistics->ShipContainers)
     {
+        const auto* Carrier=Cast<APortAGVActor>(Container->GetAttachParentActor());
+        const bool TestCoG=Carrier && Carrier->HasValidEmergencyCoG(Container,STSProfile.ContainerCoG);
         if(!FMath::IsNearlyEqual(Container->MassKg,Container->TareMassKg+Container->CargoMassKg,1.f) ||
-            !Container->CoGOffsetCm.Equals(STSProfile.ContainerCoG))
+            (!Container->CoGOffsetCm.Equals(STSProfile.ContainerCoG) && !TestCoG))
         { Finish(false,TEXT("Site container gross mass/CoG specification mismatch")); return; }
         SizeCounts[Container->LengthFt==20?0:Container->LengthFt==40?1:2]++;
     }

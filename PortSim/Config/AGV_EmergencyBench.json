@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "notes": "SI, X forward/Y left/Z up. A stationary worker suddenly occupies the lane; geometry, scan latency and reaction latency are modeled. Local surface/40ft CoG overrides, not a claim of certified real equipment. Failure outcomes are expected in deliberately hazardous cases.",
+  "defaults": {"speed_mps":6,"payload_kg":30000,"cargo_cog_m":[0,0.8,3.995],"wetness":1,"ice":0,"worker_distance_m":20,"lidar_range_m":100,"scan_period_s":0.05,"reaction_s":0.2,"brake_demand_mps2":6,"cargo_secured":true,"restraint_capacity_n":300000,"cargo_shift_limit_m":0.3,"timeout_s":60},
+  "cases": [
+    {"id":"dry_secured","label":"건조 · 편심 40ft · 고정","wetness":0,"expected":"stopped_clear"},
+    {"id":"wet_secured","label":"젖음 · 편심 40ft · 고정","expected":"stopped_clear"},
+    {"id":"ice_secured","label":"결빙 · 편심 40ft · 제동 부족","wetness":0,"ice":1,"expected":"worker_contact"},
+    {"id":"wet_unsecured","label":"젖음 · 편심 40ft · 미고정","cargo_secured":false,"expected":"cargo_shift_limit"},
+    {"id":"wet_centered","label":"젖음 · 중앙 CoG · 고정","cargo_cog_m":[0,0,3.495],"expected":"stopped_clear"},
+    {"id":"late_reaction","label":"지연 반응 · 근거리 작업자","worker_distance_m":3,"reaction_s":1,"expected":"worker_contact"},
+    {"id":"short_visibility","label":"시정 1m · 늦은 LiDAR 감지","lidar_range_m":1,"expected":"worker_contact"},
+    {"id":"weak_restraint","label":"고정장치 용량 부족","restraint_capacity_n":100,"expected":"restraint_overload"}
+  ]
+}

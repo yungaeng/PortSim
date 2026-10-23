@@ -20,6 +20,8 @@ public class PortSim : ModuleRules
         RuntimeDependencies.Add("$(ProjectDir)/Config/STS_Simulation.json", StagedFileType.NonUFS);
         RuntimeDependencies.Add("$(ProjectDir)/Config/Stowage_Planning.json", StagedFileType.NonUFS);
         RuntimeDependencies.Add("$(ProjectDir)/Config/Weather_Friction.json", StagedFileType.NonUFS);
+        RuntimeDependencies.Add("$(ProjectDir)/Config/AGV_PhysicsBench.json", StagedFileType.NonUFS);
+        RuntimeDependencies.Add("$(ProjectDir)/Config/AGV_EmergencyBench.json", StagedFileType.NonUFS);
 
 		// Uncomment if you are using Slate UI
 		// PrivateDependencyModuleNames.AddRange(new string[] { "Slate", "SlateCore" });

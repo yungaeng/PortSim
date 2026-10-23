@@ -1,4 +1,5 @@
 #include "PortAGVActor.h"
+#include "PortContainerActor.h"
 #include "PortEnvironmentComponent.h"
 #include "AGVReference.h"
 #include "TerminalLayout.h"
@@ -29,6 +30,7 @@ APortAGVActor::APortAGVActor()
         Wheel->SetCollisionProfileName(TEXT("NoCollision"));
         Wheel->SetGenerateOverlapEvents(false);
         if(Material) Wheel->SetMaterial(0,Material);
+        WheelMeshes.Add(Wheel);
     };
     for (int32 Side:{-1,1}) for (int32 Axle:{-1,0,1})
     {
@@ -46,6 +48,10 @@ APortAGVActor::APortAGVActor()
     Box(TEXT("Steering_Encoder"),RootComponent,FVector(0,500,75),FVector(35,35,35));
     NameLabel=Label(TEXT("AGVLabel"),FVector(0,0,230));
     NameLabel->SetText(FText::FromString(TEXT("AGV")));
+    WorkerMarker=Box(TEXT("Emergency_Worker"),RootComponent,FVector(0,0,90),FVector(55,55,180));
+    WorkerMarker->SetVisibility(false);
+    WorkerLabel=Label(TEXT("Emergency_WorkerLabel"),FVector(0,0,200));
+    WorkerLabel->SetText(FText::FromString(TEXT("TEST WORKER"))); WorkerLabel->SetVisibility(false);
     Tags.Add(TEXT("PortSim.AGV"));
 }
 
@@ -61,6 +67,9 @@ void APortAGVActor::InitializeVehicle(int32 Number)
 
 void APortAGVActor::ResetVehicle(FVector Position)
 {
+    if(EmergencyCargo.IsValid())EmergencyCargo->CoGOffsetCm=OriginalEmergencyCoG;
+    Emergency=FAGVEmergencyState(); EmergencyCargo.Reset();
+    WorkerMarker->SetVisibility(false); WorkerLabel->SetVisibility(false);
     ActiveDeckOffsetCm=0;
     bDriveFault=false;
     DeckCoGOffsetCm=FVector::ZeroVector;
@@ -75,6 +84,9 @@ void APortAGVActor::ResetVehicle(FVector Position)
     DockingAxis=FVector::ZeroVector;
     FMSApproachSpeedLimit=MAX_flt;
     bSteeringLookAhead=false;
+    Dynamics.Reset(0,DynamicsSettings);
+    Dynamics.RefreshLoads(DynamicsSettings,DynamicsInput());
+    UpdateWheelVisuals();
 }
 
 void APortAGVActor::RefreshBatteryLabel()
@@ -125,7 +137,7 @@ FVector APortAGVActor::PlannedMotionDirection(FVector Target) const
 
 bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
 {
-    if(bDriveFault) { SetFMSHold(true); return false; }
+    if(bDriveFault || !Dynamics.Fault.IsEmpty()) { SetFMSHold(true); return false; }
     const FVector Previous=GetActorLocation();
     const FVector ToTarget=Target-Previous;
     const float Distance=ToTarget.Size2D();
@@ -135,14 +147,14 @@ bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
     const float DockingHeadingError=FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(AxialDot,0.f,1.f)));
     const bool HeadingAligned=!Sensors.bDockingNode ||
         DockingHeadingError<=AGVReference::DockingHeadingToleranceDegrees;
-    if(Distance<=Acceptance && HeadingAligned)
+    const bool AtPosition=Distance<=Acceptance && HeadingAligned;
+    if(AtPosition && (!StopAtTarget || (Speed<.5f && FMath::Abs(Dynamics.V)<.005)))
     {
         // No waypoint teleport is used.  Final docking keeps the supplied
         // +/-50 mm limit; intermediate road nodes use the steering sweep.
         CorrectAtTransponder(Previous);
-        Sensors.SteeringAngleDegrees=0;
         Sensors.LateralSlipCm=0;
-        if(StopAtTarget) Speed=0;
+        if(StopAtTarget) ConstrainDynamicsStop();
         return true;
     }
     const FVector SteeringVector=bSteeringLookAhead && !Sensors.bDockingNode?
@@ -175,7 +187,7 @@ bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
         const bool Reverse=FVector::DotProduct(GetActorRightVector(),DesiredDirection)<0.f;
         if(Reverse!=Sensors.bReversing)
         {
-            if(Speed>.1f) { Speed=0; return false; }
+            if(Speed>.1f) { ConstrainDynamicsStop(); return false; }
             Sensors.bReversing=Reverse;
         }
     }
@@ -191,7 +203,6 @@ bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
     const float Curvature=FMath::Clamp(RequestedCurvature,
         -1.f/AGVReference::MinimumInnerTurnRadiusCm,1.f/AGVReference::MinimumInnerTurnRadiusCm);
     LastCurvaturePerCm=Curvature;
-    const float Acceleration=AccelerationCmPerSecondSquared();
     const float HeadingLimit=FMath::Abs(HeadingError)>FMath::DegreesToRadians(5.f)?
         FMath::Min(SpeedLimitCmPerSecond(),CurveSpeedCmPerSecond()):SpeedLimitCmPerSecond();
     const float CurveLimit=FMath::Abs(Curvature)>1.e-6f?
@@ -201,35 +212,9 @@ bool APortAGVActor::MoveToPosition(FVector Target,float Dt,bool StopAtTarget)
     if((Sensors.bDockingNode || FMSAcceptanceCm<=100.f) &&
         Distance<=AGVReference::DockingApproachDistanceCm)
         Desired=FMath::Min(Desired,AGVReference::DockingSpeedCmPerSecond);
-    Speed=FMath::FInterpConstantTo(Speed,Desired,Dt,Speed>Desired?BrakingCmPerSecondSquared():Acceleration);
-    const float Travel=FMath::Min(Distance,Speed*Dt);
-    // Pure-pursuit curvature steers the longitudinal vehicle axis through the
-    // target.  Curvature is capped by the published 5.8 m inner turn radius.
-    // Use normal road smoothing between coarse FMS nodes.  During the final
-    // low-speed shunt, use the pure-pursuit look-ahead directly so small
-    // cross-track errors still produce useful steering.  Both paths remain
-    // capped by the same published 5.8 m inner turning radius below.
-    // A road node may be hundreds of metres away. Using that full distance as
-    // pure-pursuit look-ahead makes an initial 90-degree turn radius equally
-    // huge and lets the AGV drift off the road before it aligns. Cap only the
-    // far look-ahead; nearby arc points retain their actual distance so the
-    // controller does not circle them.
-    const float YawStepRadians=Travel*Curvature;
-    const FVector BeforeAxis=Sensors.bReversing?-GetActorRightVector():GetActorRightVector();
-    const float HalfYaw=YawStepRadians*.5f;
-    const FVector DrivenAxis(BeforeAxis.X*FMath::Cos(HalfYaw)-BeforeAxis.Y*FMath::Sin(HalfYaw),
-        BeforeAxis.X*FMath::Sin(HalfYaw)+BeforeAxis.Y*FMath::Cos(HalfYaw),0);
-    const float Chord=FMath::Abs(Curvature)>1.e-6f?2.f*FMath::Sin(HalfYaw)/Curvature:Travel;
-    // Integrate the actual circular arc, rather than advancing along its end
-    // tangent. The midpoint tangent measures steering travel without crab slip.
-    const FVector Delta=DrivenAxis.GetSafeNormal2D()*Chord;
-    SetActorLocationAndRotation(Previous+Delta,
-        GetActorRotation()+FRotator(0,FMath::RadiansToDegrees(YawStepRadians),0));
-    const FVector Lateral(-DrivenAxis.Y,DrivenAxis.X,0);
-    Sensors.LateralSlipCm=FMath::Abs(FVector::DotProduct(Delta,Lateral));
-    Sensors.SteeringAngleDegrees=FMath::RadiansToDegrees(FMath::Atan(
-        AGVReference::EffectiveWheelbaseCm*Curvature))*(Sensors.bReversing?-1.f:1.f);
-    UpdateOdometry(Previous);
+    if(AtPosition && StopAtTarget) Desired=0;
+    AdvanceDynamics((Sensors.bReversing?-1:1)*Desired*.01,
+        (Sensors.bReversing?-1:1)*Curvature*100.,Dt);
     return false;
 }
 
@@ -253,7 +238,7 @@ void APortAGVActor::SetFMSCommand(FVector Target,int32 NodeIndex,int32 NodeCount
         if(NodeIndex==0 && !Desired.IsNearlyZero())
         {
             const bool Reverse=FVector::DotProduct(GetActorRightVector(),Desired)<0;
-            if(Reverse!=Sensors.bReversing && Speed>.1f) Speed=0;
+            if(Reverse!=Sensors.bReversing && Speed>.1f) ConstrainDynamicsStop();
             Sensors.bReversing=Reverse;
         }
     }
@@ -266,7 +251,7 @@ void APortAGVActor::SetFMSCommand(FVector Target,int32 NodeIndex,int32 NodeCount
 void APortAGVActor::SetFMSHold(bool Hold)
 {
     Sensors.bFMSHold=Hold;
-    if(Hold) Speed=0;
+    if(Hold) ConstrainDynamicsStop();
 }
 
 void APortAGVActor::UpdateLiDARObservation(float FrontDistanceCm,float RearDistanceCm,float SafetyDistanceCm,float DetectionRangeCm,
@@ -279,13 +264,14 @@ void APortAGVActor::UpdateLiDARObservation(float FrontDistanceCm,float RearDista
     Sensors.LiDARBlockingVehicleID=BlockingVehicleID;
     Sensors.bLiDARClear=!ControlledStop;
     Sensors.bControlledStop=ControlledStop;
-    if(ControlledStop) Speed=0;
+    if(ControlledStop) ConstrainDynamicsStop();
 }
 
 void APortAGVActor::UpdateOdometry(FVector PreviousPosition)
 {
     const FVector Delta=GetActorLocation()-PreviousPosition;
-    Sensors.WheelOdometryCm+=Delta.Size2D();
+    // Wheel distance is integrated from angular velocity in AdvanceDynamics.
+    // Navigation remains idealized transponder/IMU fusion, not raw wheel-only dead reckoning.
     Sensors.EstimatedPosition+=Delta;
     Sensors.PositionErrorCm=FVector::Dist2D(Sensors.EstimatedPosition,GetActorLocation());
 }
@@ -338,7 +324,11 @@ float APortAGVActor::BrakingCmPerSecondSquared() const
 }
 float APortAGVActor::CurveSpeedCmPerSecond() const
 {
-    return FMath::Min(AGVReference::ReferenceCurveSpeedCmPerSecond,
+    auto Input=DynamicsInput(); Input.CurvaturePerM=1./(AGVReference::MinimumInnerTurnRadiusCm*.01);
+    auto Settings=DynamicsSettings; Settings.Sanitize();
+    FAGVDynamicsState Loads; Loads.RefreshLoads(Settings,Input);
+    const float Stability=DynamicsSettings.bStabilitySpeedControl?Loads.StabilityLimitMps*100:MAX_flt;
+    return FMath::Min3(AGVReference::ReferenceCurveSpeedCmPerSecond,Stability,
         FMath::Sqrt(.5f*TireGripCmPerSecondSquared()*AGVReference::MinimumInnerTurnRadiusCm));
 }
 

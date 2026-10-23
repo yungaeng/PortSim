@@ -6,11 +6,13 @@
 #include "AGVReference.h"
 #include "AGVTrafficGeometry.h"
 #include "TerminalLayout.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 
 namespace { constexpr double RailClearanceCm=2500.; } // blockout assumption, not an OEM limit
 
 bool APortSiteLogistics::CraneAvailable(int32 I) const
-{ return Equipment.IsValidIndex(I) && IsValid(Equipment[I]) && Equipment[I]->bEnabled && Equipment[I]->Fault.IsEmpty(); }
+{ return Equipment.IsValidIndex(I) && IsValid(Equipment[I]) && Equipment[I]->bEnabled && Equipment[I]->Fault.IsEmpty() && !Equipment[I]->bFaultEvacuating && !Equipment[I]->bFaultEvacuationComplete; }
 
 void APortSiteLogistics::RebuildSTSStreams()
 {
@@ -61,8 +63,8 @@ bool APortSiteLogistics::JobHeldByFailure(int32 V) const
     const auto* STS=Equipment.IsValidIndex(YardCraneCount+J.STS)?Equipment[YardCraneCount+J.STS].Get():nullptr;
     // Keep unrelated loaded/returning trips moving. An approaching vehicle
     // may still reach its reserved pad; only the stationary pickup waits.
-    if(STS && STS->IsSensorUnavailable() && (J.Stage==1 || J.Stage==10)) return true;
-    return J.Stage==4 && Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsSensorUnavailable();
+    if(STS && STS->IsEquipmentUnavailable() && (J.Stage==1 || J.Stage==10)) return true;
+    return J.Stage==4 && Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsEquipmentUnavailable();
 }
 
 void APortSiteLogistics::ReleaseDeferredYardLeases()
@@ -89,7 +91,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
     {
         for(int32 I:{ScheduledFailedSTS>0?YardCraneCount+ScheduledFailedSTS-1:INDEX_NONE,
             ScheduledFailedRMG>0?ScheduledFailedRMG-1:INDEX_NONE})
-            if(Equipment.IsValidIndex(I)) Equipment[I]->SetSensorFailure(true);
+            if(Equipment.IsValidIndex(I)) { Equipment[I]->bAutoSensorRecovery=FParse::Param(FCommandLine::Get(),TEXT("PortSimAutomaticSensorRepair")); Equipment[I]->SetSensorFailure(true); }
         bFailureInjected=true;
     }
     if(bFailureInjected && !bFailureRepaired && ScheduledRepairAfter>=0 && SimulationTime>=ScheduledFailureAt+ScheduledRepairAfter)
@@ -103,15 +105,17 @@ void APortSiteLogistics::ManageEquipmentFailures()
     for(int32 I=0;I<Equipment.Num();++I)
     {
         auto* Crane=Equipment[I].Get();
-        if(Crane->IsSensorUnavailable())
+        if(Crane->IsEquipmentUnavailable())
         {
-            Crane->RecoveryStatus=Crane->RetainsLoad()?TEXT("load_retained_repair_required"):
+            Crane->RecoveryStatus=Crane->bGantryFault?TEXT("gantry_blocked_repair_required"):
+                Crane->bFaultEvacuating?TEXT("evacuating_with_independent_safety"):
+                Crane->bFaultEvacuationComplete?TEXT("relocated_wait_repair"):Crane->RetainsLoad()?TEXT("load_retained_repair_required"):
                 Crane->IsBusy()?TEXT("verification_repair_required"):TEXT("isolated_reassigning");
             if(!IsolatedEquipment.Contains(I))
             {
                 IsolatedEquipment.Add(I); ++EquipmentFaultEvents;
                 RecordRecoveryEvent(TEXT("fault"),Crane,Crane,Crane);
-                UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_SENSOR_ISOLATED: crane=%d retained=%d terminal_continues=1"),Crane->CraneID,Crane->RetainsLoad());
+                UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_SENSOR_ISOLATED: crane=%d retained=%d terminal_continues=1 gantry_fault=%d"),Crane->CraneID,Crane->RetainsLoad(),Crane->bGantryFault);
                 if(!Crane->RetainsLoad() && Crane->IsBusy())
                 {
                     // Abort only an unlatched, supported pickup. Released loads
@@ -134,18 +138,20 @@ void APortSiteLogistics::ManageEquipmentFailures()
     }
     ReleaseDeferredYardLeases();
     bRecoveryRailGuard=!IsolatedEquipment.IsEmpty();
+    for(const auto& Crane:Equipment) if(Crane->bFaultEvacuating || Crane->bFaultEvacuationComplete) bRecoveryRailGuard=true;
     if(!bRecoveryRailGuard) for(const auto& C:Manifest) if(C.State==1 && C.STS!=C.OriginalSTS) { bRecoveryRailGuard=true; break; }
+    PlanFaultEvacuations();
     for(int32 V=0;V<Jobs.Num();++V)
     {
         auto& J=Jobs[V];
         J.bEquipmentWaiting=(Equipment.IsValidIndex(YardCraneCount+J.STS) &&
-            Equipment[YardCraneCount+J.STS]->IsSensorUnavailable() && (J.Stage==6 || J.Stage==1 || J.Stage==10)) ||
-            (Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsSensorUnavailable() && J.Stage>=2 && J.Stage<=9);
+            Equipment[YardCraneCount+J.STS]->IsEquipmentUnavailable() && (J.Stage==6 || J.Stage==1 || J.Stage==10)) ||
+            (Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsEquipmentUnavailable() && J.Stage>=2 && J.Stage<=9);
         if(Equipment.IsValidIndex(YardCraneCount+J.STS) && Equipment[YardCraneCount+J.STS]->bRailSafetyHold) J.bEquipmentWaiting=true;
         // A failed quay pickup occupies its own pad, not a distant yard aisle.
         // Keep the cargo slot booking, but lend the unused approach to other trips.
         if((J.Stage==6 || J.Stage==1 || J.Stage==10) && Yard.IsValidIndex(J.Slot) &&
-            Equipment[YardCraneCount+J.STS]->IsSensorUnavailable() && !J.bRMGReserved &&
+            Equipment[YardCraneCount+J.STS]->IsEquipmentUnavailable() && !J.bRMGReserved &&
             FVector::Dist2D(Vehicles[V]->GetActorLocation(),YardHandover(Yard[J.Slot]))>4000.)
         {
             int32& ApproachOwner=YardApproachOwners[YardApproachKey(Yard[J.Slot])];
@@ -248,6 +254,52 @@ void APortSiteLogistics::ManageEquipmentFailures()
     if(Changed) RebuildSTSStreams();
     for(int32 I=0;I<YardCraneCount;++I) if(!CraneAvailable(I)) ReplanFailedYards(I);
     ReplanBlockedYards();
+}
+
+void APortSiteLogistics::PlanFaultEvacuations()
+{
+    for(int32 S=0;S<LaneCount;++S)
+    {
+        auto* Crane=Equipment[YardCraneCount+S].Get();
+        if(Crane->Fault.IsEmpty() && Crane->bFaultEvacuationComplete)
+        {
+            // Returning to its original rail anchor happens before admission.
+            // Neighbour reservations may delay it; the crane never crosses them.
+            Crane->RecoveryStatus=TEXT("returning_to_service_position");
+            bool HomeClear=true;
+            const double Home=Crane->GantryHomeWorldY();
+            for(int32 Other=0;Other<LaneCount;++Other) if(Other!=S)
+            {
+                const auto Interval=Equipment[YardCraneCount+Other]->RailWorkInterval();
+                if((Other<S && Home<Interval.Y+RailClearanceCm) || (Other>S && Home>Interval.X-RailClearanceCm)) HomeClear=false;
+            }
+            if(HomeClear && !Crane->bFaultEvacuating) Crane->RequestFaultEvacuation(Home,this);
+            continue;
+        }
+        if(!Crane->CanFaultEvacuate() || Crane->bFaultEvacuating || Crane->bFaultEvacuationComplete) continue;
+        // The failed crane remains between its original neighbours. Moving
+        // beyond an adjacent crane would itself violate non-crossing.
+        const double Low=S>0?Equipment[YardCraneCount+S-1]->RailWorkInterval().Y+RailClearanceCm:-50000.;
+        const double High=S+1<LaneCount?Equipment[YardCraneCount+S+1]->RailWorkInterval().X-RailClearanceCm:23000.;
+        const double Current=Crane->GantryWorldY();
+        if(Low>Current || High<Current || High-Low<200) continue;
+        auto Blocked=[&](double Y)
+        {
+            int32 Count=0;
+            for(const auto& C:Manifest) if(C.State!=2 && C.OriginalSTS/3==S/3 &&
+                FMath::Abs(C.Transform.GetLocation().Y-Y)<RailClearanceCm) ++Count;
+            return Count;
+        };
+        double Best=Current; int32 BestBlocked=Blocked(Current);
+        for(double Candidate:{Low+50.,High-50.})
+            if(Blocked(Candidate)<BestBlocked && CanSTSGantryMove(Crane,Candidate))
+            { Best=Candidate; BestBlocked=Blocked(Candidate); }
+        if(FMath::Abs(Best-Current)>100 && Crane->RequestFaultEvacuation(Best,this))
+        {
+            RecordRecoveryEvent(TEXT("evacuation_started"),Crane,Crane,Crane,nullptr,FVector(0,Current,0),FVector(0,Best,0));
+            UE_LOG(LogTemp,Display,TEXT("STS_FAULT_EVACUATION: crane=%d from_y=%.2f to_y=%.2f remaining_blocked=%d"),Crane->CraneID,Current,Best,BestBlocked);
+        }
+    }
 }
 
 bool APortSiteLogistics::ReplanFailedYards(int32 FailedRMG)

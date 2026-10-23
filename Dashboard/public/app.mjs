@@ -1,7 +1,12 @@
 import {compareOperation, vesselDuration, formatDuration} from './metrics.mjs';
 import {renderFrictionDetails} from './friction-view.mjs';
+import {renderAGVPhysics,renderAGVExperiments,renderAGVSensors} from './agv-physics-view.mjs';
+import {renderEmergencyReport} from './agv-emergency-view.mjs';
+let agvBenchReport=null,agvEmergencyReport=null,agvBenchFetched=0;
 import {renderRecoveryDetails, faultDialogTitle} from './recovery-view.mjs';
-import {controlPanel,impactFeed,impactOverlay,mapPosition} from './control-view.mjs';
+import {controlPanel,impactFeed} from './control-view.mjs';
+import {renderTerminalOverview} from './terminal-map.mjs';
+let terminalLayout=null,layoutFetched=0,mapMode='all';
 
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -12,6 +17,7 @@ const labels={charging:'충전 중',to_charge:'충전소 이동',charge_return:'
 const dispatchReasons={admitted:'AGV · 야드 확보 완료',agv_approaching:'배정 AGV 접근 중',agv_returning:'배정 AGV 복귀 중',vehicle_pending:'실행 가능한 화물 · 차량 배정 대기',yard_support_pending:'야드 아래층 적재 대기',rmg_approach_reserved:'목적 RMG 접근 예약 대기',rmg_turn_clearance:'RMG 인수·출차 공간 대기',yard_block_reserved:'야드 블록 사용 중',yard_slot_unavailable:'목적 슬롯 사용 불가',source_not_ready:'선박 상부 화물·이전 배치 또는 작업 종료 확인'};
 const stages=['안전 높이 이동','픽업 위치 접근','착좌 · 잠금','화물 인양','인계 위치 이동','하강 · 인계','스프레더 회수','안착 확인'];
 const paths={grid:'M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z',crane:'M3 7h18M7 7V4h5l6 3M7 7v14M4 21h6M13 7v10m-3 0h6v4h-6zM18 7v14m-3 0h6',agv:'M3 9h18v8H3zM6 9V6h12v3M6 17v3m12-3v3M7 13h10',ship:'M3 13l9 4 9-4-3 7H6zM6 13V8h12v5M9 8V4h6v4M2 22l4-1 5 1 6-1 5 1',box:'M3 6h18v13H3zM7 6v13m5-13v13m5-13v13',sensor:'M12 11v2M8 8a6 6 0 0 0 0 8m8-8a6 6 0 0 1 0 8M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16',chart:'M3 3v18h18M7 16l4-6 4 3 6-8',download:'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',search:'M10 3a7 7 0 1 0 0 14 7 7 0 0 0 0-14m5 12 6 6',clock:'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m0 4v6l4 2'};
+Object.assign(labels,{emergency_hold:'돌발시험 정지 유지',emergency_braking:'돌발시험 물리 급제동',emergency_detection:'돌발시험 감지·반응 중'});
 function icon(name){return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${paths[name]||paths.grid}"/></svg>`;}
 document.querySelectorAll('[data-icon]').forEach(e=>e.innerHTML=icon(e.dataset.icon));
 let state=null, reference=null, settings=null, live=false, age=null, view='overview', filter='sts', query='', page=0, selected=null, tab='overview', sensor='S05', lastRendered='', busy=false, pointerHeld=false;
@@ -22,9 +28,10 @@ const actors=()=>state?.actors||[];
 let pendingCommand=null,impactFocus=null,controlRun='',controlMessages=new Map();
 async function sendEquipmentCommand(action){
  const a=current();if(!a||pendingCommand||!live)return;
+ if(action==='fail')action=document.querySelector('[data-fault-mode]')?.value||'fail';
  const request={run_id:state.run_id,control_session:state.control_session,actor_id:a.id,action};
  pendingCommand={actor:a.id,run:state.run_id,session:state.control_session,started:Date.now(),id:null};
- if(action==='fail'||impactFocus?.cause!==a.id)impactFocus={cause:a.id,after:Math.max(0,...(state.recovery_events||[]).map(e=>e.sequence))};
+ if(action.startsWith('fail')||impactFocus?.cause!==a.id)impactFocus={cause:a.id,after:Math.max(0,...(state.recovery_events||[]).map(e=>e.sequence))};
  controlMessages.set(a.id,'명령 전송 중…');renderContent();
  try{
   const response=await fetch('/api/equipment-command',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)}),data=await response.json();
@@ -67,7 +74,8 @@ const agvSensorRefs=[
  {id:'A01',key:'transponder',name:'Transponder 절대위치',typical_location:'차량 하부 중앙 안테나 + FMS 경로 노드',observations:['절대좌표','Transponder ID','±25 mm 위치오차'],controller_decisions:['누적 Odometry 오차 보정','도킹 위치 확인']},
  {id:'A02',key:'odometry',name:'Wheel / Steering Odometry',typical_location:'구동륜 엔코더 + 조향축 엔코더',observations:['누적 주행거리','연속 추정위치','조향각'],controller_decisions:['노드 사이 위치추정','경로 방향 추종']},
  {id:'A03',key:'fms',name:'FMS 경로 명령',typical_location:'중앙 PortSiteLogistics 경로계획',observations:['현재/전체 노드','다음 목표점','도로 예약 대기'],controller_decisions:['다음 노드 이동','예약 충돌 시 FMS Hold']},
- {id:'A04',key:'lidar',name:'Front / Rear LiDAR',typical_location:'차량 전면과 후면',observations:['전·후방 AGV 순거리','동적 제동 안전거리'],controller_decisions:['장애물 감지 Controlled Stop','진행방향에 따른 전후 센서 선택']}
+ {id:'A04',key:'lidar',name:'Front / Rear LiDAR',typical_location:'차량 전면과 후면',observations:['전·후방 AGV 순거리','동적 제동 안전거리'],controller_decisions:['장애물 감지 Controlled Stop','진행방향에 따른 전후 센서 선택']},
+ {id:'A05',key:'imu',name:'IMU · 차체 관성 관측',typical_location:'합성 차체 기준점 · 실물 설치 위치 미확인',observations:['가속도·specific force','롤/피치/요 각속도','바퀴 RPM·슬립률'],controller_decisions:['차체 움직임 관측','CoG 기반 안정성 속도 제한']}
 ];
 const sensorRefs=a=>a?.type==='agv'?agvSensorRefs:a?.type==='rmg'?(config(a).sensor_mounts||[]).map((m,i)=>({id:`R${String(i+1).padStart(2,'0')}`,key:m.key,name:m.name||m.key,typical_location:m.frame,observations:[m.source_notes],controller_decisions:m.controller_decisions||[]})):(ref()?.sensors||[]);
 const sensorActive=new Set(['trolley_encoder','hoist_encoder','twistlock_load','twistlock_state','landed','agv_position_lidar']);
@@ -77,6 +85,11 @@ function kv(name,value){return `<div class="kv-row"><span>${esc(name)}</span><b>
 function tile(label,value,unit=''){return `<div class="value-tile"><small>${esc(label)}</small><strong>${esc(value)}<em>${esc(unit)}</em></strong></div>`;}
 function actorLink(id){const a=actors().find(x=>x.id===id);return a?`<button class="link" data-actor="${esc(a.id)}">${esc(a.name)} ↗</button>`:'—';}
 function heading(){
+ if(view==='agv-physics'){
+  $('#breadcrumb').textContent='AGV 물리 시험';$('#page-title').textContent='노면과 하중 조건에 따른 실제 계산 결과.';
+  $('#page-description').textContent='독립 시험 보고서 · 실시간 장비 값은 장비 탐색기의 물리 모델에서 확인하세요.';
+  document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',e.dataset.view===view));return;
+ }
  const info={overview:['항만 모니터링','항만의 움직임을, 한눈에.','선박에서 야드까지. 장비와 화물, 자동 운반의 모든 연결을 살펴보세요.'],equipment:['장비 탐색기','장비 하나하나, 더 깊이.','실행 중인 액터의 변수와 구성 부품, 연결된 화물을 찾아보세요.'],sensors:['센서 레퍼런스','작은 관측이 만드는 자동화.','STS·AGV·RMG 센서의 부착 부위와 관측값, 제어 판단의 연결을 확인하세요.'],performance:['시간 절감 분석','자동화로 확보한 시간.','같은 선박 물량·STS 대수·완료 기준으로 기존 작업과 비교합니다.']}[view];
  $('#breadcrumb').textContent=info[0];$('#page-title').textContent=info[1];$('#page-description').textContent=info[2];
  document.querySelectorAll('[data-view]').forEach(e=>e.classList.toggle('active',e.dataset.view===view));
@@ -96,29 +109,7 @@ function renderChrome(){
  $('#footer-time').textContent=state?`기록 시각 ${new Date(state.generated_at).toLocaleString('ko-KR')}${mix?` · 20ft ${num(mix['20'],0)}개 / 40ft ${num(mix['40'],0)}개 / 45ft ${num(mix['45'],0)}개`:''}`:'시뮬레이션 데이터 대기';
 }
 
-function map(){
- const X=x=>55+(x+85)*.75,Y=y=>36+(y+525)*.29;
- const mk=(a,body)=>`<g class="map-item ${a.id===selected?'selected':''}" data-actor="${esc(a.id)}" tabindex="0" role="button" aria-label="${esc(a.name)} 선택"><title>${esc(a.name)} · ${esc(labels[a.state]||a.state)}</title>${body}</g>`;
- let shapes='';
- for(const a of actors().filter(a=>a.type==='yard')){
-  const [x,y]=a.position_m, top=Y(y)-3;
-  let blocks='';for(let r=0;r<3;r++)for(let c=0;c<13;c++)blocks+=`<rect x="${X(122)+c*24}" y="${top+r*2.3}" width="20" height="1.65" rx=".3" fill="${['#8eb7a8','#a6bdb0','#b6c8ae'][(r+c)%3]}"/>`;
-  shapes+=mk(a,`<rect class="map-selection" x="${X(109)}" y="${top-3}" width="337" height="12" rx="2" fill="#edf3ed"/>${blocks}`);
- }
- for(const a of actors().filter(a=>a.type==='vessel')){
-  const [,y]=a.position_m;
-  shapes+=mk(a,`<path class="map-selection" d="M${X(-63)} ${Y(y)-30}h30v59l-15 12-15-12z" fill="#477885" stroke="#6497a0"/><rect x="${X(-56)}" y="${Y(y)-25}" width="19" height="46" rx="2" fill="#9bc0bd"/><path d="M${X(-56)} ${Y(y)-15}h19m-19 9h19m-19 9h19m-19 9h19" stroke="#659c9e"/><text x="${X(-47)}" y="${Y(y)+2}" fill="#27535f" font-size="7" text-anchor="middle" transform="rotate(-90 ${X(-47)} ${Y(y)+2})">${esc(a.name)}</text>`);
- }
- shapes+=impactOverlay(state,impactFocus,X,Y,selected);
- for(const a of actors().filter(a=>['sts','rmg','agv'].includes(a.type))){
-  const [x,y]=mapPosition(a), px=X(x),py=Y(y);
-  if(a.type==='sts') shapes+=mk(a,`<rect x="${px-40}" y="${py-9}" width="78" height="19" fill="transparent"/><path class="map-selection" d="M${px-37} ${py}h76m-48-6v12m19-12v12" stroke="${a.id===selected?'#12a488':'#5c9b89'}" stroke-width="2.4"/><rect x="${px+2}" y="${py-3}" width="7" height="6" fill="#d9b263"/><text x="${px+44}" y="${py+2}" font-size="5.5" fill="#4c8776">${esc(a.name)}</text>`);
-  else if(a.type==='agv') shapes+=mk(a,`<rect class="map-selection" x="${px-4}" y="${py-3}" width="8" height="6" rx="1.5" fill="#638bb3" stroke="#f9fcfb"/>`);
-  else shapes+=mk(a,`<rect x="${px-12}" y="${py-5}" width="24" height="10" fill="transparent"/><path class="map-selection" d="M${px-10} ${py-3}v6m0-3h20m0-3v6" stroke="#c79f62" stroke-width="1.2"/>`);
- }
- for(const a of actors().filter(a=>['sts','rmg'].includes(a.type)&&a.head_position_m))shapes+=`<circle cx="${X(a.head_position_m[0])}" cy="${Y(a.head_position_m[1])}" r="1.8" fill="${a.fault?'#bd4545':'#1e6856'}" pointer-events="none"/>`;
- return `<section class="panel"><div class="panel-head"><div><h2>터미널 오버뷰 <span class="number">TOP VIEW</span></h2><p>장비를 클릭해 상세 정보를 확인하세요</p></div><div class="legend"><span><i class="type-dot"></i>STS</span><span><i class="type-dot" style="background:#779bbc"></i>AGV</span><span><i class="type-dot" style="background:#c69757"></i>RMG</span></div></div><div class="map-wrap"><svg class="terminal-map" viewBox="0 0 750 390" role="img" aria-label="실행 좌표 기반 항만 장비 지도"><defs><pattern id="map-grid" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".55" fill="#dce8e1"/></pattern></defs><rect width="750" height="390" fill="url(#map-grid)"/><rect x="42" y="25" width="87" height="337" rx="9" fill="#193e4c"/><rect x="129" y="25" width="586" height="337" rx="5" fill="#f1f5f0"/><path d="M${X(70)} 29v330M${X(110)} 29v330M${X(390)} 29v330M${X(650)} 29v330" stroke="#e1e9e2" stroke-width="11"/><path d="M${X(70)} 29v330M${X(390)} 29v330" stroke="#fcfdfb" stroke-width=".7" stroke-dasharray="6 4"/>${shapes}<text x="52" y="18" class="map-text">QUAYSIDE</text><text x="300" y="18" class="map-text">CONTAINER YARD</text><text x="635" y="18" class="map-text">LANDSIDE</text><rect x="646" y="120" width="43" height="65" rx="3" fill="#d4e1d8"/><rect x="646" y="220" width="43" height="34" rx="3" fill="#d4e1d8"/><text x="667" y="156" fill="#80998b" font-size="6" text-anchor="middle">OPS</text><path d="M701 333v-19m-4 5 4-5 4 5" stroke="#8aa197"/><text x="698" y="343" fill="#8aa197" font-size="7">Y−</text>${!state?'<text x="388" y="203" text-anchor="middle" fill="#6f9181" font-size="12">시뮬레이터를 실행하면 장비가 표시됩니다</text>':''}</svg></div><div class="map-caption"><span>배치 좌표: 엔진 데이터 · 장비 기호는 확대 표시</span><span>컨테이너 상세는 목록에서 조회</span></div><div class="flow">${[['ship','선박'],['crane','STS'],['agv','AGV'],['crane','RMG'],['grid','야드']].map(([ic,t],i)=>`${i?'<span class="arrow">→</span>':''}<span class="step"><span class="step-icon">${icon(ic)}</span><b>${t}</b></span>`).join('')}</div></section>`;
-}
+function map(){return renderTerminalOverview(state,terminalLayout,{selected,focus:impactFocus,mode:mapMode});}
 
 function stowagePlans(){
  const vessels=state?.vessels||[];
@@ -255,6 +246,7 @@ Object.assign(friendly,{lateral_slip_mm:'횡방향 슬립 (mm)',reversing:'후�
 function showValue(v){if(v===null||v===undefined)return '미확정';if(typeof v==='boolean')return v?'true':'false';if(Array.isArray(v))return v.map(showValue).join(', ');if(typeof v==='object')return JSON.stringify(v);return typeof v==='number'?num(v,3):v;}
 function variableDetails(a){return `${a.type==='rmg'?`<details open><summary>RMG 적용 사양 · 가정 구분</summary><pre class="raw">${esc(JSON.stringify(a.applied_crane_profile,null,2))}</pre></details>`:''}<div class="detail-subhead">장비 변수 <span>SI 단위</span></div>${Object.entries(friendly).filter(([k])=>k in a).map(([k,l])=>kv(l,showValue(a[k]))).join('')}${a.type==='sts'?`<details><summary>적용 중인 STS 운전 가정 · 전체</summary>${Object.entries(config()).filter(([k])=>!['kind','notes'].includes(k)).map(([k,v])=>kv(k,showValue(v))).join('')}<div class="note">도면 사양과 구분된 시뮬레이션 가정입니다.</div></details><details><summary>도면 레퍼런스 · 전체 JSON</summary><pre class="raw">${esc(JSON.stringify(ref(),null,2))}</pre></details>`:''}<details><summary>액터 공개 속성</summary>${Object.entries(a.properties||{}).map(([k,v])=>kv(k,v)).join('')||'<div class="note">논리 그룹 또는 공개 속성 없음</div>'}</details><details><summary>구성 부품 · ${a.components?.length||0}개</summary><div class="component-list">${(a.components||[]).map(c=>`<div class="kv-row"><span>${esc(c.name)}</span><b>${esc(vector(c.local_position_m))} m<br><small class="field-origin">로컬 좌표</small></b></div>`).join('')}</div></details><details><summary>이 액터의 원본 데이터</summary><pre class="raw">${esc(JSON.stringify(a,null,2))}</pre></details><div class="note">화면은 조회용입니다. 표시값을 편집해도 엔진 제어나 물리 설정이 바뀌지 않습니다.</div>`;}
 function sensorDetails(a){
+ if(a.type==='agv' && a.agv_physics)return renderAGVSensors(a);
  if(a.type==='agv')return `<div class="detail-subhead">AGV 위치추정 · 안전제어 <span>${a.controlled_stop?'Controlled Stop':a.fms_hold?'FMS Hold':'정상'}</span></div><div class="loads">${tile('위치오차',num(a.position_error_mm,1),'mm')}${tile('누적 주행',num(a.wheel_odometry_m,1),'m')}</div>${kv('주행 방향',a.reversing?'후진':'전진')}${kv('크랩 횡이동','비활성')}${kv('횡방향 슬립',`${num(a.lateral_slip_mm,3)} mm`)}${kv('Transponder ID',a.transponder_id>=0?num(a.transponder_id,0):'미통과')}${kv('절대위치 보정',a.transponder_locked?'현재 노드에서 잠금':'Odometry 추정 중')}${kv('추정 XYZ',`${vector(a.estimated_position_m,3)} m`)}${kv('마지막 절대좌표',`${vector(a.transponder_position_m,3)} m`)}${kv('Steering Encoder',`${num(a.steering_angle_deg,2)}°`)}<div class="detail-subhead">FMS 경로</div>${kv('연결',a.fms_connected?'정상':'끊김')}${kv('현재 / 전체 노드',a.fms_node_count?`${num(a.fms_node_index+1,0)} / ${num(a.fms_node_count,0)}`:'배차 대기')}${kv('다음 노드 XYZ',`${vector(a.fms_next_node_m,2)} m`)}${kv('도로예약',a.fms_hold?'충돌 경로 해제 대기':'진입 허용')}<div class="detail-subhead">Front / Rear LiDAR</div>${kv('전방 장애물',a.lidar_front_obstacle_m<0?'감지 없음':`${num(a.lidar_front_obstacle_m,2)} m`)}${kv('후방 장애물',a.lidar_rear_obstacle_m<0?'감지 없음':`${num(a.lidar_rear_obstacle_m,2)} m`)}${kv('현재 제동 안전거리',`${num(a.lidar_safety_distance_m,2)} m`)}${kv('차단 AGV',a.lidar_blocking_agv>=0?`AGV ${a.lidar_blocking_agv}`:'없음')}${kv('판정',a.controlled_stop?'정지 명령':'주행 허용')}<div class="note amber">LiDAR 제조사 탐지거리와 Transponder 설치 간격은 입력 자료에 없습니다. 안전거리는 현재 속도의 제동거리와 ±25 mm 위치오차로 계산하며 FMS 도로예약 대기와 물체감지 정지를 구분합니다.</div>`;
  if(!a.observation)return `<div class="empty"><strong>개별 센서 관측 모델 없음</strong>이 장비에는 STS 센서 레퍼런스를 임의로 적용하지 않습니다.</div>${kv('조회 가능','위치 · 동작 상태 · 구성 부품')}`;
  const o=a.observation;
@@ -262,6 +254,7 @@ function sensorDetails(a){
 }
 function physicsDetails(a){return renderFrictionDetails(a)+physicsDetailsBase(a);}
 function physicsDetailsBase(a){
+ if(a.type==='agv')return renderAGVPhysics(a);
  if(a.dynamics)return dynamicsDetails(a);
  if(!['sts','rmg'].includes(a.type))return `<div class="detail-subhead">${esc(types[a.type]?.[0]||'액터')} 물리 상태</div>${a.type==='container'?kv('질량',`${num(a.mass_kg)} kg`)+kv('무게중심 편차',`${vector(a.cog_m)} m`)+kv('강체 시뮬레이션',a.simulating_physics?'활성':'고정 또는 장비에 부착')+kv('소유 단계',labels[a.state]||a.state):a.type==='agv'?kv('운반 모델','종축 전진/후진 + 조향 운동학')+kv('횡이동','비활성')+kv('최소 내측 회전반경','5.8 m')+kv('최고 속도',`${num(a.speed_limit_mps)} m/s`)+kv('가속도',`${num(a.acceleration_mps2)} m/s²`):kv('표현 방식',a.type==='vessel'?'매니페스트 기반 선박 그룹':a.type==='yard'?'컨테이너 인스턴스 블록':'엔진 액터')}<div class="note">${a.type==='agv'?'차체의 긴 축을 따라서만 이동하며, 조향 곡률은 5.8 m 회전반경으로 제한합니다. 차륜 토크·타이어 접촉·주행 모터의 상세 동역학은 아직 모델링하지 않았습니다.':a.type==='container'?'운반 중 장비에 부착되며 착지 과정에서 강체 물리를 사용합니다. 현재 상태에 따라 활성 여부가 달라집니다.':'이 그룹 자체의 별도 물리 관측값은 없습니다.'}</div>`;
  return `${a.type==='sts'?loads(a):''}<div class="detail-subhead">상세 물리 모델</div><div class="model-card"><h4>개별 와이어 장력 <span class="badge">미구현</span></h4><p>독립 와이어 반력 솔버가 없습니다. 줄걸이 구성, 로프 강성·감쇠, 풀리 및 장력 분배 조건이 필요합니다.</p></div><div class="model-card"><h4>모터 토크 <span class="badge">미구현</span></h4><p>${a.type==='sts'?`권상 정격 ${num(a.hoist_power_w/1000,0)} kW는 속도 상한에 적용됩니다. `:''}드럼 반경, 감속비, 효율 및 회전 관성이 없어 토크 측정값을 표시하지 않습니다.</p></div><div class="model-card"><h4>Anti-sway / Anti-skew <span class="badge">미구현</span></h4><p>사이트 크레인은 수평 스프레더의 운동학적 이동 모델입니다. 흔들림 0°는 제어 성능 결과가 아닌 모델 가정입니다.</p></div><div class="note">이 화면은 현재 엔진의 계산 범위를 보여줍니다. 상세 물리 모델을 구현한 것으로 해석하지 않습니다.</div>`;}
@@ -319,6 +312,7 @@ function renderContent(){
  heading();
  if(view==='sensors')$('#view-content').innerHTML=sensorsPage();
  else if(view==='performance')$('#view-content').innerHTML=performancePage();
+ else if(view==='agv-physics')$('#view-content').innerHTML=renderEmergencyReport(agvEmergencyReport)+renderAGVExperiments(agvBenchReport);
  else $('#view-content').innerHTML=`<div class="${view==='equipment'?'full-equipment':''}"><div class="monitor-grid"><div>${view==='overview'?map()+impactFeed(state,impactFocus,live)+stowagePlans():''}${equipmentTable()}</div>${inspector()}</div></div>`;
 }
 function choose(id){selected=id;renderContent();}
@@ -327,6 +321,17 @@ async function poll(){
  try{
   const response=await fetch('/api/state');if(!response.ok)throw Error();const payload=await response.json();
   state=payload.state;live=payload.live;age=payload.age_seconds;
+  if(state?.run_id&&terminalLayout?.run_id!==state.run_id&&Date.now()-layoutFetched>3000){
+   layoutFetched=Date.now();
+   try{const r=await fetch('/api/terminal-layout');if(r.ok){const data=await r.json();if(data.layout?.run_id===state.run_id)terminalLayout=data.layout;}}catch{}
+  }
+  if(view==='agv-physics' && Date.now()-agvBenchFetched>10000){
+   try{const [b,e]=await Promise.all([fetch('/api/agv-experiments'),fetch('/api/agv-emergencies')]);
+    if(b.ok)agvBenchReport=(await b.json()).report;
+    if(e.ok)agvEmergencyReport=(await e.json()).report;
+    if(b.ok&&e.ok)agvBenchFetched=Date.now();renderContent();}
+   catch{}
+  }
   observeControls();
   updateFaultDialog();
   if(!current())selected=actors().find(a=>a.type==='sts')?.id||null;
@@ -354,6 +359,7 @@ document.addEventListener('click',e=>{
  if(b.dataset.tab){tab=b.dataset.tab;renderContent();}
  if(b.dataset.command)sendEquipmentCommand(b.dataset.command);
  if(b.dataset.impact){impactFocus=null;renderContent();}
+ if(b.dataset.mapView){mapMode=b.dataset.mapView;renderContent();}
  if(b.dataset.page){page+=Number(b.dataset.page);renderContent();}
  if(b.dataset.sensor){sensor=b.dataset.sensor;renderContent();}
  if(b.dataset.openSensor){sensor=b.dataset.openSensor;view='sensors';renderContent();}

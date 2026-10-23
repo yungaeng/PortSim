@@ -1,9 +1,50 @@
 #pragma once
 #include "CoreMinimal.h"
 #include "AGVReference.h"
+#include "TerminalLayout.h"
 
 namespace AGVTrafficGeometry
 {
+    inline bool RoundedRouteHasNoSharpTurns(FVector Start,const TArray<FVector>& Route)
+    {
+        FVector From=Start;
+        for(int J=0;J+1<Route.Num();++J)
+        {
+            const FVector In=(Route[J]-From).GetSafeNormal2D(),Out=(Route[J+1]-Route[J]).GetSafeNormal2D();
+            if(!In.IsNearlyZero() && !Out.IsNearlyZero() &&
+                FVector::DotProduct(In,Out)<FMath::Cos(FMath::DegreesToRadians(30.f))) return false;
+            From=Route[J];
+        }
+        return true;
+    }
+    inline bool PassedRoadGate(FVector From,FVector Gate,FVector Next,FVector Position,FVector Motion)
+    {
+        const FVector In=(Gate-From).GetSafeNormal2D(),Out=(Next-Gate).GetSafeNormal2D();
+        if(In.IsNearlyZero()) return false;
+        const bool Straight=FVector::DotProduct(In,Out)>.995f;
+        if(!Straight && FVector::DotProduct(Motion,Out)<FMath::Cos(FMath::DegreesToRadians(30.f))) return false;
+        const FVector Offset=Position-Gate,Side(-In.Y,In.X,0);
+        return FVector::DotProduct(Offset,In)>=0 && FMath::Abs(FVector::DotProduct(Offset,Side))<=
+            (Straight?AGVReference::MinimumInnerTurnRadiusCm:150.f);
+    }
+    inline bool RouteEnvelopeInside(FVector Start,const TArray<FVector>& Route)
+    {
+        FVector From=Start;
+        for(const FVector& To:Route)
+        {
+            const FVector Along=(To-From).GetSafeNormal2D(); if(Along.IsNearlyZero()) {From=To;continue;}
+            const FVector Side(-Along.Y,Along.X,0);
+            const FVector Extent=Along.GetAbs()*AGVReference::PhysicalHalfLengthCm+Side.GetAbs()*AGVReference::PhysicalHalfWidthCm;
+            const int Steps=FMath::Max(1,FMath::CeilToInt(FVector::Dist2D(From,To)/100.));
+            for(int J=0;J<=Steps;++J)
+            {
+                const FVector P=FMath::Lerp(From,To,double(J)/Steps);
+                if(!TerminalLayout::AGVEnvelopeInside(P.X-Extent.X,P.X+Extent.X,P.Y-Extent.Y,P.Y+Extent.Y)) return false;
+            }
+            From=To;
+        }
+        return true;
+    }
     // Solid chassis dimensions used by the runtime overlap guard. Published
     // road envelopes (730/210 cm) additionally reserve a clearance buffer.
     constexpr float BodyHalfLengthCm=689.f, BodyHalfWidthCm=169.f;

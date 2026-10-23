@@ -38,6 +38,7 @@ namespace AGVApronRoads
     inline void Add(FAGVRoadNetwork& Network)
     {
         using namespace TerminalLayout;
+        Network.RestrictNarrowCrossing(AGVCentralInboundY,AGVCentralReturnY);
         Network.Add(P(AGVApronNorthX,AGVSouthReturnY),P(AGVApronNorthX,AGVNorthInboundY));
         Network.Add(P(AGVApronSouthX,AGVNorthInboundY),P(AGVApronSouthX,AGVSouthReturnY));
         // The old parked-row jog is unnecessary. All three cross-terminal

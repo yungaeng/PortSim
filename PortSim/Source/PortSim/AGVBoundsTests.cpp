@@ -1,6 +1,8 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "TerminalLayout.h"
 #include "AGVReference.h"
+#include "AGVRoadNetwork.h"
+#include "AGVTrafficGeometry.h"
 
 
 #include "Misc/AutomationTest.h"
@@ -14,6 +16,19 @@ bool FAGVBoundsTest::RunTest(const FString& Parameters)
     Check(!Fits(SiteCmX(16500),51500,210,730),"old right-side route is forbidden");
     Check(!Fits(SiteCmX(14500),-55000,730,210),"old off-map return is forbidden");
     Check(!Fits(SiteCmX(2500),56000,210,730),"worker-rest site is excluded");
+    const TArray<FVector> UnsafeDepotRoute={FVector(SiteCmX(15300),36184.97,0),FVector(SiteCmX(15300),34700,0)};
+    Check(!AGVTrafficGeometry::RouteEnvelopeInside(FVector(SiteCmX(14000),37000,0),UnsafeDepotRoute),
+        "rounded depot reroute must not leave the 150m service corridor");
+    Check(AGVTrafficGeometry::PassedRoadGate(FVector(0,0,0),FVector(1000,0,0),FVector(1000,1000,0),
+        FVector(1050,40,0),FVector(0,1,0)),"first curved gate can be consumed from its immutable route start");
+    Check(!AGVTrafficGeometry::PassedRoadGate(FVector(0,0,0),FVector(1000,0,0),FVector(1000,1000,0),
+        FVector(950,40,0),FVector(0,1,0)),"approaching first gate is not skipped");
+    Check(!AGVTrafficGeometry::PassedRoadGate(FVector(0,0,0),FVector(1000,0,0),FVector(1000,1000,0),
+        FVector(1050,300,0),FVector(0,1,0)),"off-corridor first gate is not skipped");
+    Check(!AGVTrafficGeometry::RoundedRouteHasNoSharpTurns(FVector(0,-2000,0),
+        {FVector(0,0,0),FVector(650,0,0)}),"short unrounded 90-degree yard approach cannot replace a drivable route");
+    Check(AGVTrafficGeometry::RoundedRouteHasNoSharpTurns(FVector(0,0,0),
+        {FVector(1000,0,0),FVector(2000,200,0),FVector(3000,600,0)}),"gradual sampled steering remains a valid reroute");
     Check(!Fits(SiteCmX(42000),37000,730,210),"unused cargo apron is excluded");
     Check(Fits(SiteCmX(AGVInlandInboundX),0,210,730),"inland inbound service lane is inside road bounds");
     Check(Fits(SiteCmX(AGVInlandReturnX),0,210,730),"inland return service lane is inside road bounds");
@@ -27,8 +42,13 @@ bool FAGVBoundsTest::RunTest(const FString& Parameters)
         "north return road clears the last RMG handover aisle");
     Check(AGVCentralReturnY-RMGHandoverY(LeftYardCount-1)*100.f>590.f,
         "central return road clears the last southern RMG handover aisle");
-    Check(AGVCentralInboundY-AGVCentralReturnY>
-        2*AGVReference::MinimumInnerTurnRadiusCm+100.f,"central U-turn fillets do not overlap");
+    Check(AGVCentralInboundY-AGVCentralReturnY>2*(210.f+170.f),"central opposing lanes have full reservation clearance");
+    FAGVRoadNetwork Narrow;
+    Narrow.RestrictNarrowCrossing(AGVCentralInboundY,AGVCentralReturnY);
+    const FVector TurnStart(0,AGVCentralInboundY,0),TurnEntry(3000,AGVCentralInboundY,0),TurnExit(3000,AGVCentralReturnY,0),TurnGoal(0,AGVCentralReturnY,0);
+    Narrow.Add(TurnStart,TurnEntry); Narrow.Add(TurnEntry,TurnExit); Narrow.Add(TurnExit,TurnGoal);
+    TArray<FVector> InvalidUTurn;
+    Check(!Narrow.Find(TurnStart,TurnGoal,InvalidUTurn,[](FVector,FVector){return 0.;}),"narrow central U-turn is rejected instead of clipping the yards");
     Check(!Fits(SiteCmX(66000),0,730,210),"vehicle body cannot cross inland boundary");
     Check(!Fits(SiteCmX(14500),-51800,730,300),"body protrusion across quay end rejected");
     for(float X:{5500.f,16500.f}) Check(Fits(SiteCmX(X),AGVNorthCrossY,210,730),"north crossing footprint");

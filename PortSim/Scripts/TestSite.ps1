@@ -12,7 +12,7 @@ param([string]$Engine = 'C:\Program Files\Epic Games\UE_5.6',
     [ValidateRange(0,1)][double]$Wetness=0,
     [ValidateRange(0,1)][double]$Snow=0,
     [ValidateRange(0,1)][double]$Ice=0,
-    [switch]$NoSea, [switch]$LegacyRoadPriority,
+    [switch]$NoSea, [switch]$LegacyRoadPriority, [switch]$AutomaticSensorRepair,
     [ValidateRange(0,9)][int]$FailedSTS=0, [ValidateRange(0,46)][int]$FailedRMG=0,
     [ValidateRange(0,100000)][double]$FailureAt=60, [ValidateRange(-1,100000)][double]$RepairAfter=-1,
     [string]$ResultSummaryPath)
@@ -35,6 +35,7 @@ foreach ($case in $cases) {
     if($Profile) { $arguments += '-PortSimProfile' }
     if($NoSea) { $arguments += '-PortSimNoSea' }
     if($LegacyRoadPriority) { $arguments += '-PortSimLegacyRoadPriority' }
+    if($AutomaticSensorRepair) { $arguments += '-PortSimAutomaticSensorRepair' }
     $culture=[Globalization.CultureInfo]::InvariantCulture
     if($FailedSTS -gt 0 -or $FailedRMG -gt 0) {
         $arguments += @("-PortSimFailedSTS=$FailedSTS","-PortSimFailedRMG=$FailedRMG",

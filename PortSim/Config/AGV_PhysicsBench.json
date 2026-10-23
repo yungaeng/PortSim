@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "notes": "Independent tire/CoG experiments using the same solver as live AGVs. All vehicle/tire/suspension values are assumptions. No pedestrians, cargo sliding or emergency-event integration. Cargo CoG is above road in X-forward/Y-left/Z-up axes. Turn tests deliberately bypass the site's 2.5 m/s curve limit.",
+  "cases": [
+    {"id":"dry_brake","kind":"brake","wetness":0,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,0,3.495],"initial_speed_mps":6,"target_speed_mps":0,"radius_m":0,"seconds":60,"brake_demand_mps2":6,"stability_control":true,"abs":false},
+    {"id":"wet_brake","kind":"brake","wetness":1,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,0,3.495],"initial_speed_mps":6,"target_speed_mps":0,"radius_m":0,"seconds":60,"brake_demand_mps2":6,"stability_control":true,"abs":false},
+    {"id":"ice_brake","kind":"brake","wetness":0,"ice":1,"payload_kg":30000,"cargo_cog_m":[0,0,3.495],"initial_speed_mps":6,"target_speed_mps":0,"radius_m":0,"seconds":60,"brake_demand_mps2":6,"stability_control":true,"abs":false},
+    {"id":"center_turn","kind":"turn","wetness":0,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,0,3.495],"initial_speed_mps":0,"target_speed_mps":6,"radius_m":8,"seconds":30,"brake_demand_mps2":1.5,"stability_control":false,"abs":true},
+    {"id":"eccentric_turn","kind":"turn","wetness":0,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,-1.1,3.495],"initial_speed_mps":0,"target_speed_mps":6,"radius_m":8,"seconds":30,"brake_demand_mps2":1.5,"stability_control":false,"abs":true},
+    {"id":"high_eccentric_turn","kind":"turn","wetness":0,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,-1.1,4.65],"initial_speed_mps":0,"target_speed_mps":6,"radius_m":8,"seconds":30,"brake_demand_mps2":1.5,"stability_control":false,"abs":true},
+    {"id":"controlled_high_turn","kind":"turn","wetness":0,"ice":0,"payload_kg":30000,"cargo_cog_m":[0,-1.1,4.65],"initial_speed_mps":0,"target_speed_mps":6,"radius_m":8,"seconds":30,"brake_demand_mps2":1.5,"stability_control":true,"abs":true}
+  ]
+}

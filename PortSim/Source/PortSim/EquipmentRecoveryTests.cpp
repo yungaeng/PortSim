@@ -82,7 +82,9 @@ bool FEquipmentRecoveryTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("North adjacent STS can serve reachable cargo at its own fixed pad"),Fixed->CanSTSService(2,0));
         Fixed->Manifest[0].Transform.SetLocation(FVector(-1600,FailedY,569.5)); Box->SetActorLocation(Fixed->Manifest[0].Transform.GetLocation());
         TestFalse(TEXT("Changing pads never permits crossing a physically stranded crane"),Fixed->CanSTSService(0,0));
-        Box->SetActorLocation(Pose); Fixed->Destroy();
+        Box->SetActorLocation(Pose);
+        for(const auto& TempCrane:Fixed->Equipment) TempCrane->Destroy();
+        Fixed->Destroy();
     }
     auto* Failed=Site->Equipment[3].Get(); const FVector Before=Box->GetActorLocation();
     Failed->SetSensorFailure(true); Site->SimulationTime=2; Site->ManageEquipmentFailures();
@@ -220,6 +222,43 @@ bool FEquipmentRecoveryTest::RunTest(const FString& Parameters)
     Failed->Stop(TEXT("Safety interlock"));
     TestFalse(TEXT("Web sensor repair cannot clear a safety fault"),Site->ApplyDashboardCommand(*Command,Error));
     Failed->ResetOperation();
+    Failed->bAutoSensorRecovery=true; Failed->bAllowSensorFaultEvacuation=false;
+    Failed->SensorRepairMethod=EPortSensorRepairMethod::Reboot;
+    Failed->SensorRebootSeconds=2; Failed->SensorSelfCheckSeconds=1;
+    Failed->SetSensorFailure(true); Failed->Advance(20,true);
+    TestEqual(TEXT("A global pause does not consume sensor repair time"),Failed->SensorRepairElapsed,0.);
+    Failed->Advance(1,false); TestTrue(TEXT("Reboot delay is not an immediate reset"),Failed->IsSensorUnavailable());
+    Failed->Advance(2.1f,false); TestFalse(TEXT("Reboot and self-check resume the same crane automatically"),Failed->IsEquipmentUnavailable());
+    Failed->SensorRepairMethod=EPortSensorRepairMethod::Technician; Failed->SensorTechnicianRepairSeconds=4;
+    Failed->SetSensorFailure(true); Failed->Advance(3,false);
+    TestTrue(TEXT("Technician repair has its own duration"),Failed->IsSensorUnavailable());
+    Failed->Advance(2.1f,false); TestFalse(TEXT("Technician repair completes after repair and self-check"),Failed->IsEquipmentUnavailable());
+    Failed->SetGantryFailure(true); Failed->Advance(100,false);
+    TestTrue(TEXT("Gantry failure is local and cannot be cleared by a sensor reboot"),Failed->IsEquipmentUnavailable() && !Failed->IsSensorUnavailable());
+    TestFalse(TEXT("Broken gantry cannot evacuate"),Failed->CanFaultEvacuate());
+    Failed->RepairEquipment();
+    TestFalse(TEXT("Explicit equipment repair clears the mechanical fault"),Failed->IsEquipmentUnavailable());
+
+    Failed->Head.Y=0; Failed->UpdateParts(); Site->bRecoveryRailGuard=true;
+    Failed->bAutoSensorRecovery=false; Failed->bAllowSensorFaultEvacuation=true; Failed->SetSensorFailure(true);
+    const double RailStart=Failed->GantryWorldY();
+    TestTrue(TEXT("Independent safety allows empty retracted crane service travel"),Failed->RequestFaultEvacuation(RailStart+200,Site));
+    Failed->Advance(1,false);
+    TestTrue(TEXT("Service drive advances continuously at bounded speed, without teleporting"),Failed->GantryWorldY()>RailStart && Failed->GantryWorldY()<RailStart+30);
+    const double BeforePause=Failed->GantryWorldY(); Failed->Advance(5,true);
+    TestEqual(TEXT("Pausing freezes evacuation too"),double(Failed->GantryWorldY()),BeforePause);
+    Failed->CornerLocked[0]=true;
+    TestFalse(TEXT("A retained lock forbids evacuation even for an automation-camera fault"),Failed->CanFaultEvacuate());
+    Failed->CornerLocked[0]=false;
+    Failed->RepairSensors(); Failed->Advance(3,false);
+    TestTrue(TEXT("Repair brakes the service drive before normal scheduling"),Failed->Fault.IsEmpty() && Failed->bFaultEvacuationComplete && !Site->CraneAvailable(3));
+    Site->PlanFaultEvacuations();
+    TestTrue(TEXT("Repaired displaced crane reserves a no-crossing return to its original rail anchor"),Failed->bFaultEvacuating && FMath::IsNearlyEqual(Failed->FaultEvacuationTargetY,Failed->GantryHomeWorldY(),1.f));
+    Failed->Advance(5,false);
+    TestTrue(TEXT("Only after physical return may the repaired crane accept work"),!Failed->bFaultEvacuating && !Failed->bFaultEvacuationComplete && Site->CraneAvailable(3));
+    Failed->SetSensorFailure(true); Failed->bIndependentTravelSafetyHealthy=false;
+    TestFalse(TEXT("Failed independent travel safety forbids evacuation"),Failed->RequestFaultEvacuation(RailStart+200,Site));
+    Failed->RepairEquipment(); Failed->ResetOperation();
     World->DestroyWorld(false); return true;
 }
 #endif

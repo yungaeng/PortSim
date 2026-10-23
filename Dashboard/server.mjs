@@ -13,11 +13,16 @@ const files = new Map([
   ['/app.mjs', ['app.mjs', 'text/javascript']],
   ['/metrics.mjs', ['metrics.mjs', 'text/javascript']],
   ['/friction-view.mjs', ['friction-view.mjs', 'text/javascript']],
+  ['/agv-physics-view.mjs', ['agv-physics-view.mjs', 'text/javascript']],
+  ['/agv-emergency-view.mjs', ['agv-emergency-view.mjs', 'text/javascript']],
   ['/recovery-view.mjs', ['recovery-view.mjs', 'text/javascript']],
-  ['/control-view.mjs', ['control-view.mjs', 'text/javascript']]
+  ['/control-view.mjs', ['control-view.mjs', 'text/javascript']],
+  ['/terminal-map.mjs', ['terminal-map.mjs', 'text/javascript']],
+  ['/terminal-map.css', ['terminal-map.css', 'text/css']]
 ]);
 export function createDashboardServer({repo=defaultRepo}={}){
 let cache = {mtime: 0, state: null};
+let layoutCache={run:null,mtime:0,data:null};
 async function readState() {
   const file = path.join(repo, 'PortSim/Saved/Dashboard/state.json');
   try {
@@ -56,6 +61,31 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === '/api/state') {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.end(JSON.stringify(await readState())); return;
+    }
+    if(url.pathname==='/api/terminal-layout'){
+      res.setHeader('Content-Type','application/json; charset=utf-8');
+      const {state}=await readState(),run=state?.run_id;
+      if(!/^[A-Za-z0-9_-]{1,100}$/.test(run||'')){res.end(JSON.stringify({layout:null}));return;}
+      try{
+        const file=path.join(repo,'PortSim/Saved/Dashboard',`layout-${run}.json`),info=await stat(file);
+        if(layoutCache.run!==run||layoutCache.mtime!==info.mtimeMs){
+          const data=JSON.parse(await readFile(file,'utf8'));
+          if(data.schema_version!==1||data.run_id!==run||!Array.isArray(data.yard_bays)||!Array.isArray(data.bounds_m))throw Error('Mismatched layout');
+          layoutCache={run,mtime:info.mtimeMs,data};
+        }
+        res.end(JSON.stringify({layout:layoutCache.data}));
+      }catch(error){
+        if(error.code==='ENOENT'){res.end(JSON.stringify({layout:null}));return;}
+        res.writeHead(503).end(JSON.stringify({error:'현재 실행과 일치하는 배치 데이터를 읽지 못했습니다.'}));
+      }
+      return;
+    }
+    if (url.pathname === '/api/agv-experiments' || url.pathname === '/api/agv-emergencies') {
+      res.setHeader('Content-Type','application/json; charset=utf-8');
+      let report=null;
+      try { report=JSON.parse(await readFile(path.join(repo,'PortSim/Saved/Tests',url.pathname==='/api/agv-emergencies'?'AGVEmergency_Report.json':'AGVDynamics_Report.json'),'utf8')); }
+      catch(error){ if(error.code!=='ENOENT') {res.writeHead(503).end(JSON.stringify({error:'시험 보고서를 읽을 수 없습니다.'}));return;} }
+      res.end(JSON.stringify({report}));return;
     }
     if (url.pathname === '/api/reference') {
       const [reference, settings] = await Promise.all([

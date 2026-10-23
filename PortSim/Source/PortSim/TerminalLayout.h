@@ -77,6 +77,7 @@ namespace TerminalLayout
     constexpr int LeftYardCount=9, RightYardCount=14;
     constexpr int YardBlockCount=LeftYardCount+RightYardCount;
     constexpr float CentralRoadY=-160.f;
+    constexpr float CentralRoadWidthM=16.f;
     constexpr float YardFirstY = -465.f;
     constexpr float YardBlockPitch = 35.f;
     // Keep full-size RMG bogies and stopping envelopes apart after plan scaling.
@@ -206,7 +207,9 @@ namespace TerminalLayout
     // Keep the return lane clear of the last southern RMG's +13.2 m
     // handover aisle, while retaining 13.5 m between opposite traffic.
     constexpr float AGVCentralReturnY=CentralRoadY*100.f-450.f;
-    constexpr float AGVCentralInboundY=CentralRoadY*100.f+900.f;
+    constexpr float AGVCentralInboundY=CentralRoadY*100.f+450.f;
+    static_assert(450.f+210.f<CentralRoadWidthM*50.f,"Both central lanes fit the paved width with full chassis clearance");
+    static_assert(AGVCentralInboundY-AGVCentralReturnY>2*(210.f+170.f),"Opposing central lanes have reservation clearance");
     // The quay-side access jog precedes the inland central road. Forcing a
     // loaded vehicle to the inland road's Y while still on the quay spine
     // creates a U-turn back to this access aisle.

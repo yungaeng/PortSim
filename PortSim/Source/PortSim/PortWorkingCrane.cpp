@@ -139,6 +139,8 @@ void APortWorkingCrane::ResetOperation()
 {
     if (!bConfigured) return;
     FaultType=EPortCraneFault::None; RecoveryStatus.Empty(); bRailSafetyHold=false;
+    bGantryFault=bAppliedGantryFault=bFaultEvacuating=bFaultEvacuationComplete=false;
+    SensorRepairElapsed=0; SensorRepairPhase.Empty();
     if(!bFatalSensorTest) bSensorFault=bAppliedSensorFault=false;
     ClearSTSState();
     SuspensionState=FSTSSuspension(); SuspendedOffset=FVector::ZeroVector;
@@ -252,21 +254,30 @@ bool APortWorkingCrane::DestinationClear() const
 void APortWorkingCrane::Stop(const FString& Reason,EPortCraneFault Kind)
 {
     Fault=Reason; FaultType=Kind; SetOperationPaused(true);
-    if(Kind==EPortCraneFault::SensorUnavailable)
+    if(Kind==EPortCraneFault::SensorUnavailable || Kind==EPortCraneFault::GantryUnavailable)
     { UE_LOG(LogTemp,Warning,TEXT("EQUIPMENT_SENSOR_FAULT: crane=%d %s"),CraneID,*Reason); }
     else { UE_LOG(LogTemp,Error,TEXT("WORKING_CRANE_%d: %s"),CraneID,*Reason); }
 }
 
 void APortWorkingCrane::SetSensorFailure(bool Failed)
 {
+    if(!Failed && bFaultEvacuating && !AxisVelocity.IsNearlyZero(1.))
+    {
+        bAutoSensorRecovery=true;
+        SensorRepairElapsed=FMath::Max(0.,SensorRepairMethod==EPortSensorRepairMethod::Reboot?SensorRebootSeconds:SensorTechnicianRepairSeconds)+FMath::Max(0.,SensorSelfCheckSeconds);
+        SensorRepairPhase=TEXT("awaiting_safe_stop"); return;
+    }
+    const bool NewFailure=Failed && !bAppliedSensorFault;
     bAppliedSensorFault=bSensorFault=Failed; bFatalSensorTest=false;
     if(Failed)
     {
+        if(NewFailure) { SensorRepairElapsed=0; bFaultEvacuationComplete=false; AxisVelocity=FVector::ZeroVector; }
         Observation.bValid=false;
         if(Fault.IsEmpty() || IsSensorUnavailable()) Stop(TEXT("Injected sensor unavailable"),EPortCraneFault::SensorUnavailable);
     }
     else if(IsSensorUnavailable())
     {
+        bFaultEvacuating=false; AxisVelocity=FVector::ZeroVector; SensorRepairPhase=TEXT("repaired");
         Fault.Empty(); FaultType=EPortCraneFault::None; RecoveryStatus=TEXT("repaired"); NextSample=0;
         UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_SENSOR_REPAIRED: crane=%d retained_load=%d"),CraneID,RetainsLoad());
     }
@@ -298,7 +309,8 @@ float APortWorkingCrane::GantryWorldY() const { return (Home+Orientation.RotateV
 FVector2D APortWorkingCrane::RailWorkInterval() const
 {
     float Low=GantryWorldY(),High=Low;
-    if(bJobActive && !IsSensorUnavailable()) for(const FVector& Slot:Slots)
+    if(bFaultEvacuating) { Low=FMath::Min(Low,FaultEvacuationTargetY); High=FMath::Max(High,FaultEvacuationTargetY); }
+    if(bJobActive && !IsEquipmentUnavailable()) for(const FVector& Slot:Slots)
     { Low=FMath::Min(Low,float(Slot.Y)); High=FMath::Max(High,float(Slot.Y)); }
     return FVector2D(Low,High);
 }
@@ -306,6 +318,7 @@ FVector2D APortWorkingCrane::RailWorkInterval() const
 void APortWorkingCrane::Advance(float Dt,bool bGlobalPaused)
 {
     if(bAppliedSensorFault!=bSensorFault) SetSensorFailure(bSensorFault);
+    if(bAppliedGantryFault!=bGantryFault) SetGantryFailure(bGantryFault);
     PortSimPerformance::FScope Profile(TEXT("crane_advance"));
     if(!FMath::IsFinite(Dt) || Dt<=0) { if(Dt==0)AdvanceStep(0,bGlobalPaused);return; }
     if(!bJobActive) { AdvanceStep(Dt,bGlobalPaused); return; }
@@ -345,6 +358,7 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
 {
     if (!bConfigured) return;
     SimulationTime+=Dt;
+    AdvanceFailureRecovery(Dt,bGlobalPaused);
     if(bJobActive) { JobSeconds+=Dt; if(bGlobalPaused || !bEnabled || !Fault.IsEmpty()) PausedSeconds+=Dt; }
     SetOperationPaused(bGlobalPaused || !bEnabled || !Fault.IsEmpty());
     if (bPaused || !bJobActive) return;
@@ -489,7 +503,7 @@ bool APortWorkingCrane::ValidateOperation(FString& Error) const
     // ResetOperation clears transient faults, but cannot repair invalid settings.
     if (bConfigured && !STSProfile.bReady)
     { Error=FString::Printf(TEXT("Crane %d: profile unavailable: %s"),CraneID,*STSProfile.Error); return false; }
-    if(bConfigured && bExternalJobs && IsSensorUnavailable())
+    if(bConfigured && bExternalJobs && IsEquipmentUnavailable())
     {
         if(bCarrying && (!IsValid(CargoActor) || CargoActor->GetAttachParentActor()!=this || CargoActor->GetBody()->IsSimulatingPhysics()))
         { Error=TEXT("Isolated crane lost its retained load"); return false; }

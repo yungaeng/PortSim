@@ -168,10 +168,12 @@ FVector APortContainerActor::GetMotionVelocity() const
     if(LocationOwner==ECargoOwner::Ship && !GetAttachParentActor()) return KinematicVelocityCentimetersPerSecond;
     if(const auto* Vehicle=Cast<APortAGVActor>(GetAttachParentActor()))
     {
-        const float SignedSpeed=Vehicle->Speed*(Vehicle->Sensors.bReversing?-1.f:1.f);
-        const float YawRate=SignedSpeed*FMath::Tan(FMath::DegreesToRadians(Vehicle->Sensors.SteeringAngleDegrees))/AGVReference::EffectiveWheelbaseCm;
-        const FVector Arm=GetActorLocation()-Vehicle->GetActorLocation();
-        return Vehicle->GetActorRightVector()*SignedSpeed+FVector(-YawRate*Arm.Y,YawRate*Arm.X,0);
+        const auto& D=Vehicle->Dynamics;
+        const FVector CoG=Vehicle->GetActorLocation()+Vehicle->GetActorRightVector()*D.CombinedCoGM.X*100-
+            Vehicle->GetActorForwardVector()*D.CombinedCoGM.Y*100;
+        const FVector Arm=GetActorLocation()-CoG;
+        return Vehicle->GetActorRightVector()*D.U*100-Vehicle->GetActorForwardVector()*D.V*100+
+            FVector(-D.YawRate*Arm.Y,D.YawRate*Arm.X,0);
     }
     if(const auto* Crane=Cast<APortWorkingCrane>(GetAttachParentActor())) return Crane->Observation.SpreaderVelocity;
     return FVector::ZeroVector;
