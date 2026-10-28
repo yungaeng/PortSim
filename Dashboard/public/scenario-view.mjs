@@ -3,10 +3,15 @@ import {renderFrictionDetails} from './friction-view.mjs';
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const n=(v,d=2)=>Number.isFinite(v)?v.toLocaleString('ko-KR',{maximumFractionDigits:d}):'—';
 const row=(k,v)=>`<div class="kv-row"><span>${k}</span><b>${v}</b></div>`;
+export function weatherHoldStatus(state){
+ const h=state?.weather_hold;
+ if(!h)return '기상 운용 상태 미수신';
+ return (h.active?'기상 회복 대기':'기상 대기 해제')+(h.active?` · ${esc(h.reason||'회복 조건 확인 중')} · 회복 확인 ${n(h.recovery_elapsed_seconds,1)} / ${n(h.recovery_required_seconds,1)} 시뮬레이션 초`:'')+(state.manual_paused?' · 수동 일시정지 유지':'');
+}
 export function environmentLive(state,live){
  const e=state?.environment;if(!e)return '<div class="note">현재 엔진의 환경 관측값이 없습니다. 새 빌드에서 실행하면 표시됩니다.</div>';
  return `<div class="detail-subhead">현재 적용된 환경 <span>${live?'LIVE':'저장 기록 · 실시간 아님'}</span></div>`+
-  row('강수 / 강설',`${n(e.rain_mm_h)} / ${n(e.snow_mm_h)} mm/h`)+row('실제 바람 / 평균',`${n(e.effective_wind_mps)} / ${n(e.wind_mps)} m/s`)+
+  row('기상 운용',weatherHoldStatus(state))+row('강수 / 강설',`${n(e.rain_mm_h)} / ${n(e.snow_mm_h)} mm/h`)+row('실제 바람 / 평균',`${n(e.effective_wind_mps)} / ${n(e.wind_mps)} m/s`)+
   row('수막 / 적설',`${n(e.water_film_mm,3)} / ${n(e.snow_depth_mm,3)} mm`)+row('젖음 / 눈 / 얼음 피복',`${n(e.wetness*100,1)} / ${n(e.snow_coverage*100,1)} / ${n(e.ice_coverage*100,1)} %`)+
   row('수막 / 적설 변화',`${n(e.water_change_mm_h,3)} / ${n(e.snow_change_mm_h,3)} mm/h`)+row('타이어 정지 / 운동 마찰계수',`${n(e.tire_mu_static,3)} / ${n(e.tire_mu_kinetic,3)}`)+row('레일 정지 마찰계수',n(e.rail_mu_static,3))+'<div class="note">환경 관측 전용입니다. 날씨 변경은 언리얼에서 설정합니다.</div>';
 }

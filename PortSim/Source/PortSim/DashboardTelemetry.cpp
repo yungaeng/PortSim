@@ -450,6 +450,14 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         Root->SetNumberField(TEXT("elapsed_seconds"),Controller->AutoElapsed);
         Root->SetNumberField(TEXT("playback_rate"),Controller->SimulationSpeed);
         Root->SetBoolField(TEXT("running"),Controller->bAutoRunning);
+        auto Hold=MakeShared<FJsonObject>();
+        Hold->SetBoolField(TEXT("active"),Controller->WeatherHold.Active);
+        Hold->SetStringField(TEXT("reason"),Controller->WeatherHold.Reason);
+        Hold->SetNumberField(TEXT("recovery_elapsed_seconds"),Controller->WeatherHold.RecoveryElapsed);
+        if(const auto* E=Controller->GetEnvironment())
+            Hold->SetNumberField(TEXT("recovery_required_seconds"),E->OperatingLimits.RecoverySeconds);
+        Root->SetObjectField(TEXT("weather_hold"),Hold);
+        Root->SetBoolField(TEXT("manual_paused"),Controller->bAutoPaused);
     }
     Root->SetBoolField(TEXT("paused"),Paused);
     Root->SetBoolField(TEXT("unified"),LaneCount==9);

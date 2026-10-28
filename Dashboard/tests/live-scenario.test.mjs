@@ -4,7 +4,18 @@ import {mkdtemp,mkdir,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {createDashboardServer} from '../server.mjs';
-import {environmentLive,recordLiveSample,livePhysicsResults} from '../public/scenario-view.mjs';
+import {environmentLive,recordLiveSample,livePhysicsResults,weatherHoldStatus} from '../public/scenario-view.mjs';
+
+test('weather hold reports engine recovery without inferring resume or hiding manual pause',()=>{
+ assert.match(weatherHoldStatus({}),/미수신/);
+ const state={manual_paused:true,weather_hold:{active:true,reason:'wind <limit>',recovery_elapsed_seconds:4,recovery_required_seconds:10}};
+ assert.match(weatherHoldStatus(state),/wind &lt;limit&gt;/);
+ assert.match(weatherHoldStatus(state),/4 \/ 10 시뮬레이션 초/);
+ assert.match(weatherHoldStatus(state),/수동 일시정지 유지/);
+ state.weather_hold.active=false;
+ assert.match(weatherHoldStatus(state),/기상 대기 해제.*수동 일시정지 유지/);
+ assert.doesNotMatch(weatherHoldStatus(state),/회복 확인|실행 중/);
+});
 
 test('live page renders current values and preserves sample identity across pauses, resets and vehicle selection',()=>{
  const s={run_id:'r',simulation_seconds:10,environment:{wind_mps:3.5,rain_mm_h:25,water_film_mm:.123456,tire_mu_static:.4}};
