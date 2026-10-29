@@ -1,7 +1,8 @@
 # 짧은 구간 사전 계산 시제품
 
-2026-10-29: 소스 저장 단계. 사용자 요청에 따라 **빌드·테스트·실행하지 않았다.**
-이전 배속 수정의 빌드·테스트 성공은 이 시제품의 검증 결과가 아니다.
+2026-10-29: 최초 소스 저장 후 사용자 요청으로 UE 5.6 Development Editor
+빌드를 수행했고 **성공했다** (`BuildPortSim.ps1`, `PortSimEditor Win64 Development`).
+자동화 테스트와 시뮬레이션 실행은 수행하지 않았다. 빌드 성공은 기능 검증 완료를 뜻하지 않는다.
 
 ## 구현 범위
 
@@ -65,7 +66,7 @@ Preview.SubmitInput(Input);
 `PortSim.Playback.ShortSuspensionLookahead` 자동화 테스트 소스를 추가했다.
 사전 계산의 표시 상태 격리, 8배속 재생과 동일 물리 단계의 일치, 풍속 변경 시
 현재 상태에서 1배속 재개, 무입력 후 복귀, 버퍼 소진 및 반복 입력을 검사한다.
-**실행하지 않았으므로 통과 여부와 컴파일 가능 여부는 미확인이다.**
+**빌드는 성공했으나 테스트는 실행하지 않았으므로 통과 여부는 미확인이다.**
 
 관련 소스: [SuspensionLookahead.h](../../PortSim/Source/PortSim/SuspensionLookahead.h),
 [SuspensionLookahead.cpp](../../PortSim/Source/PortSim/SuspensionLookahead.cpp),
