@@ -140,6 +140,51 @@ void AQuayCrane::BuildTerminalSite()
             .ColorAndOpacity(FLinearColor::White)
             .Justification(ETextJustify::Center));
     };
+    // Visual zoning only: same one-based block/bay ranges as terminal-map.mjs.
+    // No collision, slot classification, routing or cargo-allocation changes.
+    struct FDisplayZone { const TCHAR* Name; const TCHAR* Material; int32 First,Last,MinBay,MaxBay,Pattern; };
+    const FDisplayZone DisplayZones[]={
+        {TEXT("냉동"),TEXT("YardReefer"),13,17,22,28,0},
+        {TEXT("위험물"),TEXT("YardDangerous"),4,8,26,28,1},
+        {TEXT("유해화학물"),TEXT("YardChemical"),2,3,24,28,2}
+    };
+    for(const auto& Zone:DisplayZones)
+    {
+        auto* Lines=Group(*FString::Printf(TEXT("Display_%s_Border"),Zone.Material),Zone.Material);
+        auto* Fill=Group(*FString::Printf(TEXT("Display_%s_Fill"),Zone.Material),*FString::Printf(TEXT("%sFill"),Zone.Material));
+        Lines->SetCastShadow(false); Fill->SetCastShadow(false);
+        const auto HalfLength=[](int32 Bay) { const int32 Ft=TerminalLayout::YardSizeFt(Bay); return Ft==20?6.096f:TerminalLayout::YardLengthCm(Ft)*.005f; };
+        const float X0=TerminalLayout::YardBayX(Zone.MinBay)-HalfLength(Zone.MinBay)-2.f;
+        const float X1=TerminalLayout::YardBayX(Zone.MaxBay)+HalfLength(Zone.MaxBay)+2.f;
+        const float Y0=TerminalLayout::BlockY(Zone.First-1)-12.5f;
+        const float Y1=TerminalLayout::BlockY(Zone.Last-1)+12.5f;
+        // Use world coordinates directly: YardBayX already applies SiteX.
+        // Fill individual blocks so intervening travel lanes remain visible.
+        for(int32 Block=Zone.First-1;Block<Zone.Last;++Block)
+            OrientedBox(Fill,FVector((X0+X1)*.5f,TerminalLayout::BlockY(Block),.325f),FVector(X1-X0,25.f,.02f),0);
+        auto Edge=[&](FVector2D A,FVector2D B)
+        {
+            const FVector2D Delta=B-A; const float Length=Delta.Size();
+            const float Yaw=FMath::RadiansToDegrees(FMath::Atan2(Delta.Y,Delta.X));
+            for(float Offset=0;Offset<Length;)
+            {
+                const float Segment=FMath::Min(Zone.Pattern==0?Length:7.f,Length-Offset);
+                const FVector2D P=A+Delta*((Offset+Segment*.5f)/Length);
+                OrientedBox(Lines,FVector(P.X,P.Y,.44f),FVector(Segment,.55f,.04f),Yaw);
+                Offset+=Segment+(Zone.Pattern==2?2.f:3.f);
+                if(Zone.Pattern==2 && Offset<Length)
+                {
+                    const float Dot=FMath::Min(2.f,Length-Offset);
+                    const FVector2D Q=A+Delta*((Offset+Dot*.5f)/Length);
+                    OrientedBox(Lines,FVector(Q.X,Q.Y,.44f),FVector(Dot,.55f,.04f),Yaw);
+                    Offset+=Dot+2.f;
+                }
+            }
+        };
+        Edge({X0,Y0},{X1,Y0}); Edge({X1,Y0},{X1,Y1});
+        Edge({X1,Y1},{X0,Y1}); Edge({X0,Y1},{X0,Y0});
+        Label(Zone.Name,FVector((X0+X1)*.5f/TerminalLayout::PlanDepthScale,Y0-3.f,.6f),3.f);
+    }
     // The approved plan has a continuous yard loop and a bent inland road
     // into the gate. No diagonal roads cut across the open cargo hardstand.
     Box(Roads,FVector(145,0,.24),FVector(50,1020,.06));
