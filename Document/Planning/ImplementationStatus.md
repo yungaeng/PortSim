@@ -18,6 +18,8 @@
 
 ## 코드 근거
 
+사전 계산 시제품: `FSuspensionLookahead`에 기본 0.5초 현수체 미래 버퍼와 입력 시 1배속 전환 소스를 추가했다. 실제 터미널·Chaos·환경 UI는 미연결이며 빌드·테스트·실행하지 않았다. [시제품 범위](../Simulation/ShortLookaheadPrototype.md).
+
 - 운송·배차: [ExportOperations.cpp](../../PortSim/Source/PortSim/ExportOperations.cpp), [PortSiteLogistics.cpp](../../PortSim/Source/PortSim/PortSiteLogistics.cpp), [AGVDispatchRecovery.cpp](../../PortSim/Source/PortSim/AGVDispatchRecovery.cpp)
 - 화물·적재: [CargoInformation.h](../../PortSim/Source/PortSim/CargoInformation.h), [YardStackingPolicy.h](../../PortSim/Source/PortSim/YardStackingPolicy.h), [ShipStowagePlanning.cpp](../../PortSim/Source/PortSim/ShipStowagePlanning.cpp)
 - 고장·지원 장비: [EquipmentRecovery.cpp](../../PortSim/Source/PortSim/EquipmentRecovery.cpp), [PortSupportVehicle.h](../../PortSim/Source/PortSim/PortSupportVehicle.h), [PortSupportVehicle.cpp](../../PortSim/Source/PortSim/PortSupportVehicle.cpp)
