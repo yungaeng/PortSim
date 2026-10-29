@@ -3,7 +3,7 @@
 #include "Engine/EngineCustomTimeStep.h"
 #include "PortSimTimeStep.generated.h"
 
-/** Wall-clock playback shared by world timers, equipment control and substepped physics. */
+/** Fixed world interval; playback rate controls wall-clock tick pacing only. */
 UCLASS()
 class PORTSIM_API UPortSimTimeStep : public UEngineCustomTimeStep
 {
@@ -21,7 +21,7 @@ private:
     bool bInitialized=false;
     float PlaybackRate=1.f;
     float AchievedRate=1.f;
-    double LastFrameWall=0;
+    double NextFrameWall=0;
     double SampleStart=0;
     double SampleSimulation=0;
 };

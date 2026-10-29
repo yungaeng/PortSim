@@ -113,6 +113,9 @@ bool FNoEventCollisionTest::RunTest(const FString& Parameters)
     }
     Site->bDeferringVisuals=false;
     Site->LaneCount=9;
+    World->DeltaTimeSeconds=1.f/60.f;
+    TestFalse(TEXT("Fixed world frames use normal Chaos without scanning the kinematic world"),Site->PrepareKinematicPhysicsFrame());
+    World->DeltaTimeSeconds=0.f;
     TestTrue(TEXT("A purely kinematic world uses a query-only synchronization frame"),Site->PrepareKinematicPhysicsFrame());
     Site->ShipContainers[0]->Body->SetSimulatePhysics(true);
     TestFalse(TEXT("A free rigid body retains normal physics integration"),Site->PrepareKinematicPhysicsFrame());

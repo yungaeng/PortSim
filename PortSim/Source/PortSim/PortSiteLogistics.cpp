@@ -2754,6 +2754,12 @@ bool APortSiteLogistics::PrepareKinematicPhysicsFrame() const
     // world frame already selected the kinematic path before a body was freed.
     World->GetPhysicsScene()->SetUpForFrame(&Gravity,World->GetDeltaSeconds(),Settings->MinPhysicsDeltaTime,
         Settings->MaxPhysicsDeltaTime,Settings->MaxSubstepDeltaTime,Settings->MaxSubsteps,Settings->bSubstepping);
+    // This scan used to avoid hundreds of Chaos substeps in accelerated, large
+    // world frames. At a fixed 60 Hz it costs more than the two normal substeps:
+    // let Chaos maintain its active/sleeping sets instead of walking every actor
+    // and component. Free bodies still receive the complete physics interval.
+    if(World->GetDeltaSeconds()>0.f && World->GetDeltaSeconds()<=1.f/60.f+1.e-6f)
+        return false;
     // Entry's unified terminal uses explicit kinematic drives and its own
     // suspension integrator. Still check the WHOLE world: a free load, sleeping
     // rigid body, skeletal mesh or other physics system requires normal Chaos.

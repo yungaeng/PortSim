@@ -12,8 +12,9 @@
 | STS·RMG | 센서 기반 정렬, 잠금 피드백, 시험 인양, 현수 동역학, 하중·지지면·충돌 인터록 | 센서/기계 설정에는 공개 자료와 시뮬레이션 가정이 함께 포함됨 |
 | 고장 복구 | STS/RMG 고장 격리와 조건부 작업 재배정, 수리 후 재검사, 주차 칸의 막힌 빈 AGV 작업 교체 | 화물을 보유한 고장 AGV에서 다른 AGV로 현장 인양·인계하는 기능과는 다름 |
 | Reach Stacker | `APortSupportVehicle`에 장비 종류·번호와 외형 구성 존재 | 현장 출동, 센서 기반 인양, 타이어·집게 접촉 물리, 대체 AGV 인계는 추가 구현 대상 |
-| 배속 | 사용자 배속에 따른 시뮬레이션 시간 진행, 고정 간격 교통 제어와 크레인 내부 시간 분할, 빈 물리 적분 최적화 | 모든 물리·센서·인계가 1배속과 같은 결과를 내는지 별도 비교 필요 |
+| 배속 | 월드 1/60초 고정. 고정 프레임의 전체 물체 순회 생략, tick 대기 지연 완화, standalone 화면 최대 60Hz 분리. 8배속 설정의 null RHI 20초 측정에서 실제 2.417배 → 4.100배 | 아직 8배속 미달. 운반 완료 없는 짧은 측정이며, Editor PIE·렌더링 처리량, 와이어 궤적과 전체 물리·인계 동등성 검증 필요 |
 | 환경·관제 | 바람·돌풍·선박 운동·강수/마찰, 장비·화물·센서 데이터, 실시간 물리 관측, 고장·작업자 진입 제어 | 날씨는 현재 웹에서 관측 전용 |
+| 선박 적재 하중·흔들림 | 기존 환경 기반 선박 운동과 선상 화물 운동 연동 | 컨테이너 무게·적재 위치·선적/하역에 따른 선박 질량·무게중심·하중 분포 변화와 선체 흔들림 연동 구현 필요 |
 
 ## 코드 근거
 
@@ -23,6 +24,8 @@
 - 시간·물리: [PortSimTimeStep.cpp](../../PortSim/Source/PortSim/PortSimTimeStep.cpp), [SimulationControls.cpp](../../PortSim/Source/PortSim/SimulationControls.cpp), [AGVDynamics.cpp](../../PortSim/Source/PortSim/AGVDynamics.cpp)
 
 ## 상세 문서
+
+2026-10-29 배속 후속 수정은 별도로 빌드·회귀 테스트를 실행했다. [배속과 크레인 흔들림](../Simulation/PlaybackClock.md)에 결과와 미검증 범위를 기록했다. 이 결과는 전체 기능의 통합 검증을 뜻하지 않는다.
 
 [하역 처리량](../Operations/DischargeThroughput.md) · [야드 적재와 묶음 운송](../Yard/StackingAndPairedTransport.md) · [고장 복구](../Safety/EquipmentFailureRecovery.md) · [배속 성능](../Simulation/PlaybackPerformance.md) · [실시간 물리 관제](../Dashboard/LivePhysics.md)
 

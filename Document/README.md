@@ -70,6 +70,7 @@
 
 ## Simulation — 배속·시뮬레이션 성능
 
+- [배속과 크레인 흔들림 — 고정 월드 시간 간격 수정](<Simulation/PlaybackClock.md>)
 - [배속 성능 회귀와 수정](<Simulation/PlaybackPerformance.md>)
 
 ## Environment — 날씨·마찰·운전 조건
