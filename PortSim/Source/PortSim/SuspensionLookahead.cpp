@@ -1,4 +1,5 @@
 #include "SuspensionLookahead.h"
+#include "Async/Async.h"
 
 void FSuspensionLookahead::Reset(const FSTSSuspension& State,const FSuspensionLookaheadInput& Input,
     double WindowSeconds,double QuietSeconds)
@@ -27,6 +28,11 @@ void FSuspensionLookahead::SetRequestedRate(double NewRate)
 
 void FSuspensionLookahead::Integrate(FSTSSuspension& State) const
 {
+    IntegrateState(State,Held);
+}
+
+void FSuspensionLookahead::IntegrateState(FSTSSuspension& State,const FSuspensionLookaheadInput& Held)
+{
     // Require a usable numeric profile before entering the existing solver.
     const auto& C=Held.Dynamics;
     if(!FMath::IsFinite(Held.LengthM) || Held.LengthM<.1 ||
@@ -45,6 +51,37 @@ void FSuspensionLookahead::Integrate(FSTSSuspension& State) const
 
 void FSuspensionLookahead::Prepare(int32 Budget)
 {
+    if(Prediction.IsValid())
+    {
+        if(!Prediction.IsReady()) return;
+        auto Result=Prediction.Get();
+        Prediction.Reset();
+        // An input/reset, or live advancement while this job was running,
+        // makes the result unusable. Never attach old samples to a new branch.
+        if(Result.Revision==Revision && Result.FirstStep==DisplayedSteps+Future.Num())
+            Future.Append(MoveTemp(Result.States));
+    }
+    if(bBackgroundPrediction)
+    {
+        const int32 Count=FMath::Min(FMath::Clamp(Budget,0,120),WindowSteps-Future.Num());
+        if(Count<=0) return;
+        const auto State=Future.IsEmpty()?Current:Future.Last();
+        if(!State.Fault.IsEmpty()) return;
+        // No captured this/UObject: cancellation and destruction cannot race
+        // with a worker. At most one bounded job exists per preview.
+        Prediction=Async(EAsyncExecution::ThreadPool,
+            [State,Input=Held,Epoch=Revision,Start=DisplayedSteps+Future.Num(),Count]() mutable
+            {
+                FPrediction Result; Result.Revision=Epoch; Result.FirstStep=Start;
+                auto Predicted=State;
+                for(int32 I=0;I<Count && Predicted.Fault.IsEmpty();++I)
+                {
+                    IntegrateState(Predicted,Input); Result.States.Add(Predicted);
+                }
+                return Result;
+            });
+        return;
+    }
     FSTSSuspension Predicted=Future.IsEmpty()?Current:Future.Last();
     for(int32 I=0;I<FMath::Clamp(Budget,0,120) && Future.Num()<WindowSteps;++I)
     {

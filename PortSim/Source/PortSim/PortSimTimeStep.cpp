@@ -6,6 +6,7 @@
 bool UPortSimTimeStep::Initialize(UEngine* InEngine)
 {
     bInitialized=true;
+    InputGate=FPlaybackInputGate();
     SampleStart=FPlatformTime::Seconds();
     NextFrameWall=SampleStart+StepSeconds/PlaybackRate;
     SampleSimulation=0;
@@ -22,7 +23,20 @@ void UPortSimTimeStep::SetPlaybackRate(float Rate)
     const float NewRate=FMath::IsFinite(Rate)?FMath::Clamp(Rate,1.f,16.f):1.f;
     if(NewRate==PlaybackRate) return;
     PlaybackRate=NewRate;
-    NextFrameWall=FPlatformTime::Seconds()+StepSeconds/PlaybackRate;
+    NextFrameWall=FPlatformTime::Seconds()+StepSeconds/GetEffectiveRate();
+}
+
+float UPortSimTimeStep::GetEffectiveRate() const
+{
+    return bLiveFallback?1.f:InputGate.EffectiveRate(PlaybackRate,FPlatformTime::Seconds());
+}
+
+void UPortSimTimeStep::NotifyExternalInput()
+{
+    const double Now=FPlatformTime::Seconds();
+    InputGate.Submit(Now);
+    NextFrameWall=Now+StepSeconds;
+    SampleStart=Now; SampleSimulation=0; AchievedRate=1.f;
 }
 
 ECustomTimeStepSynchronizationState UPortSimTimeStep::GetSynchronizationState() const
@@ -48,7 +62,8 @@ bool UPortSimTimeStep::UpdateTimeStep(UEngine* InEngine)
     const double SimulationDelta=StepSeconds;
     // Preserve cadence across sleep/scheduler jitter rather than adding that
     // overshoot to every interval. Bound lag to one tick: no stall catch-up queue.
-    NextFrameWall=FMath::Max(Deadline+StepSeconds/PlaybackRate,Now);
+    const float FrameRate=(bBufferedPlayback || bLiveFallback)?1.f:InputGate.EffectiveRate(PlaybackRate,Now);
+    NextFrameWall=FMath::Max(Deadline+StepSeconds/FrameRate,Now);
     UpdateApplicationLastTime();
     FApp::SetDeltaTime(SimulationDelta);
     FApp::SetCurrentTime(FApp::GetLastTime()+SimulationDelta);

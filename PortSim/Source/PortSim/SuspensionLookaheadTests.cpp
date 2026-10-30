@@ -3,6 +3,8 @@
 #include "STSOperatingProfile.h"
 #include "Misc/AutomationTest.h"
 #include "Misc/Paths.h"
+#include "HAL/PlatformProcess.h"
+#include "HAL/PlatformTime.h"
 
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSuspensionLookaheadTest,"PortSim.Playback.ShortSuspensionLookahead",
     EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
@@ -50,6 +52,25 @@ bool FSuspensionLookaheadTest::RunTest(const FString& Parameters)
     Preview.SubmitInput(Input);
     TestTrue(TEXT("Repeated input stays live and clears future"),
         Preview.Mode()==ESuspensionLookaheadMode::Live && Preview.BufferedSeconds()==0);
+    FSuspensionLookahead Background;
+    Background.SetBackgroundPrediction(true);
+    Background.SetRequestedRate(8); Background.Reset(Initial,Input,.5,0.);
+    Background.Tick(0,30); // Worker now owns copies of the old input and state.
+    Input.Dynamics.Wind=FVector(-3,1,0);
+    Background.SubmitInput(Input);
+    TestEqual(TEXT("Async input immediately discards visible future"),Background.BufferedSeconds(),0.);
+    Background.Tick(1./60.,30);
+    const double Timeout=FPlatformTime::Seconds()+5.;
+    while(Background.Mode()!=ESuspensionLookaheadMode::Replay && FPlatformTime::Seconds()<Timeout)
+    { Background.Tick(0,30); FPlatformProcess::SleepNoStats(.001f); }
+    TestTrue(TEXT("New generation reaches replay"),Background.Mode()==ESuspensionLookaheadMode::Replay);
+    Reference=Initial;
+    for(int32 I=0;I<9;++I) Reference.Step(Input.Dynamics,1./60.,Input.LengthM,0,
+        Input.Acceleration,Input.Velocity,Input.MassKg,Input.CoG,Input.PowerW);
+    Background.Tick(1./60.,0);
+    TestTrue(TEXT("Late old generation cannot contaminate new replay"),
+        Background.DisplayedState().Angle.Equals(Reference.Angle,1.e-12) &&
+        Background.DisplayedState().Rate.Equals(Reference.Rate,1.e-12));
     return true;
 }
 #endif

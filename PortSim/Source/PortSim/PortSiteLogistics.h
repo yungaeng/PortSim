@@ -91,6 +91,9 @@ UCLASS()
 class PORTSIM_API APortSiteLogistics : public AActor
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 public:
     APortSiteLogistics();
     void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }

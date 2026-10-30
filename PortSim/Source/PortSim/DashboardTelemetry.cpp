@@ -1,4 +1,5 @@
 #include "TerminalLayout.h"
+#include "TerminalReplay.h"
 #include "DashboardLayout.h"
 #include "QuayCrane.h"
 #include "PortSiteLogistics.h"
@@ -24,6 +25,12 @@
 
 namespace Dashboard
 {
+    double CaptureInterval(double CostSeconds,bool Accelerated)
+    {
+        // Spend at most a target 3% of wall time on telemetry at high speed.
+        // Cap at two seconds, well inside the dashboard's five-second live TTL.
+        return Accelerated && FMath::IsFinite(CostSeconds)?FMath::Clamp(CostSeconds/.03,1.,2.):1.;
+    }
     using FObject=TSharedRef<FJsonObject>;
     FObject Object() { return MakeShared<FJsonObject>(); }
     FObject CopyRecord(const TSharedPtr<FJsonObject>& Source)
@@ -366,6 +373,7 @@ void APortSiteLogistics::RecordVesselEvent(int32 CargoIndex,bool Placed)
 
 void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
 {
+    if(FTerminalReplay::IsPredicting()) return;
     using namespace Dashboard;
     if(!bReady || (!Force && FPlatformTime::Seconds()<NextDashboardWall)) return;
     // Bound work to one snapshot: slow storage must not create a growing queue.
@@ -374,7 +382,7 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
         if (!Force && !DashboardWrite.IsReady()) return;
         DashboardWrite.Wait();
     }
-    NextDashboardWall=FPlatformTime::Seconds()+1.;
+    const double CaptureStart=FPlatformTime::Seconds();
     // A telemetry snapshot describes one current scene, including its artwork.
     if(bDeferringVisuals)
     {
@@ -394,6 +402,9 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
     const FString Directory=FPaths::ProjectSavedDir()/TEXT("Dashboard");
     const FString Run=FPaths::GetCleanFilename(ReportBase),LayoutFile=Directory/(TEXT("layout-")+Run+TEXT(".json"));
     auto Layout=IFileManager::Get().FileExists(*LayoutFile)?TUniquePtr<FJsonObject>():DashboardLayout::Capture(GetWorld(),Run);
+    const auto* Controller=Cast<AQuayCrane>(GetOwner());
+    NextDashboardWall=CaptureStart+Dashboard::CaptureInterval(FPlatformTime::Seconds()-CaptureStart,
+        !Paused && Fault.IsEmpty() && Controller && Controller->GetEffectivePlaybackRate()>1.f);
     DashboardWrite=Async(EAsyncExecution::ThreadPool,[Snapshot=MoveTemp(Snapshot),Layout=MoveTemp(Layout),LayoutFile,Directory]() mutable
     {
         // The entire JSON graph belongs to this task. No UObject access or shared
@@ -449,6 +460,10 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
     {
         Root->SetNumberField(TEXT("elapsed_seconds"),Controller->AutoElapsed);
         Root->SetNumberField(TEXT("playback_rate"),Controller->SimulationSpeed);
+        Root->SetNumberField(TEXT("effective_playback_rate"),Controller->GetEffectivePlaybackRate());
+        Root->SetNumberField(TEXT("actual_playback_rate"),Controller->GetActualPlaybackRate());
+        Root->SetStringField(TEXT("playback_mode"),Controller->GetPlaybackMode());
+        Root->SetNumberField(TEXT("playback_buffer_seconds"),Controller->GetPlaybackBufferSeconds());
         Root->SetBoolField(TEXT("running"),Controller->bAutoRunning);
         auto Hold=MakeShared<FJsonObject>();
         Hold->SetBoolField(TEXT("active"),Controller->WeatherHold.Active);
@@ -528,7 +543,15 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
     TMap<AActor*,APortContainerActor*> AttachedCargo;
     for (const auto& Cargo:ShipContainers)
         if (IsValid(Cargo)) if (auto* Parent=Cargo->GetAttachParentActor()) AttachedCargo.Add(Parent,Cargo);
-    auto CargoPlan=[this](const TSharedRef<FJsonObject>& O,const APortContainerActor* C)
+    // Build once per snapshot: cargo details are emitted for both containers
+    // and their carriers. Repeated linear manifest searches were quadratic.
+    // Keep this index local so resets/reassignment cannot leave stale entries.
+    TMap<const APortContainerActor*,int32> ManifestByActor;
+    ManifestByActor.Reserve(Manifest.Num());
+    for(int32 I=0;I<Manifest.Num();++I)
+        if(const auto* Cargo=Manifest[I].Actor.Get())
+            if(!ManifestByActor.Contains(Cargo)) ManifestByActor.Add(Cargo,I);
+    auto CargoPlan=[this,&ManifestByActor](const TSharedRef<FJsonObject>& O,const APortContainerActor* C)
     {
         const auto& Booking=C->CargoInformation;
         O->SetStringField(TEXT("goods"),Booking.Goods);
@@ -545,7 +568,8 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         O->SetNumberField(TEXT("cargo_mass_kg"),C->CargoMassKg);
         O->SetNumberField(TEXT("container_gross_kg"),C->MassKg);
         Vector(O,TEXT("dimensions_m"),C->ExternalDimensionsCm,.01f);
-        const int32 ManifestIndex=Manifest.IndexOfByPredicate([C](const FSiteShipCargo& Entry){return Entry.Actor.Get()==C;});
+        const int32* Found=ManifestByActor.Find(C);
+        const int32 ManifestIndex=Found?*Found:INDEX_NONE;
         if(Manifest.IsValidIndex(ManifestIndex) && Yard.IsValidIndex(Manifest[ManifestIndex].PlannedSlot))
         {
             const int32 Slot=Manifest[ManifestIndex].PlannedSlot;
@@ -612,22 +636,25 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
                 O->SetNumberField(TEXT("last_hour_handover_count"),RecentHandovers);
                 O->SetBoolField(TEXT("last_hour_window_complete"),SimulationTime>=3600.);
                 int32 Ready=0,Support=0,RMG=0,Oldest=INDEX_NONE,Active=INDEX_NONE;
+                FString OldestReason;
                 for(int32 I=0;I<Manifest.Num();++I)
                 {
                     const auto& C=Manifest[I]; if(C.STS!=S) continue;
                     if(C.Actor.Get()==Crane->CargoActor) Active=I;
                     if((C.State!=0 && PreparedCargo[S]!=I) || !SourceAccessible(I) || !CanSTSService(S,I)) continue;
                     const FString Reason=YardAdmissionReason(I);
-                    Ready+=YardDispatchReady(I); Support+=Reason==TEXT("yard_support_pending");
+                    Ready+=Reason.IsEmpty() || (Reason==TEXT("rmg_approach_reserved") && CanBookNextYardService(I));
+                    Support+=Reason==TEXT("yard_support_pending");
                     RMG+=Reason==TEXT("rmg_approach_reserved") || Reason==TEXT("rmg_turn_clearance");
-                    if(Oldest==INDEX_NONE || C.PlanningOrder<Manifest[Oldest].PlanningOrder) Oldest=I;
+                    if(Oldest==INDEX_NONE || C.PlanningOrder<Manifest[Oldest].PlanningOrder)
+                    { Oldest=I; OldestReason=Reason; }
                 }
                 FString Reason=TEXT("source_not_ready");
                 const int32 Vehicle=STSOwners[S]!=INDEX_NONE?STSOwners[S]:NextVehicles[S];
                 if(Crane->IsEquipmentUnavailable()) Reason=Crane->RetainsLoad()?TEXT("retained_load_repair"):TEXT("equipment_isolated");
                 else if(STSOwners[S]!=INDEX_NONE) Reason=Crane->IsWaitingForAGV()?TEXT("agv_approaching"):TEXT("admitted");
                 else if(Ready>0) Reason=NextVehicles[S]!=INDEX_NONE?TEXT("agv_returning"):TEXT("vehicle_pending");
-                else if(Oldest!=INDEX_NONE) Reason=YardAdmissionReason(Oldest);
+                else if(Oldest!=INDEX_NONE) Reason=OldestReason;
                 O->SetStringField(TEXT("dispatch_wait_reason"),Reason);
                 O->SetBoolField(TEXT("yard_advance_booking"),STSOwners[S]!=INDEX_NONE && Jobs[STSOwners[S]].bYardAdvanceBooking);
                 O->SetNumberField(TEXT("dispatch_ready_cargo_count"),Ready);
@@ -892,6 +919,15 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
 
 #if WITH_DEV_AUTOMATION_TESTS
 #include "Misc/AutomationTest.h"
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDashboardCaptureCadenceTest,"PortSim.Playback.DashboardCaptureCadence",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FDashboardCaptureCadenceTest::RunTest(const FString& Parameters)
+{
+    TestEqual(TEXT("Realtime and pause keep one-second snapshots"),Dashboard::CaptureInterval(.1,false),1.);
+    TestEqual(TEXT("Cheap captures keep one-second snapshots"),Dashboard::CaptureInterval(.001,true),1.);
+    TestEqual(TEXT("High-speed capture respects wall-time budget"),Dashboard::CaptureInterval(.045,true),1.5);
+    TestEqual(TEXT("Expensive captures stay inside live TTL"),Dashboard::CaptureInterval(1.,true),2.);
+    return true;
+}
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FDashboardSnapshotOwnershipTest,"PortSim.Recovery.DashboardSnapshotOwnership",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FDashboardSnapshotOwnershipTest::RunTest(const FString& Parameters)
 {

@@ -1,4 +1,6 @@
 #include "PortEnvironmentComponent.h"
+#include "TerminalReplay.h"
+#include "QuayCrane.h"
 #include "Misc/CommandLine.h"
 #include "Misc/Guid.h"
 #include "Misc/Parse.h"
@@ -303,14 +305,21 @@ UPortEnvironmentComponent::UPortEnvironmentComponent()
     PrimaryComponentTick.bCanEverTick=false;
 }
 
+void UPortEnvironmentComponent::NotifyExternalInput()
+{
+    if(auto* Controller=Cast<AQuayCrane>(GetOwner())) Controller->NotifyExternalSimulationInput();
+}
+
 void UPortEnvironmentComponent::SetWindSpeedMetersPerSecond(float Speed)
 {
+    NotifyExternalInput();
     if(!FMath::IsFinite(Speed)) return;
     Wind.SetReferenceSpeed(Speed);
 }
 
 void UPortEnvironmentComponent::SetSeaIntensity(float Intensity)
 {
+    NotifyExternalInput();
     Intensity=FMath::Clamp(Intensity,0.f,1.f);
     Sea.WaveHeightMeters=FMath::Lerp(FPortSeaState::MinimumWaveHeightMeters,FPortSeaState::MaximumWaveHeightMeters,Intensity);
     Sea.SwellHeightMeters=FMath::Lerp(FPortSeaState::MinimumSwellHeightMeters,FPortSeaState::MaximumSwellHeightMeters,Intensity);
@@ -327,6 +336,7 @@ float UPortEnvironmentComponent::GetSeaIntensity() const
 
 void UPortEnvironmentComponent::SetFogIntensity(float Intensity)
 {
+    NotifyExternalInput();
     Intensity=FMath::Clamp(Intensity,0.f,1.f);
     Fog.VisibilityMeters=FPortFogState::MaximumVisibilityMeters*FMath::Pow(
         FPortFogState::MinimumVisibilityMeters/FPortFogState::MaximumVisibilityMeters,Intensity);
@@ -340,27 +350,32 @@ float UPortEnvironmentComponent::GetFogIntensity() const
 
 void UPortEnvironmentComponent::SetFogVisibilityMeters(float VisibilityMeters)
 {
+    NotifyExternalInput();
     if(FMath::IsFinite(VisibilityMeters))
         Fog.VisibilityMeters=FMath::Clamp(VisibilityMeters,FPortFogState::MinimumVisibilityMeters,FPortFogState::MaximumVisibilityMeters);
 }
 
 void UPortEnvironmentComponent::SetRainIntensity(float Intensity)
 {
+    NotifyExternalInput();
     Intensity=FMath::Clamp(Intensity,0.f,1.f);
     Rain.RainfallMmPerHour=FMath::Lerp(FPortRainState::MinimumRainfallMmPerHour,FPortRainState::MaximumRainfallMmPerHour,Intensity);
 }
 
 void UPortEnvironmentComponent::SetRainfallMmPerHour(float RainfallMmPerHour)
 {
+    NotifyExternalInput();
     if(FMath::IsFinite(RainfallMmPerHour))
         Rain.RainfallMmPerHour=FMath::Clamp(RainfallMmPerHour,FPortRainState::MinimumRainfallMmPerHour,FPortRainState::MaximumRainfallMmPerHour);
 }
 
 void UPortEnvironmentComponent::SetSnowIntensity(float Intensity)
-{ if(FMath::IsFinite(Intensity)) SnowIntensity=FMath::Clamp(Intensity,0.f,1.f); }
+{
+    NotifyExternalInput(); if(FMath::IsFinite(Intensity)) SnowIntensity=FMath::Clamp(Intensity,0.f,1.f); }
 
 void UPortEnvironmentComponent::SetIceIntensity(float Intensity)
-{ if(FMath::IsFinite(Intensity)) IceIntensity=FMath::Clamp(Intensity,0.f,1.f); }
+{
+    NotifyExternalInput(); if(FMath::IsFinite(Intensity)) IceIntensity=FMath::Clamp(Intensity,0.f,1.f); }
 
 FPortSurfaceState UPortEnvironmentComponent::GetSurfaceConditions() const
 {
@@ -397,6 +412,7 @@ void UPortEnvironmentComponent::PublishSurface()
 
 void UPortEnvironmentComponent::SetWaterFilmMm(float Mm)
 {
+    NotifyExternalInput();
     if(!FMath::IsFinite(Mm)) return;
     SynchronizeSurfaceInputs();
     Accumulation.WaterMm=FMath::Clamp(double(Mm),0.,double(FrictionSettings.SurfaceDynamics.MaxWaterFilmMm));
@@ -405,6 +421,7 @@ void UPortEnvironmentComponent::SetWaterFilmMm(float Mm)
 
 void UPortEnvironmentComponent::SetSnowDepthMm(float Mm)
 {
+    NotifyExternalInput();
     if(!FMath::IsFinite(Mm)) return;
     SynchronizeSurfaceInputs();
     Accumulation.SnowMm=FMath::Clamp(double(Mm),0.,double(FrictionSettings.SurfaceDynamics.MaxSnowDepthMm));
@@ -413,6 +430,7 @@ void UPortEnvironmentComponent::SetSnowDepthMm(float Mm)
 
 void UPortEnvironmentComponent::SetFrictionSettings(const FPortFrictionSettings& Settings)
 {
+    NotifyExternalInput();
     FrictionSettings=Settings; FrictionSettings.Sanitize(); GetContactMaterial();
 }
 
@@ -439,7 +457,7 @@ void UPortEnvironmentComponent::BeginPlay()
     if(FParse::Value(FCommandLine::Get(),TEXT("PortSimIceIntensity="),WinterIntensity)) SetIceIntensity(WinterIntensity);
     FString FrictionPath=FPaths::ProjectConfigDir()/TEXT("Weather_Friction.json");
     FParse::Value(FCommandLine::Get(),TEXT("PortSimFrictionConfig="),FrictionPath);
-    if(!FrictionSettings.Load(FrictionPath)) UE_LOG(LogTemp,Warning,TEXT("Friction config missing/invalid: %s; using assumed defaults"),*FrictionPath);
+    if(!FrictionSettings.Load(FrictionPath)) PORTSIM_SIM_LOG(LogTemp,Warning,TEXT("Friction config missing/invalid: %s; using assumed defaults"),*FrictionPath);
     float SnowfallRate=GetSnowfallMmPerHour();
     if(FParse::Value(FCommandLine::Get(),TEXT("PortSimSnowRate="),SnowfallRate)) SetSnowfallMmPerHour(SnowfallRate);
     FParse::Value(FCommandLine::Get(),TEXT("PortSimWetness="),Surface.Wetness);
@@ -447,18 +465,19 @@ void UPortEnvironmentComponent::BeginPlay()
     FParse::Value(FCommandLine::Get(),TEXT("PortSimIce="),Surface.Ice);
     SetSurfaceConditions(Surface.Wetness,Surface.Snow,Surface.Ice);
     LastReportedGustCount=Wind.GustCount;
-    UE_LOG(LogTemp,Display,TEXT("PORTSIM_SEA_STATE: seed=%d Hs_m=%.3f wave_m=%.3f wave_period_s=%.3f swell_m=%.3f swell_period_s=%.3f"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("PORTSIM_SEA_STATE: seed=%d Hs_m=%.3f wave_m=%.3f wave_period_s=%.3f swell_m=%.3f swell_period_s=%.3f"),
         Seed,Sea.SignificantWaveHeightMeters(),Sea.WaveHeightMeters,Sea.WavePeriodSeconds,
         Sea.SwellHeightMeters,Sea.SwellPeriodSeconds);
-    UE_LOG(LogTemp,Display,TEXT("PORTSIM_FOG_STATE: enabled=%d visibility_m=%.1f sensor_only=1"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("PORTSIM_FOG_STATE: enabled=%d visibility_m=%.1f sensor_only=1"),
         Fog.bFogEnabled,Fog.VisibilityMeters);
-    UE_LOG(LogTemp,Display,TEXT("PORTSIM_RAIN_STATE: enabled=%d rate_mmph=%.1f camera_scale=%.3f lidar_scale=%.3f surface_wetness=%.3f visual=0"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("PORTSIM_RAIN_STATE: enabled=%d rate_mmph=%.1f camera_scale=%.3f lidar_scale=%.3f surface_wetness=%.3f visual=0"),
         Rain.bRainEnabled,Rain.RainfallMmPerHour,Rain.SensorRangeScale(TEXT("camera")),
         Rain.SensorRangeScale(TEXT("lidar")),GetSurfaceConditions().Wetness);
 }
 
 void UPortEnvironmentComponent::SetSurfaceConditions(float Wetness,float Snow,float Ice)
 {
+    NotifyExternalInput();
     Surface.Wetness=Wetness; Surface.Snow=Snow; Surface.Ice=Ice; Surface.Sanitize(); FrictionSettings.Sanitize();
     Accumulation.Initialize(Surface,FrictionSettings.SurfaceDynamics); bSurfaceInitialized=true; PublishSurface();
     GetContactMaterial();
@@ -485,7 +504,7 @@ UPhysicalMaterial* UPortEnvironmentComponent::GetContactMaterial()
     // UE's runtime material API updates the shared Chaos handle. No body rebinding
     // or new UObject per frame is needed while the film drains continuously.
     FChaosEngineInterface::UpdateMaterial(ContactMaterial->GetPhysicsMaterial(),ContactMaterial);
-    if(NewMaterial || SettingsChanged) UE_LOG(LogTemp,Display,TEXT("PORTSIM_SURFACE: wet=%.3f snow=%.3f ice=%.3f tire_mu=%.3f rail_mu=%.3f steel_mu=%.3f (assumed)"),
+    if(NewMaterial || SettingsChanged) PORTSIM_SIM_LOG(LogTemp,Display,TEXT("PORTSIM_SURFACE: wet=%.3f snow=%.3f ice=%.3f tire_mu=%.3f rail_mu=%.3f steel_mu=%.3f (assumed)"),
         Effective.Wetness,Effective.Snow,Effective.Ice,FrictionSettings.Tire.Static(Effective),FrictionSettings.Rail.Static(Effective),StaticMu);
     return ContactMaterial;
 }
@@ -501,7 +520,7 @@ void UPortEnvironmentComponent::AdvanceEnvironment(float SimulationSeconds)
     if(Wind.GustCount!=LastReportedGustCount)
     {
         LastReportedGustCount=Wind.GustCount;
-        UE_LOG(LogTemp,Display,TEXT("PORTSIM_GUST_START: count=%d mean_mps=%.3f increment_mps=%.3f duration_s=%.3f from_deg=%.3f"),
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("PORTSIM_GUST_START: count=%d mean_mps=%.3f increment_mps=%.3f duration_s=%.3f from_deg=%.3f"),
             Wind.GustCount,Wind.WindSpeedMetersPerSecond,Wind.GustPeakSpeedMetersPerSecond,
             Wind.GustDurationSeconds,Wind.GustDirectionDegrees);
     }

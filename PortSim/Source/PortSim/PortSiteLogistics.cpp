@@ -1,4 +1,5 @@
 #include "PortSiteLogistics.h"
+#include "TerminalReplay.h"
 #include "YardStackingPolicy.h"
 #include "YardFlowEstimate.h"
 #include "TerminalLayout.h"
@@ -502,7 +503,7 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
     SetActorLabel(TEXT("DGT_STS_AGV_RMG_Dispatch"));
     SetFolderPath(TEXT("PortSim/Logistics"));
 #endif
-    UE_LOG(LogTemp,Display,TEXT("SITE_INVENTORY: yard_before=%d, vessel_total=%d, yard_initial=%d, reserved=%d, site_ship=%d, central_ship=%d"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_INVENTORY: yard_before=%d, vessel_total=%d, yard_initial=%d, reserved=%d, site_ship=%d, central_ship=%d"),
         BaselineYard,InitialShipCount(),InitialYard,ReceivingCapacity,Manifest.Num(),CentralCount);
 }
 
@@ -648,7 +649,7 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
         { Stop(TEXT("STS could not start admitted cargo: ")+Equipment[YardCraneCount+STS]->Fault); return; }
         Equipment[YardCraneCount+STS]->SetDestinationReady(false);
         ++PrefetchedJobs; // STS pickup overlaps its assigned AGV's approach.
-        UE_LOG(LogTemp,Display,TEXT("DISPATCH_ADMITTED: STS%d C%d AGV%d RMG%d queue_seconds=%.1f"),
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("DISPATCH_ADMITTED: STS%d C%d AGV%d RMG%d queue_seconds=%.1f"),
             STS+1,Record.ID,Vehicles[Vehicle]->VehicleID,Job.RMG+1,SimulationTime-Record.DispatchEligibleAt);
     }
     Equipment[YardCraneCount+STS]->SetHandoverVehicle(Vehicles[Vehicle]);
@@ -710,12 +711,12 @@ void APortSiteLogistics::AssignReturnSTS(int32 Vehicle)
     if(const int32 Queued=NextVehicles[Best];Queued!=INDEX_NONE)
     {
         NextVehicles[Best]=INDEX_NONE;ReleaseUnenteredParkingMission(Queued);
-        UE_LOG(LogTemp,Display,TEXT("AGV_STANDBY_RETURN_REPLACED: STS%d parked V%d -> returning V%d"),
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_STANDBY_RETURN_REPLACED: STS%d parked V%d -> returning V%d"),
             Best+1,Vehicles[Queued]->VehicleID,Vehicles[Vehicle]->VehicleID);
     }
     Job.ReturnSTS=Best; Job.ReturnCargo=PreparedCargo[Best];
     NextVehicles[Best]=Vehicle;
-    UE_LOG(LogTemp,Display,TEXT("AGV_DIRECT_RETURN: V%d -> STS%d C%d"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_DIRECT_RETURN: V%d -> STS%d C%d"),
         Vehicles[Vehicle]->VehicleID,Best+1,Manifest[Job.ReturnCargo].ID);
 }
 
@@ -792,7 +793,7 @@ bool APortSiteLogistics::UpdateDispatchPriorities()
         Manifest[I].DispatchUnlocks=Priorities[I].Unlocks;
     }
     DispatchPriorityLimit=Limit;
-    UE_LOG(LogTemp,Display,TEXT("AGV_DEPENDENCY_PRIORITY: active prefix=%d; yard support paths; age bonus capped at 960s"),Limit);
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_DEPENDENCY_PRIORITY: active prefix=%d; yard support paths; age bonus capped at 960s"),Limit);
     return true;
 }
 
@@ -902,7 +903,7 @@ void APortSiteLogistics::ScheduleFleet()
             Waiting.bParkingDeparture=true;NextVehicles[S]=V;
             if(!PlanRoadRoute(V,false))
             { NextVehicles[S]=INDEX_NONE;Waiting=FSiteTransfer();continue; }
-            UE_LOG(LogTemp,Display,TEXT("AGV_PRESTAGE: V%d STS%d current=V%d next_cargo=C%d"),
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_PRESTAGE: V%d STS%d current=V%d next_cargo=C%d"),
                 Vehicles[V]->VehicleID,S+1,Vehicles[STSOwners[S]]->VehicleID,Manifest[PreparedCargo[S]].ID);
         }
 }
@@ -1084,7 +1085,7 @@ bool APortSiteLogistics::ReserveYard(int32 Lane)
     if (Slot.Below!=INDEX_NONE && !Yard[Slot.Below].Occupied) return false;
     Job.Slot=Planned; Job.RMG=RMG;
     Job.bRMGReserved=true; RMGBusy[Job.RMG]=true;
-    UE_LOG(LogTemp,Display,TEXT("SITE_JOB: C%d AGV%d follows yard plan RMG%d block%d slot%d"),
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_JOB: C%d AGV%d follows yard plan RMG%d block%d slot%d"),
         Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1,Slot.Block+1,Planned);
     return true;
 }
@@ -1234,7 +1235,7 @@ bool APortSiteLogistics::PlanYardDestinations()
             break;
         }
     }
-    UE_LOG(LogTemp,Display,TEXT("YARD_BOOKING_PLAN: %d containers, outbound/type/hazard/size/weight constraints"),Manifest.Num());
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("YARD_BOOKING_PLAN: %d containers, outbound/type/hazard/size/weight constraints"),Manifest.Num());
     return true;
 }
 
@@ -1702,7 +1703,7 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested)
             int32 StartRoads=0,GoalRoads=0;
             for(const auto& Road:Network.Roads)
             { StartRoads+=FAGVRoadNetwork::Contains(Road,Start); GoalRoads+=FAGVRoadNetwork::Contains(Road,Goal); }
-            UE_LOG(LogTemp,Error,TEXT("AGV_ROUTE_NOT_FOUND: V%d stage=%d sts=%d slot=%d start=%s roads=%d goal=%s roads=%d"),
+            PORTSIM_SIM_LOG(LogTemp,Error,TEXT("AGV_ROUTE_NOT_FOUND: V%d stage=%d sts=%d slot=%d start=%s roads=%d goal=%s roads=%d"),
                 ID,Job.Stage,Job.STS,Job.Slot,*Start.ToCompactString(),StartRoads,*Goal.ToCompactString(),GoalRoads);
         }
         return false;
@@ -1793,14 +1794,14 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested)
     }
     if(SiteLogistics::RouteIntersectsContainer(Candidate,Start,Yard,Job.Stage==5?Job.Slot:INDEX_NONE))
     {
-        UE_LOG(LogTemp,Error,TEXT("AGV_ROUTE_REJECTED: V%d planned path intersects an occupied yard container"),ID);
+        PORTSIM_SIM_LOG(LogTemp,Error,TEXT("AGV_ROUTE_REJECTED: V%d planned path intersects an occupied yard container"),ID);
         return false;
     }
     if(ApronLoaded && !Congested)
     {
         double Distance=0; FVector From=Start;
         for(const FVector& Point:Candidate) { Distance+=FVector::Dist2D(From,Point); From=Point; }
-        UE_LOG(LogTemp,Display,TEXT("AGV_APRON_ROUTE: V%d sts=%d yard=%s spine=%.0f distance_cm=%.1f"),
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_APRON_ROUTE: V%d sts=%d yard=%s spine=%.0f distance_cm=%.1f"),
             ID,Job.STS+1,FarYard?TEXT("far"):TEXT("near"),ApronSpine,Distance);
     }
     if(Congested)
@@ -1816,7 +1817,7 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested)
         if(Total(Candidate,0,Candidate.Num())+500>=
             Total(Job.Route,Job.Waypoint,ExistingRouteEnd)) return false;
         ++Job.Reroutes;
-        UE_LOG(LogTemp,Display,TEXT("AGV_REROUTE: V%d stage=%d count=%d"),ID,Job.Stage,Job.Reroutes);
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_REROUTE: V%d stage=%d count=%d"),ID,Job.Stage,Job.Reroutes);
     }
     if(Job.Stage==5 && SelectedReturnCorridor!=INDEX_NONE && Job.ReturnCorridor!=SelectedReturnCorridor)
     {
@@ -1979,7 +1980,7 @@ void APortSiteLogistics::BeginTrafficFrame()
                 if(!RoadWaitSince.Contains(ID)) RoadWaitSince.Add(ID,TrafficClock);
             }
             LastCycleRecoveryAt=TrafficClock;
-            UE_LOG(LogTemp,Display,TEXT("AGV_CYCLE_RECOVERY: re-admit %d stopped vehicles"),Cycle.Num());
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_CYCLE_RECOVERY: re-admit %d stopped vehicles"),Cycle.Num());
             break;
         }
     }
@@ -2509,7 +2510,7 @@ bool APortSiteLogistics::Drive(int32 Lane,float Dt)
             ReservationIndex.Remove(ID); RoadTargets.Remove(ID); FinishedRoadSegments.Remove(ID);
             RoadBlockers.Remove(ID); RoadWaitSince.Remove(ID);
             Job.StationaryTime=0;
-            UE_LOG(LogTemp,Display,TEXT("FMS_RECOVERY_COMPLETE: V%d backed along its road; resuming stage=%d waypoint=%d"),ID,Job.Stage,Job.Waypoint);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("FMS_RECOVERY_COMPLETE: V%d backed along its road; resuming stage=%d waypoint=%d"),ID,Job.Stage,Job.Waypoint);
         }
         return false;
     }
@@ -2647,7 +2648,7 @@ void APortSiteLogistics::RecoverTrafficCycle()
                 ReservationIndex.Set(ID,{Sweep}); RoadTargets.Add(ID,Goal);
                 FinishedRoadSegments.Remove(ID);
                 LastTrafficRecoveryAt=TrafficClock;
-                UE_LOG(LogTemp,Display,TEXT("FMS_RECOVERY_START: V%d payload=%.0f kg; yield_to=V%d cycle=%d vehicles; clear reverse distance=%.0f cm target=%s"),
+                PORTSIM_SIM_LOG(LogTemp,Display,TEXT("FMS_RECOVERY_START: V%d payload=%.0f kg; yield_to=V%d cycle=%d vehicles; clear reverse distance=%.0f cm target=%s"),
                     ID,Vehicle->PayloadKg,TrafficRecoveryYieldTo[ID],Chain.Num()-CycleStart,Distance,*Goal.ToCompactString());
                 return;
             }
@@ -2667,12 +2668,12 @@ void APortSiteLogistics::Freeze(bool Paused)
 }
 
 void APortSiteLogistics::Stop(const FString& Reason)
-{ Fault=Reason; Freeze(true); UE_LOG(LogTemp,Error,TEXT("SITE_LOGISTICS_FAIL: %s"),*Reason); }
+{ Fault=Reason; Freeze(true); PORTSIM_SIM_LOG(LogTemp,Error,TEXT("SITE_LOGISTICS_FAIL: %s"),*Reason); }
 
 void APortSiteLogistics::Advance(float Dt,bool Paused)
 {
-    if(bReady) ProcessDashboardCommands();
-    PortSimPerformance::Report(SimulationTime,Delivered,GetWorld());
+    if(bReady && !FTerminalReplay::IsPredicting()) ProcessDashboardCommands();
+    if(!FTerminalReplay::IsPredicting()) PortSimPerformance::Report(SimulationTime,Delivered,GetWorld());
     PortSimPerformance::FScope Profile(TEXT("site_advance"));
     if(!bReady) return;
     if(Paused || !Fault.IsEmpty() || Dt<=0.f)
@@ -2743,6 +2744,7 @@ void APortSiteLogistics::SynchronizeShipCollision(const FBox& Query,double Contr
 
 bool APortSiteLogistics::PrepareKinematicPhysicsFrame() const
 {
+    if(FTerminalReplay::IsPredicting()) return false;
     PortSimPerformance::FScope Timing(TEXT("physics_frame_policy"));
     UWorld* World=GetWorld();
     const auto* Settings=UPhysicsSettings::Get();
@@ -2783,7 +2785,7 @@ bool APortSiteLogistics::PrepareKinematicPhysicsFrame() const
                     if(!ReportedTypes.Contains(Type))
                     {
                         ReportedTypes.Add(Type);
-                        UE_LOG(LogTemp,Display,TEXT("KINEMATIC_PHYSICS_FALLBACK: %s simulating=%d"),
+                        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("KINEMATIC_PHYSICS_FALLBACK: %s simulating=%d"),
                             *Part->GetFullName(),Part->IsSimulatingPhysics());
                     }
                 }
@@ -2845,12 +2847,12 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
     if (NoProgressTime>500)
     {
         NoProgressTime=0;
-        UE_LOG(LogTemp,Display,TEXT("TRAFFIC_DIAGNOSTIC: delivered=%d queued_handoffs=%d"),Delivered,QueuedHandoffs);
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("TRAFFIC_DIAGNOSTIC: delivered=%d queued_handoffs=%d"),Delivered,QueuedHandoffs);
         for (int32 I=0;I<Jobs.Num();++I)
         {
             const auto& J=Jobs[I];
             if (!J.Stage) continue;
-            UE_LOG(LogTemp,Display,TEXT("TRAFFIC_V%d: stage=%d sts=%d rmg=%d wp=%d/%d pos=%s target=%s blocked_by=%d speed=%.1f yaw=%.1f fms_hold=%d lidar_clear=%d reserved=%d"),Vehicles[I]->VehicleID,J.Stage,J.STS,J.RMG,J.Waypoint,J.Route.Num(),*Vehicles[I]->GetActorLocation().ToCompactString(),J.Route.IsValidIndex(J.Waypoint)?*J.Route[J.Waypoint].ToCompactString():TEXT("none"),RoadBlockers.FindRef(Vehicles[I]->VehicleID),Vehicles[I]->Speed,Vehicles[I]->GetActorRotation().Yaw,Vehicles[I]->Sensors.bFMSHold,Vehicles[I]->Sensors.bLiDARClear,RoadReservations.Contains(Vehicles[I]->VehicleID));
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("TRAFFIC_V%d: stage=%d sts=%d rmg=%d wp=%d/%d pos=%s target=%s blocked_by=%d speed=%.1f yaw=%.1f fms_hold=%d lidar_clear=%d reserved=%d"),Vehicles[I]->VehicleID,J.Stage,J.STS,J.RMG,J.Waypoint,J.Route.Num(),*Vehicles[I]->GetActorLocation().ToCompactString(),J.Route.IsValidIndex(J.Waypoint)?*J.Route[J.Waypoint].ToCompactString():TEXT("none"),RoadBlockers.FindRef(Vehicles[I]->VehicleID),Vehicles[I]->Speed,Vehicles[I]->GetActorRotation().Yaw,Vehicles[I]->Sensors.bFMSHold,Vehicles[I]->Sensors.bLiDARClear,RoadReservations.Contains(Vehicles[I]->VehicleID));
         }
     }
     for (const auto& Crane:Equipment)
@@ -2952,7 +2954,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
                 const int32 I=Current-100;
                 if (!Jobs.IsValidIndex(I)) break;
                 const auto& J=Jobs[I];
-                UE_LOG(LogTemp,Display,TEXT("BLOCK_CHAIN: V%d stage=%d sts=%d wp=%d/%d pos=%s target=%s blocker=%d"),Current,J.Stage,J.STS,J.Waypoint,J.Route.Num(),*Vehicles[I]->GetActorLocation().ToCompactString(),J.Route.IsValidIndex(J.Waypoint)?*J.Route[J.Waypoint].ToCompactString():TEXT("none"),RoadBlockers.FindRef(Current));
+                PORTSIM_SIM_LOG(LogTemp,Display,TEXT("BLOCK_CHAIN: V%d stage=%d sts=%d wp=%d/%d pos=%s target=%s blocker=%d"),Current,J.Stage,J.STS,J.Waypoint,J.Route.Num(),*Vehicles[I]->GetActorLocation().ToCompactString(),J.Route.IsValidIndex(J.Waypoint)?*J.Route[J.Waypoint].ToCompactString():TEXT("none"),RoadBlockers.FindRef(Current));
                 Current=RoadBlockers.FindRef(Current);
             }
         }
@@ -3021,7 +3023,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
             Job.STSSeconds=Equipment[YardCraneCount+Job.STS]->LastJobSeconds;
             Manifest[Job.Cargo].STSHandoverAt=Job.HandoverAt;
             Manifest[Job.Cargo].STSServiceSeconds=Job.STSSeconds;
-            UE_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d STS -> AGV%d"),Manifest[Job.Cargo].ID,100+Lane);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d STS -> AGV%d"),Manifest[Job.Cargo].ID,100+Lane);
             if(Job.ExtraCargo!=INDEX_NONE)
             {
                 // Re-evaluate with the measured first STS service time. Do not
@@ -3034,7 +3036,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
                 {
                     Manifest[Job.ExtraCargo].State=0; Manifest[Job.ExtraCargo].VehicleAssignedAt=-1;
                     --Dispatched; Job.ExtraCargo=INDEX_NONE;
-                    UE_LOG(LogTemp,Display,TEXT("AGV_PAIR_DECLINED: V%d productive_sts=%.1f saving=%.1f"),100+Lane,ProductiveService,Saving);
+                    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_PAIR_DECLINED: V%d productive_sts=%.1f saving=%.1f"),100+Lane,ProductiveService,Saving);
                 }
                 else
                 {
@@ -3044,7 +3046,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
                         Vehicle->CargoPosition(),false,false,Vehicle))
                     { Stop(TEXT("STS could not load second 20ft container")); return; }
                     Job.Stage=10; Job.bLoadingExtra=true; Job.bPairedTrip=true; ++PairedTrips;
-                    UE_LOG(LogTemp,Display,TEXT("AGV_PAIR_LOADING: V%d C%d+C%d estimated_saving=%.1f"),100+Lane,
+                    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_PAIR_LOADING: V%d C%d+C%d estimated_saving=%.1f"),100+Lane,
                         Manifest[Job.Cargo].ID,Extra.ID,Saving);
                     break;
                 }
@@ -3094,7 +3096,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
             if (!Equipment[Job.RMG]->AssignCargo(Cargo,Vehicle->CargoPosition(),Yard[Job.Slot].Position,false,true,Vehicle))
             { Stop(TEXT("AGV / RMG reservation handover")); return; }
             Manifest[Job.Cargo].HandoverMask|=2;
-            UE_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d AGV%d -> RMG%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_HANDOVER: C%d AGV%d -> RMG%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1);
             Job.Stage=4; break;
         case 4:
         {
@@ -3132,7 +3134,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
                 FMath::Max(0.,Manifest[Job.Cargo].VehicleAssignedAt-Manifest[Job.Cargo].DispatchEligibleAt),
                 Manifest[Job.Cargo].STSWaitingForVehicleSeconds);
             if(!SaveReports()) { Stop(TEXT("Could not save site STS shipment report")); return; }
-            UE_LOG(LogTemp,Display,TEXT("SITE_DELIVERED: C%d via AGV%d -> RMG%d; total=%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1,Delivered);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_DELIVERED: C%d via AGV%d -> RMG%d; total=%d"),Manifest[Job.Cargo].ID,100+Lane,Job.RMG+1,Delivered);
             if(Job.ExtraCargo!=INDEX_NONE)
             {
                 const int32 Second=Job.ExtraCargo;
@@ -3683,11 +3685,12 @@ void APortSiteLogistics::BeginReport()
     ReportBase=FPaths::ProjectSavedDir()/TEXT("Results")/TEXT("Site_")+FGuid::NewGuid().ToString(EGuidFormats::Digits);
     ResultsCsv=TEXT("ContainerID,LengthFt,TareKg,CargoKg,GrossKg,PlannedYardBlock,PlannedSlot,STSLane,AGVID,RMGID,StartedAtSeconds,STSHandoverAtSeconds,FinalPlacementAtSeconds,ShipmentSeconds,STSSeconds,PausedSeconds,TrafficWaitSeconds,YardWaitSeconds,Goods,HandlingType,HazardGroup,OutboundOrder,DestinationPort,PortCallOrder,TripID,TripCargoOrdinal,PairedTrip,EstimatedPairSavingSeconds,DataBasis,PlannedYardTier,BelowContainerID,PlannedYardCell,YardSubslot,SlotLengthFt,PlannedXcm,PlannedYcm,PlannedZcm,DispatchEligibleAtSeconds,AGVAssignedAtSeconds,DispatchWaitSeconds,STSWaitingForAGVSeconds\n");
     if(!SaveReports()) Stop(TEXT("Could not initialize site shipment report"));
-    UE_LOG(LogTemp,Display,TEXT("SITE_REPORT: %s.csv"),*ReportBase);
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_REPORT: %s.csv"),*ReportBase);
 }
 
 bool APortSiteLogistics::SaveReports() const
 {
+    if(FTerminalReplay::IsPredicting()) return true;
     if(ReportBase.IsEmpty()) return false;
     IFileManager::Get().MakeDirectory(*FPaths::GetPath(ReportBase),true);
     const FString Snapshot=TEXT("{\"site_suspension_model\":\"reduced-order sway/yaw; assumed mounts; taut-rope tension; hoist shaft torque\",\"sts_profile\":")+

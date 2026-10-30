@@ -1,5 +1,6 @@
 #pragma once
 #include "STSDynamics.h"
+#include "Async/Future.h"
 
 // Isolated prototype: this owns a reduced-order suspension, not a live world.
 // Inputs are held constant over the prediction window. SubmitInput invalidates
@@ -24,6 +25,8 @@ public:
     void SubmitInput(const FSuspensionLookaheadInput& Input);
     void SetRequestedRate(double Rate);
     void Tick(double WallSeconds,int32 PredictionBudgetSteps=8);
+    // Optional worker owns numeric copies only; stale generations are discarded.
+    void SetBackgroundPrediction(bool Enabled) { bBackgroundPrediction=Enabled; }
     const FSTSSuspension& DisplayedState() const { return Current; }
     ESuspensionLookaheadMode Mode() const { return CurrentMode; }
     double DisplayedSeconds() const { return DisplayedSteps*StepSeconds; }
@@ -33,7 +36,15 @@ public:
     uint64 InputRevision() const { return Revision; }
 private:
     void Integrate(FSTSSuspension& State) const;
+    static void IntegrateState(FSTSSuspension& State,const FSuspensionLookaheadInput& Input);
     void Prepare(int32 Budget);
+    struct FPrediction
+    {
+        uint64 Revision=0, FirstStep=0;
+        TArray<FSTSSuspension> States;
+    };
+    TFuture<FPrediction> Prediction;
+    bool bBackgroundPrediction=false;
     FSTSSuspension Current;
     FSuspensionLookaheadInput Held;
     TArray<FSTSSuspension> Future;

@@ -70,7 +70,8 @@
 
 ## Simulation — 배속·시뮬레이션 성능
 
-- [짧은 구간 사전 계산 시제품 — 빌드 성공·동작 미검증](<Simulation/ShortLookaheadPrototype.md>)
+- [터미널 체크포인트 배속 재생 — Chaos 제외 범위·검증·사용법](<Simulation/TerminalReplay.md>)
+- [짧은 구간 사전 계산 시제품 — 초기 구현 이력](<Simulation/ShortLookaheadPrototype.md>)
 - [배속과 크레인 흔들림 — 고정 월드 시간 간격 수정](<Simulation/PlaybackClock.md>)
 - [배속 성능 회귀와 수정](<Simulation/PlaybackPerformance.md>)
 

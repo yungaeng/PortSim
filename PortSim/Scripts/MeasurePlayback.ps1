@@ -5,6 +5,7 @@ param(
     [switch]$Render,
     [switch]$EngineStats,
     [switch]$FullPhysics,
+    [switch]$NoReplay,
     [string]$LogPath,
     [string]$SummaryPath
 )
@@ -20,6 +21,7 @@ if($Render) { $arguments+=@('-windowed','-ResX=1280','-ResY=720') }
 else { $arguments+='-nullrhi' }
 if($EngineStats) { $arguments+='-PortSimProfileEngineStats' }
 if($FullPhysics) { $arguments+='-PortSimFullPhysics' }
+if($NoReplay) { $arguments+='-PortSimNoReplay' }
 $process=Start-Process -FilePath (Join-Path $Engine 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') `
     -ArgumentList $arguments -WindowStyle Hidden -PassThru
 $null=$process.Handle
@@ -31,7 +33,7 @@ $samples=[regex]::Matches($text,'PORTSIM_PERF: wall=([\d.]+) processed_sim=([\d.
 if(-not $samples.Count) { throw "No processed simulation measurement: $LogPath" }
 $last=$samples[-1]
 $result=[ordered]@{
-    RequestedRate=$PlaybackRate;Render=[bool]$Render;FullPhysics=[bool]$FullPhysics;WallSeconds=[double]$last.Groups[1].Value
+    RequestedRate=$PlaybackRate;Render=[bool]$Render;FullPhysics=[bool]$FullPhysics;BufferedReplay=(-not [bool]$NoReplay);WallSeconds=[double]$last.Groups[1].Value
     ProcessedSimulationSeconds=[double]$last.Groups[2].Value;AchievedRate=[double]$last.Groups[3].Value
     Delivered=[int]$last.Groups[4].Value;Log=$LogPath
 }

@@ -1,4 +1,5 @@
 #include "PortSiteLogistics.h"
+#include "QuayCrane.h"
 #include "PortWorkingCrane.h"
 #include "PortAGVActor.h"
 #include "PortContainerActor.h"
@@ -133,11 +134,16 @@ void APortSiteLogistics::ProcessDashboardCommands()
             Applied=ApplyDashboardCommand(*C,Error);
         else Error=TEXT("잘못된 명령 형식입니다.");
         SeenDashboardCommands.Add(ID);
+        if(Applied)
+            if(auto* Controller=Cast<AQuayCrane>(GetOwner())) Controller->NotifyExternalSimulationInput();
         auto Result=MakeShared<FJsonObject>(); Result->SetStringField(TEXT("id"),ID);
         Result->SetStringField(TEXT("status"),Applied?TEXT("applied"):TEXT("rejected"));
         Result->SetStringField(TEXT("message"),Error);
         Result->SetNumberField(TEXT("simulation_seconds"),SimulationTime);
         DashboardCommandResults.Add(Result);
+        // Publish the acknowledgement at the next completed scene boundary,
+        // even when accelerated playback has reduced routine telemetry cadence.
+        NextDashboardWall=0;
         if(DashboardCommandResults.Num()>32)
         { SeenDashboardCommands.Remove(DashboardCommandResults[0]->GetStringField(TEXT("id"))); DashboardCommandResults.RemoveAt(0); }
         IFileManager::Get().Delete(*Path);

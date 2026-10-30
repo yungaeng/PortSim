@@ -21,8 +21,9 @@ $text=Get-Content -LiteralPath $log -Raw
 # Judge the actual PortSim session and its explicit completion results.
 $start=$text.IndexOf('Test Started. Name=')
 $session=if($start -ge 0) {$text.Substring($start)} else {''}
-if($text -notmatch '34 tests performed' -or
-    @([regex]::Matches($session,'Test Completed\. Result=\{Success\}[^\r\n]+Path=\{PortSim\.')).Count -ne 34 -or
+$performed=[regex]::Match($text,'Automation Test Queue Empty (\d+) tests performed')
+if(-not $performed.Success -or [int]$performed.Groups[1].Value -lt 34 -or
+    @([regex]::Matches($session,'Test Completed\. Result=\{Success\}[^\r\n]+Path=\{PortSim\.')).Count -ne [int]$performed.Groups[1].Value -or
     $session -match 'Result=\{Fail|LogAutomationTest: Error:|Fatal error:' -or
     $text -notmatch 'Result=\{Success\} Name=\{ArrivalActorsAndAccess\}') {
     Select-String -LiteralPath $log -Pattern 'Error:|Result=\{Fail' | Select-Object -Last 12

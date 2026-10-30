@@ -1,3 +1,4 @@
+#include "TerminalReplay.h"
 #include "PortWorkingCrane.h"
 #include "PortSiteLogistics.h"
 #include "Components/StaticMeshComponent.h"
@@ -111,7 +112,7 @@ void APortWorkingCrane::AdvanceFailureRecovery(float Dt,bool GlobalPaused)
                 if(FMath::Abs(Error)<2 && FMath::Abs(AxisVelocity.Y)<2)
                 {
                     AxisVelocity=FVector::ZeroVector; bFaultEvacuating=false; bFaultEvacuationComplete=!Fault.IsEmpty();
-                    UE_LOG(LogTemp,Display,TEXT("STS_FAULT_EVACUATED: crane=%d y_cm=%.2f"),CraneID,GantryWorldY());
+                    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAULT_EVACUATED: crane=%d y_cm=%.2f"),CraneID,GantryWorldY());
                     break;
                 }
                 if(!Clear) break;

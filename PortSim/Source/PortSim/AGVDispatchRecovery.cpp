@@ -1,3 +1,4 @@
+#include "TerminalReplay.h"
 #include "PortSiteLogistics.h"
 #include "PortAGVActor.h"
 #include "PortContainerActor.h"
@@ -90,7 +91,7 @@ void APortSiteLogistics::ReassignBlockedParkingVehicles()
             for(auto& Lease:DeferredYardLeases)if(Lease.Vehicle==Old)Lease.Vehicle=Best;
             Equipment[YardCraneCount+S]->SetHandoverVehicle(Vehicles[Best]);
             RecordRecoveryEvent(TEXT("agv_reassigned"),V,V,Vehicles[Best],J.Actor.Get());
-            UE_LOG(LogTemp,Display,TEXT("AGV_BLOCKED_PICKUP_REASSIGNED: STS%d V%d -> V%d; old vehicle remains parked"),S+1,V->VehicleID,Vehicles[Best]->VehicleID);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_BLOCKED_PICKUP_REASSIGNED: STS%d V%d -> V%d; old vehicle remains parked"),S+1,V->VehicleID,Vehicles[Best]->VehicleID);
         }
         // The old vehicle never left its verified bay, so clearing an unentered
         // request changes neither its physical pose nor any attached cargo.

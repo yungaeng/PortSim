@@ -217,6 +217,9 @@ UCLASS(ClassGroup=(PortSim), meta=(BlueprintSpawnableComponent))
 class PORTSIM_API UPortEnvironmentComponent : public UActorComponent
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 public:
     UPortEnvironmentComponent();
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Environment|Operations") FPortWeatherOperatingLimits OperatingLimits;
@@ -246,8 +249,8 @@ public:
     /** Velocity in metres/second, NOT Unreal centimetres/second. OFF returns zero. */
     UFUNCTION(BlueprintPure, Category="Environment|Wind") FVector GetEffectiveWindVelocity() const;
     UFUNCTION(BlueprintPure, Category="Environment|Wind") FString GetWindDirectionName() const { return FPortWindState::DirectionName(Wind.EffectiveDirectionDegrees()); }
-    UFUNCTION(BlueprintCallable, Category="Environment|Wind") void ToggleWind() { Wind.bWindEnabled=!Wind.bWindEnabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Wind") void SetWindEnabled(bool Enabled) { Wind.bWindEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Wind") void ToggleWind() { NotifyExternalInput(); Wind.bWindEnabled=!Wind.bWindEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Wind") void SetWindEnabled(bool Enabled) { NotifyExternalInput(); Wind.bWindEnabled=Enabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Wind") void SetWindSpeedMetersPerSecond(float Speed);
     /** User-selected slider value. Unlike live mean/gust wind, this does not drift with weather. */
     UFUNCTION(BlueprintPure, Category="Environment|Wind") float GetWindSettingMetersPerSecond() const { return Wind.ReferenceWindSpeedMetersPerSecond; }
@@ -258,16 +261,16 @@ public:
     UFUNCTION(BlueprintPure, Category="Environment|Sea") float GetSignificantWaveHeightMeters() const { return Sea.SignificantWaveHeightMeters(); }
     UFUNCTION(BlueprintPure, Category="Environment|Sea") float GetWavePeriodSeconds() const { return Sea.WavePeriodSeconds; }
     UFUNCTION(BlueprintPure, Category="Environment|Sea") float GetSwellPeriodSeconds() const { return Sea.SwellPeriodSeconds; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Sea") void ToggleSeaMotion() { Sea.bSeaMotionEnabled=!Sea.bSeaMotionEnabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Sea") void SetSeaMotionEnabled(bool Enabled) { Sea.bSeaMotionEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Sea") void ToggleSeaMotion() { NotifyExternalInput(); Sea.bSeaMotionEnabled=!Sea.bSeaMotionEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Sea") void SetSeaMotionEnabled(bool Enabled) { NotifyExternalInput(); Sea.bSeaMotionEnabled=Enabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Sea") void SetSeaIntensity(float Intensity);
     UFUNCTION(BlueprintPure, Category="Environment|Sea") float GetSeaIntensity() const;
     FPortVesselMotion GetVesselMotion(int32 VesselIndex=0) const { return Sea.SampleVesselMotion(VesselIndex); }
     const FPortSeaState& GetSeaState() const { return Sea; }
     UFUNCTION(BlueprintPure, Category="Environment|Fog") bool IsFogEnabled() const { return Fog.bFogEnabled; }
     UFUNCTION(BlueprintPure, Category="Environment|Fog") float GetFogVisibilityMeters() const { return Fog.VisibilityMeters; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Fog") void ToggleFog() { Fog.bFogEnabled=!Fog.bFogEnabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Fog") void SetFogEnabled(bool Enabled) { Fog.bFogEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Fog") void ToggleFog() { NotifyExternalInput(); Fog.bFogEnabled=!Fog.bFogEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Fog") void SetFogEnabled(bool Enabled) { NotifyExternalInput(); Fog.bFogEnabled=Enabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Fog") void SetFogIntensity(float Intensity);
     UFUNCTION(BlueprintPure, Category="Environment|Fog") float GetFogIntensity() const;
     void SetFogVisibilityMeters(float VisibilityMeters);
@@ -276,8 +279,8 @@ public:
     const FPortFogState& GetFogState() const { return Fog; }
     UFUNCTION(BlueprintPure, Category="Environment|Rain") bool IsRainEnabled() const { return Rain.bRainEnabled; }
     UFUNCTION(BlueprintPure, Category="Environment|Rain") float GetRainfallMmPerHour() const { return Rain.RainfallMmPerHour; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Rain") void ToggleRain() { Rain.bRainEnabled=!Rain.bRainEnabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Rain") void SetRainEnabled(bool Enabled) { Rain.bRainEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Rain") void ToggleRain() { NotifyExternalInput(); Rain.bRainEnabled=!Rain.bRainEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Rain") void SetRainEnabled(bool Enabled) { NotifyExternalInput(); Rain.bRainEnabled=Enabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Rain") void SetRainIntensity(float Intensity);
     UFUNCTION(BlueprintPure, Category="Environment|Rain") float GetRainIntensity() const
     { return (Rain.RainfallMmPerHour-FPortRainState::MinimumRainfallMmPerHour)/(FPortRainState::MaximumRainfallMmPerHour-FPortRainState::MinimumRainfallMmPerHour); }
@@ -285,21 +288,22 @@ public:
     const FPortRainState& GetRainState() const { return Rain; }
     UFUNCTION(BlueprintPure, Category="Environment|Snow") bool IsSnowEnabled() const { return bSnowEnabled; }
     UFUNCTION(BlueprintPure, Category="Environment|Snow") float GetSnowIntensity() const { return SnowIntensity; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Snow") void SetSnowEnabled(bool Enabled) { bSnowEnabled=Enabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Snow") void ToggleSnow() { bSnowEnabled=!bSnowEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Snow") void SetSnowEnabled(bool Enabled) { NotifyExternalInput(); bSnowEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Snow") void ToggleSnow() { NotifyExternalInput(); bSnowEnabled=!bSnowEnabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Snow") void SetSnowIntensity(float Intensity);
     UFUNCTION(BlueprintPure, Category="Environment|Snow") float GetSnowfallMmPerHour() const;
     UFUNCTION(BlueprintCallable, Category="Environment|Snow") void SetSnowfallMmPerHour(float MillimetersPerHour);
     UFUNCTION(BlueprintPure, Category="Environment|Ice") bool IsIceEnabled() const { return bIceEnabled; }
     UFUNCTION(BlueprintPure, Category="Environment|Ice") float GetIceIntensity() const { return IceIntensity; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Ice") void SetIceEnabled(bool Enabled) { bIceEnabled=Enabled; }
-    UFUNCTION(BlueprintCallable, Category="Environment|Ice") void ToggleIce() { bIceEnabled=!bIceEnabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Ice") void SetIceEnabled(bool Enabled) { NotifyExternalInput(); bIceEnabled=Enabled; }
+    UFUNCTION(BlueprintCallable, Category="Environment|Ice") void ToggleIce() { NotifyExternalInput(); bIceEnabled=!bIceEnabled; }
     UFUNCTION(BlueprintCallable, Category="Environment|Ice") void SetIceIntensity(float Intensity);
     UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Environment|Snow") bool bSnowEnabled=false;
     UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Environment|Snow",meta=(ClampMin="0",ClampMax="1")) float SnowIntensity=1;
     UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Environment|Ice") bool bIceEnabled=false;
     UPROPERTY(EditAnywhere,BlueprintReadOnly,Category="Environment|Ice",meta=(ClampMin="0",ClampMax="1")) float IceIntensity=1;
 private:
+    void NotifyExternalInput();
     UPROPERTY() TObjectPtr<UPhysicalMaterial> ContactMaterial;
     FPortSurfaceState MaterialSurface;
     FPortFrictionSettings MaterialSettings;

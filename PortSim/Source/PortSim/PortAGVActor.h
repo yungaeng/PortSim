@@ -47,6 +47,9 @@ UCLASS(Blueprintable)
 class PORTSIM_API APortAGVActor : public APortEquipmentActor
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 public:
     APortAGVActor();
     void InitializeVehicle(int32 Number);

@@ -1,3 +1,4 @@
+#include "TerminalReplay.h"
 #include "PortSiteLogistics.h"
 #include "PortWorkingCrane.h"
 #include "PortContainerActor.h"
@@ -115,7 +116,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
             {
                 IsolatedEquipment.Add(I); ++EquipmentFaultEvents;
                 RecordRecoveryEvent(TEXT("fault"),Crane,Crane,Crane);
-                UE_LOG(LogTemp,Display,TEXT("EQUIPMENT_SENSOR_ISOLATED: crane=%d retained=%d terminal_continues=1 gantry_fault=%d"),Crane->CraneID,Crane->RetainsLoad(),Crane->bGantryFault);
+                PORTSIM_SIM_LOG(LogTemp,Display,TEXT("EQUIPMENT_SENSOR_ISOLATED: crane=%d retained=%d terminal_continues=1 gantry_fault=%d"),Crane->CraneID,Crane->RetainsLoad(),Crane->bGantryFault);
                 if(!Crane->RetainsLoad() && Crane->IsBusy())
                 {
                     // Abort only an unlatched, supported pickup. Released loads
@@ -160,7 +161,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
             if(ApproachOwner==V)
             {
                 ApproachOwner=INDEX_NONE; J.bYardAdmissionSuspended=true;
-                UE_LOG(LogTemp,Display,TEXT("FAILURE_YARD_APPROACH_RELEASED: STS%d AGV%d RMG%d slot_booking_kept=1"),J.STS+1,Vehicles[V]->VehicleID,Yard[J.Slot].Crane+1);
+                PORTSIM_SIM_LOG(LogTemp,Display,TEXT("FAILURE_YARD_APPROACH_RELEASED: STS%d AGV%d RMG%d slot_booking_kept=1"),J.STS+1,Vehicles[V]->VehicleID,Yard[J.Slot].Crane+1);
             }
         }
         if(J.bYardAdmissionSuspended)
@@ -224,7 +225,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
             C.STS=Best; C.RecoveryHold.Empty();
         }
         J.bEquipmentWaiting=J.bYardAdmissionSuspended; Vehicles[V]->SetFMSHold(false);
-        UE_LOG(LogTemp,Display,TEXT("STS_FAILURE_REASSIGNED: cargo=%d old=%d new=%d agv=%d"),Manifest[Cargo].ID,Previous+1,Best+1,Vehicles[V]->VehicleID);
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAILURE_REASSIGNED: cargo=%d old=%d new=%d agv=%d"),Manifest[Cargo].ID,Previous+1,Best+1,Vehicles[V]->VehicleID);
     }
     for(int32 I=0;I<Manifest.Num();++I)
     {
@@ -299,7 +300,7 @@ void APortSiteLogistics::PlanFaultEvacuations()
         if(FMath::Abs(Best-Current)>100 && Crane->RequestFaultEvacuation(Best,this))
         {
             RecordRecoveryEvent(TEXT("evacuation_started"),Crane,Crane,Crane,nullptr,FVector(0,Current,0),FVector(0,Best,0));
-            UE_LOG(LogTemp,Display,TEXT("STS_FAULT_EVACUATION: crane=%d from_y=%.2f to_y=%.2f remaining_blocked=%d"),Crane->CraneID,Current,Best,BestBlocked);
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAULT_EVACUATION: crane=%d from_y=%.2f to_y=%.2f remaining_blocked=%d"),Crane->CraneID,Current,Best,BestBlocked);
         }
     }
 }
@@ -475,6 +476,6 @@ bool APortSiteLogistics::ReplanYardGroup(const TSet<int32>& Affected,const TSet<
         }
     }
     DispatchPriorityLimit=INDEX_NONE;
-    UE_LOG(LogTemp,Display,TEXT("YARD_FAILURE_REPLAN: containers=%d active_agvs=%d atomic=1 cause=%s"),Order.Num(),AssignedActiveCrane.Num(),Cause?*Cause->GetName():TEXT("rmg_failure"));
+    PORTSIM_SIM_LOG(LogTemp,Display,TEXT("YARD_FAILURE_REPLAN: containers=%d active_agvs=%d atomic=1 cause=%s"),Order.Num(),AssignedActiveCrane.Num(),Cause?*Cause->GetName():TEXT("rmg_failure"));
     return true;
 }

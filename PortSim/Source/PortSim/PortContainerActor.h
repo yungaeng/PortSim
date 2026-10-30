@@ -17,6 +17,9 @@ UCLASS(Blueprintable)
 class PORTSIM_API APortContainerActor : public AActor
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 public:
     APortContainerActor();
     virtual void BeginPlay() override;

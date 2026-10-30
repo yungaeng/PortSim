@@ -1,3 +1,4 @@
+#include "TerminalReplay.h"
 #include "PortWorkingCrane.h"
 #include "PortContainerActor.h"
 #include "Components/StaticMeshComponent.h"
@@ -34,7 +35,7 @@ void APortWorkingCrane::SampleRMGEnvironment()
             const bool CornerValid=Found && Hit.ImpactNormal.Z>.8 && InView &&
                 FMath::Abs(Hit.ImpactPoint.Z-(Slots[1-SourceSlot].Z-129.5))<=STSProfile.StackHeightTolerance;
             if(Stage==5 && !CornerValid)
-                UE_LOG(LogTemp,Warning,TEXT("RMG_STACK_SAMPLE: crane=%d corner=%d found=%d actor=%s component=%s point=%s normal=%s expected_z_cm=%.3f in_view=%d"),
+                PORTSIM_SIM_LOG(LogTemp,Warning,TEXT("RMG_STACK_SAMPLE: crane=%d corner=%d found=%d actor=%s component=%s point=%s normal=%s expected_z_cm=%.3f in_view=%d"),
                     CraneID,I,Found,*GetNameSafe(Hit.GetActor()),*GetNameSafe(Hit.GetComponent()),*Hit.ImpactPoint.ToString(),
                     *Hit.ImpactNormal.ToString(),Slots[1-SourceSlot].Z-129.5,InView);
             Valid &= CornerValid;

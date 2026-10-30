@@ -30,6 +30,7 @@
 #include "Misc/Parse.h"
 #include "PhysicsEngine/PhysicsConstraintComponent.h"
 #include "UObject/ConstructorHelpers.h"
+#include "UObject/UnrealType.h"
 
 DEFINE_LOG_CATEGORY_STATIC(LogPortSimCrane, Log, All);
 
@@ -209,6 +210,15 @@ void AQuayCrane::ApplyAppearance()
 void AQuayCrane::BeginPlay()
 {
     Super::BeginPlay();
+#if WITH_EDITOR
+    FCoreUObjectDelegates::OnObjectPropertyChanged.AddWeakLambda(this,[this](UObject* Object,FPropertyChangedEvent& Event)
+    {
+        if(Object && Object->GetWorld()==GetWorld() && Event.Property && Event.Property->HasAnyPropertyFlags(CPF_Edit) &&
+            (Object==this || Cast<UPortEnvironmentComponent>(Object) || Cast<APortWorkingCrane>(Object) ||
+             Cast<APortAGVActor>(Object) || Cast<APortContainerActor>(Object)))
+        { NotifyExternalSimulationInput(); ApplyPlaybackRate(); }
+    });
+#endif
     bHUDVisible=!FParse::Param(FCommandLine::Get(),TEXT("PortSimHUDHidden"));
     // Demo always starts at a known world origin, regardless of PlayerStart placement.
     SetActorLocationAndRotation(FVector::ZeroVector, FRotator::ZeroRotator);
@@ -314,6 +324,7 @@ void AQuayCrane::BeginPlay()
 
 void AQuayCrane::ResetSimulation()
 {
+    NotifyExternalSimulationInput();
     if (bTerminalMode) { ResetTerminal(); return; }
     Suspension->BreakConstraint();
     TwistLock->BreakConstraint();
@@ -444,6 +455,15 @@ void AQuayCrane::UpdateRopes()
 void AQuayCrane::Tick(float DeltaSeconds)
 {
     Super::Tick(DeltaSeconds);
+    const float Dt=DeltaSeconds;
+    const double ReplayNow=FPlatformTime::Seconds();
+    const double ReplayDelta=PreviousReplayWall>0?FMath::Clamp(ReplayNow-PreviousReplayWall,0.,.1):double(DeltaSeconds);
+    PreviousReplayWall=ReplayNow;
+    const double PreviousReplaySeconds=TerminalReplay.DisplayedSeconds();
+    const bool bReplayFrame=bUnifiedTerminal && TerminalReplay.Tick(*this,
+        ReplayDelta);
+    if(!bReplayFrame)
+    {
     const bool EnvironmentFrozen=bAutoPaused || bEmergencyStop || (bUnifiedTerminal && !bAutoRunning) ||
         (SiteLogistics && !SiteLogistics->Fault.IsEmpty());
     if(!EnvironmentFrozen)
@@ -471,9 +491,9 @@ void AQuayCrane::Tick(float DeltaSeconds)
     if(bPickupTest){TickPickupTest(DeltaSeconds);return;}
     // World timers, control and Chaos consume the same accelerated delta.
     // Chaos subdivides the frame into small physics steps.
-    const float Dt=DeltaSeconds;
     STSSimulationTime+=Dt;
     SampleSTSSensors();
+    }
     if(bSTSStartPending && STSSimulationTime>1.f)
     { bSTSStartPending=false; StartAutomatic(false); }
     const double WallNow=FPlatformTime::Seconds();
@@ -594,9 +614,13 @@ void AQuayCrane::Tick(float DeltaSeconds)
     if (bUnifiedTerminal)
     {
         if (FParse::Param(FCommandLine::Get(),TEXT("PortSimEquipmentTest"))) { TestEquipmentAndCamera(); return; }
+        if(!bReplayFrame)
+        {
         SiteLogistics->BeginTrafficFrame();
         if (bAutoRunning && !IsOperationPaused() && !bEmergencyStop && SiteLogistics->Fault.IsEmpty()) AutoElapsed+=Dt;
         TickSiteOperations(Dt);
+        }
+        else TickSiteOperations(float(TerminalReplay.DisplayedSeconds()-PreviousReplaySeconds),true);
         if (bFollowAGV) FollowLoadedAGV();
         if (FParse::Param(FCommandLine::Get(),TEXT("PortSimAGVProof")))
         {
@@ -1001,7 +1025,9 @@ void APortSimHUD::DrawHUD()
         Button(30+298*Scale,70,TEXT("배속 −"),TEXT("SpeedDown"));
         Button(30+378*Scale,70,TEXT("배속 +"),TEXT("SpeedUp"));
         Y+=43*Scale;
-        Text(FString::Printf(TEXT("설정 배속: %.0f배 · 실제 배속: %.2f배"),CranePawn->SimulationSpeed,CranePawn->GetActualPlaybackRate()),FLinearColor(1,.85f,.25f));
+        Text(FString::Printf(TEXT("설정 배속: %.0f배 · 적용: %.0f배 · 실제: %.2f배%s"),CranePawn->SimulationSpeed,
+            CranePawn->GetEffectivePlaybackRate(),CranePawn->GetActualPlaybackRate(),
+            CranePawn->GetEffectivePlaybackRate()<CranePawn->SimulationSpeed?TEXT(" · 외부 입력 반영 중"):TEXT("")),FLinearColor(1,.85f,.25f));
         Text(FString::Printf(TEXT("실행시간 (배속 반영): %s"),*CranePawn->ElapsedText()),FLinearColor(1,.85f,.25f));
         Text(FString::Printf(TEXT("%s · %s"),CranePawn->bEmergencyStop?TEXT("비상 정지"):!CranePawn->bAutoRunning?TEXT("대기"):CranePawn->bAutoPaused?TEXT("일시정지"):CranePawn->WeatherHold.Active?TEXT("기상 회복 대기"):TEXT("실행 중"),*CranePawn->CameraViewName));
         if(CranePawn->WeatherHold.Active) Text(FString::Printf(TEXT("기상 대기: %s · 회복 확인 %.1f / %.1f초"),*CranePawn->WeatherHold.Reason,CranePawn->WeatherHold.RecoveryElapsed,CranePawn->GetEnvironment()->OperatingLimits.RecoverySeconds),FLinearColor(1,.7f,.2f));
@@ -1113,7 +1139,8 @@ void APortSimHUD::NotifyHitBoxClick(FName BoxName)
         if(BoxName==TEXT("ToggleIceSetting")) { Environment->ToggleIce(); C->SaveRunSettings(); return; }
     }
     if(BoxName==TEXT("RunSimulation")) C->StartAutomatic(false);
-    else if(BoxName==TEXT("PauseSimulation") && C->bAutoRunning) C->bAutoPaused=!C->bAutoPaused;
+    else if(BoxName==TEXT("PauseSimulation") && C->bAutoRunning)
+    { C->NotifyExternalSimulationInput(); C->bAutoPaused=!C->bAutoPaused; }
     else if(BoxName==TEXT("ResetSimulation") || BoxName==TEXT("StopSimulation"))
     { VesselImportStatus.Empty(); C->StopSimulation(); if(C->VesselInputError.IsEmpty()) VesselImportStatus=TEXT("리셋 완료 · 선택한 수량과 배치를 적용했습니다."); }
     else if(BoxName==TEXT("SpeedDown")) C->DecreaseSimulationSpeed();
@@ -1170,11 +1197,25 @@ void AQuayCrane::ApplyPlaybackRate()
 
 float AQuayCrane::GetActualPlaybackRate() const
 {
-    return PlaybackClock?PlaybackClock->GetAchievedRate():1.f;
+    return bUnifiedTerminal?TerminalReplay.AchievedRate():(PlaybackClock?PlaybackClock->GetAchievedRate():1.f);
+}
+
+void AQuayCrane::NotifyExternalSimulationInput()
+{
+    TerminalReplay.Invalidate();
+    if(PlaybackClock) PlaybackClock->NotifyExternalInput();
+}
+
+float AQuayCrane::GetEffectivePlaybackRate() const
+{
+    return PlaybackClock?PlaybackClock->GetEffectiveRate():1.f;
 }
 
 void AQuayCrane::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+#if WITH_EDITOR
+    FCoreUObjectDelegates::OnObjectPropertyChanged.RemoveAll(this);
+#endif
     if (GEngine && PlaybackClock && GEngine->GetCustomTimeStep()==PlaybackClock)
         GEngine->SetCustomTimeStep(PreviousClock);
     PlaybackClock=nullptr;

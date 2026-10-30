@@ -1,3 +1,4 @@
+#include "TerminalReplay.h"
 #include "PortSiteLogistics.h"
 #include "PortContainerActor.h"
 #include "PortAGVActor.h"
@@ -136,7 +137,7 @@ void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
         Booking.State=2; Booking.HandoverMask|=4;
         Vehicle->SetPayload(0); ++Vehicle->CompletedJobs;
         Job.Actor=nullptr; Job.Stage=FSiteTransfer::ReturnToStandby;
-        UE_LOG(LogTemp,Display,TEXT("SITE_LOADED: %s vessel=%d bay=%d row=%d tier=%d"),
+        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_LOADED: %s vessel=%d bay=%d row=%d tier=%d"),
             *Booking.ContainerName.ToString(),Booking.STS/3+1,Booking.ShipSlot.Bay,Booking.ShipSlot.Row,Booking.ShipSlot.Tier);
         if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 완료 AGV 대기소 복귀 경로 오류"));
         break;

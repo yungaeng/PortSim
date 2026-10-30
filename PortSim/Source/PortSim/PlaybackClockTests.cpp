@@ -36,6 +36,18 @@ bool FPlaybackFixedWorldStepTest::RunTest(const FString& Parameters)
     }
     Clock->Shutdown(nullptr);
     TestTrue(TEXT("Engine time resumes after shutdown"),Clock->UpdateTimeStep(nullptr));
+    FPlaybackInputGate Gate;
+    Gate.Submit(10.);
+    TestEqual(TEXT("External input forces 1x"),Gate.EffectiveRate(8.f,10.),1.f);
+    Gate.Submit(11.);
+    TestEqual(TEXT("Repeated input extends quiet period"),Gate.EffectiveRate(8.f,12.5),1.f);
+    TestEqual(TEXT("Requested rate returns after wall-time quiet period"),Gate.EffectiveRate(8.f,13.),8.f);
+    TestEqual(TEXT("Every input changes generation"),Gate.Revision,uint64(2));
+    Clock->Initialize(nullptr); Clock->SetPlaybackRate(8.f); Clock->NotifyExternalInput();
+    TestEqual(TEXT("Live clock applies input hold immediately"),Clock->GetEffectiveRate(),1.f);
+    Clock->UpdateTimeStep(nullptr);
+    TestEqual(TEXT("Input hold retains fixed physical step"),FApp::GetDeltaTime(),UPortSimTimeStep::StepSeconds);
+    Clock->Shutdown(nullptr);
     return true;
 }
 #endif

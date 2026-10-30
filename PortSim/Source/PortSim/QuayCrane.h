@@ -8,6 +8,7 @@
 #include "STSOperatingProfile.h"
 #include "VesselInput.h"
 #include "PortEnvironmentComponent.h"
+#include "TerminalReplay.h"
 #include "QuayCrane.generated.h"
 
 class FJsonObject;
@@ -43,6 +44,9 @@ UCLASS()
 class PORTSIM_API AQuayCrane : public APawn
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 
 public:
     AQuayCrane();
@@ -74,6 +78,10 @@ public:
 
     int32 GetSimulationSpeedStep() const;
     float GetActualPlaybackRate() const;
+    void NotifyExternalSimulationInput();
+    float GetEffectivePlaybackRate() const;
+    const TCHAR* GetPlaybackMode() const { return TerminalReplay.Mode(); }
+    double GetPlaybackBufferSeconds() const { return TerminalReplay.BufferedSeconds(); }
 
     UFUNCTION(BlueprintCallable, Category="UI")
     void ToggleHUD();
@@ -254,7 +262,7 @@ private:
     bool bFreeCamera=false;
     bool bMouseLooking=false;
     UPROPERTY() TArray<TObjectPtr<AActor>> SupportFleet;
-    void TickSiteOperations(float Dt);
+    void TickSiteOperations(float Dt,bool ModelAlreadyAdvanced=false);
     void ResetSiteOperations();
     UPROPERTY() TObjectPtr<APortSiteLogistics> SiteLogistics;
     void FocusNextSiteCrane();
@@ -327,6 +335,9 @@ private:
     float TerminalTestHold = 0.f;
     FVector TestHoldPosition = FVector::ZeroVector;
     void InstallPlaybackClock();
+    void AdvanceTerminalReplayStep(float Dt);
+    FTerminalReplay TerminalReplay;
+    double PreviousReplayWall=0;
     void ApplyPlaybackRate();
     UPROPERTY() TObjectPtr<UPortSimTimeStep> PlaybackClock;
     UPROPERTY() TObjectPtr<UEngineCustomTimeStep> PreviousClock;

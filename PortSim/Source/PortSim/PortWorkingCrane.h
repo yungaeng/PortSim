@@ -24,6 +24,9 @@ UCLASS(Blueprintable)
 class PORTSIM_API APortWorkingCrane : public APortEquipmentActor
 {
     GENERATED_BODY()
+    friend class FTerminalReplayCheckpointTest;
+    friend class FTerminalCheckpoint;
+    friend class FTerminalReplay;
 public:
     APortWorkingCrane();
     void Configure(int32 Number, bool bQuayside, FVector Source, FVector Destination, bool bCreateCargo=true);
