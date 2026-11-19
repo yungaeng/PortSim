@@ -376,6 +376,11 @@ FVector2D APortWorkingCrane::RailWorkInterval() const
 {
     float Low=GantryWorldY(),High=Low;
     if(bFaultEvacuating) { Low=FMath::Min(Low,FaultEvacuationTargetY); High=FMath::Max(High,FaultEvacuationTargetY); }
+    if(bRMGApproach && !IsEquipmentUnavailable())
+    {
+        const float TargetY=(Home+Orientation.RotateVector(RMGApproachTarget)).Y;
+        Low=FMath::Min(Low,TargetY); High=FMath::Max(High,TargetY);
+    }
     if(bJobActive && !IsEquipmentUnavailable()) for(const FVector& Slot:Slots)
     { Low=FMath::Min(Low,float(Slot.Y)); High=FMath::Max(High,float(Slot.Y)); }
     return FVector2D(Low,High);
@@ -388,7 +393,7 @@ void APortWorkingCrane::Advance(float Dt,bool bGlobalPaused)
     if(IncidentFaults.Contains(TEXT("equipment_failure"))&&FaultType!=EPortCraneFault::EquipmentUnavailable&&(Fault.IsEmpty()||IsEquipmentUnavailable()))SetEquipmentFailure(true);
     PortSimPerformance::FScope Profile(TEXT("crane_advance"));
     if(!FMath::IsFinite(Dt) || Dt<=0) { if(Dt==0)AdvanceStep(0,bGlobalPaused);return; }
-    if(!bJobActive) { AdvanceStep(Dt,bGlobalPaused); return; }
+    if(!bJobActive && !bRMGApproach) { AdvanceStep(Dt,bGlobalPaused); return; }
     // A render frame can cover a large simulation interval at low FPS/high speed.
     // Substep observations and the state machine too, not just the physical plant.
     const int32 Steps=CraneSimulationSteps::Count(Dt,60.);
@@ -428,7 +433,21 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
     AdvanceFailureRecovery(Dt,bGlobalPaused);
     if(bJobActive) { JobSeconds+=Dt; if(bGlobalPaused || !bEnabled || !Fault.IsEmpty()) PausedSeconds+=Dt; }
     SetOperationPaused(bGlobalPaused || !bEnabled || !Fault.IsEmpty());
-    if (bPaused || !bJobActive) return;
+    if (bPaused) return;
+    if(!bJobActive)
+    {
+        if(!bRMGApproach) return;
+        SampleSTS();
+        if(!Observation.IsFresh(SimulationTime,STSProfile.SensorMaxAge))
+        { Stop(TEXT("RMG approach sensor observation invalid/stale"),EPortCraneFault::SensorUnavailable); return; }
+        if(!Observation.bCraneClear)
+        { Stop(TEXT("RMG crane collision clearance violated")); return; }
+        // Retract vertically before empty travel; never descend to an absent AGV.
+        const FVector Target=bRMGApproachRaised?RMGApproachTarget:
+            FVector(StageHoldTarget.X,StageHoldTarget.Y,SafeZ);
+        if(MoveSTS(Target,Dt)) bRMGApproachRaised=true;
+        return;
+    }
     if(Stage>=0 && Stage<8) JobStageSeconds[Stage]+=Dt;
     if(IsWaitingForAGV()) JobAGVWaitSeconds+=Dt;
     AdvanceTelescope(Dt);
@@ -558,7 +577,12 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
         // measurements so the cargo, rather than an ideal head centre, lands on the AGV.
         Target=Destination+Orientation.UnrotateVector(Observation.SpreaderPosition-Observation.CargoPosition);
         break;
-    case 6: Target=FVector(Destination.X,Destination.Y,SafeZ); break;
+    case 6:
+        // A discharge AGV only needs clearance above its load. The next job's
+        // initial lift will finish retracting the empty spreader to SafeZ.
+        if(CanFinishSTSRetraction())
+        { Stage=7; StageTime=SettleTime=0; return; }
+        Target=FVector(Destination.X,Destination.Y,SafeZ); break;
     case 7:
         SettleTime+=Dt;
         if (!bAGVHandoverComplete && SettleTime<1.5f) return;
@@ -628,6 +652,23 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
     StageHoldTarget=Head+SuspendedOffset;
     ++Stage; StageTime=SettleTime=0;
     SampleSTS(true);
+}
+
+bool APortWorkingCrane::CanFinishSTSRetraction() const
+{
+    if(!bSTS || !bExternalJobs || !AGVAtDestination() || Stage!=6 || bCarrying ||
+        !IsValid(CargoActor) || !IsValid(HandoverAGV) ||
+        !Observation.IsFresh(SimulationTime,STSProfile.SensorMaxAge)) return false;
+    for(int32 I=0;I<4;++I)
+        if(CornerLocked[I] || Observation.Locked[I] || Pickup.RequestLocks[I]) return false;
+    // World bounds include the current cargo tilt and telescoped spreader size.
+    const FBox CargoBounds=CargoActor->GetBody()->Bounds.GetBox();
+    FBox SpreaderBounds=Spreader->Bounds.GetBox();
+    SpreaderBounds+=SpreaderCenter->Bounds.GetBox();
+    for(const auto& Part:TelescopeArms) SpreaderBounds+=Part->Bounds.GetBox();
+    for(const auto& Part:SpreaderEndBeams) SpreaderBounds+=Part->Bounds.GetBox();
+    for(const auto& Part:TwistLocks) SpreaderBounds+=Part->Bounds.GetBox();
+    return SpreaderBounds.Min.Z>=CargoBounds.Max.Z+50.f;
 }
 
 bool APortWorkingCrane::ValidateOperation(FString& Error) const
@@ -715,6 +756,23 @@ bool APortWorkingCrane::IsWaitingForAGV() const
     return bSTS && bJobActive && !bDestinationReady &&
         (Stage==5 || (Stage==4 && AxisVelocity.Size2D()<=1.f &&
             (Local(Slots[1-SourceSlot])-(Head+SuspendedOffset)).Size2D()<=STSProfile.LandingTolerance));
+}
+
+bool APortWorkingCrane::PrepareRMGApproach(FVector WorldTarget)
+{
+    if(bSTS || !bConfigured || !bExternalJobs || bJobActive || RetainsLoad() || !Fault.IsEmpty() || !STSProfile.bReady) return false;
+    const FVector LocalTarget=Local(WorldTarget);
+    const FVector Target(LocalTarget.X,LocalTarget.Y,SafeZ);
+    if(!STSProfile.ContainsTarget(Target)) return false;
+    if(!bRMGApproach || !RMGApproachTarget.Equals(Target,.01f))
+    {
+        bRMGApproachRaised=false;
+        StageHoldTarget=Head+SuspendedOffset;
+        Stage=0; StageTime=SettleTime=0;
+        RMGApproachTarget=Target;
+        bRMGApproach=true;
+    }
+    return true;
 }
 
 bool APortWorkingCrane::AssignCargo(APortContainerActor* Cargo,FVector Source,FVector Destination,bool SourceSupport,bool DestinationSupport,APortAGVActor* HandoverVehicle,bool ReverseTransfer)

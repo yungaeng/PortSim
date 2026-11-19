@@ -30,6 +30,7 @@ class PORTSIM_API APortWorkingCrane : public APortEquipmentActor
     friend class FTerminalReplayCheckpointTest;
     friend class FTerminalCheckpoint;
     friend class FTerminalReplay;
+    friend class FRMGApproachTest;
 public:
     APortWorkingCrane();
     void Configure(int32 Number, bool bQuayside, FVector Source, FVector Destination, bool bCreateCargo=true);
@@ -38,6 +39,8 @@ public:
     void SetCameraLightingEnvironment(UPortEnvironmentComponent* Environment, bool bEnableAssist);
     void UpdateCameraWorkLightsForDraw();
     void Advance(float Dt, bool bGlobalPaused);
+    bool PrepareRMGApproach(FVector WorldTarget);
+    void CancelRMGApproach() { bRMGApproach=false; }
     bool AssignCargo(APortContainerActor* Cargo, FVector Source, FVector Destination, bool SourceSupport, bool DestinationSupport, APortAGVActor* HandoverVehicle=nullptr,bool ReverseTransfer=false);
     void UpdateShipLandingTarget(FVector Target);
     void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }
@@ -65,6 +68,7 @@ public:
     APortAGVActor* GetHandoverVehicle() const;
     bool IsBusy() const { return bJobActive; }
     bool IsAGVHandoverComplete() const { return bAGVHandoverComplete; }
+    bool CanFinishSTSRetraction() const;
     UFUNCTION(BlueprintCallable,Category="Failures") void SetSensorFailure(bool Failed);
     UFUNCTION(BlueprintCallable,CallInEditor,Category="Failures") void RepairSensors() { SetSensorFailure(false); }
     UFUNCTION(BlueprintCallable,Category="Failures") void SetGantryFailure(bool Failed);
@@ -128,6 +132,7 @@ private:
     friend class FMovingPickupRecoveryTest;
     friend class FLoggedSeaPickupTest;
     friend class FRMGAGVHandoverTest;
+    friend class FSTSDepartureClearanceTest;
     friend class FSTSCoordinatedTravelTest;
     friend class FCameraNightLightingTest;
     bool HasCameraTargetLight(FVector Target) const;
@@ -236,6 +241,8 @@ private:
     bool bConfigured=false;
     bool bExternalJobs=false;
     bool bJobActive=false;
+    bool bRMGApproach=false, bRMGApproachRaised=false;
+    FVector RMGApproachTarget=FVector::ZeroVector;
     bool bDestinationReady=true;
     FVector JobStartHead=FVector::ZeroVector;
     FVector StageHoldTarget=FVector::ZeroVector;

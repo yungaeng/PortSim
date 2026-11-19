@@ -162,7 +162,8 @@ void FTerminalCheckpoint::Capture(APortWorkingCrane& O)
     Values(O.bAppliedSensorFault,O.bFatalSensorTest,O.bAppliedGantryFault,O.RecoveryCoordinator,O.SensorInvalidReason,
         O.LockFault,O.Home,O.Orientation,O.Slots,O.Head,O.PausedVelocity,O.PausedAngularVelocity);
     Values(O.BeamZ,O.SafeZ,O.Speed,O.TelescopeLengthCm,O.TelescopeTargetLengthCm,O.SettleTime,O.StageTime,O.SourceSlot,
-        O.bPaused,O.bResumePhysics,O.bConfigured,O.bExternalJobs,O.bJobActive,O.bDestinationReady,O.JobStartHead,O.StageHoldTarget);
+        O.bPaused,O.bResumePhysics,O.bConfigured,O.bExternalJobs,O.bJobActive,O.bDestinationReady,O.JobStartHead,O.StageHoldTarget,
+        O.bRMGApproach,O.bRMGApproachRaised,O.RMGApproachTarget);
 }
 
 void FTerminalCheckpoint::Capture(APortSiteLogistics& O)

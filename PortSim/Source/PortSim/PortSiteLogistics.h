@@ -226,6 +226,7 @@ private:
     friend class FAdvanceYardBookingTest;
     friend class FDashboardEnvironmentTest;
     friend class FBlockedPickupDispatchTest;
+    friend class FReturningAGVDispatchTest;
     friend class FAGVLeasedEntryDockTest;
     friend class FMovingPickupRecoveryTest;
     friend class FIncidentScenarioTest;
@@ -370,6 +371,8 @@ private:
     void ApplyVesselMotions(float FrameDurationSeconds=0);
     void Dispatch(int32 Lane);
     void ScheduleFleet();
+    bool CanRedirectEmptyReturn(int32 Vehicle) const;
+    int32 NearestDispatchVehicle(int32 STS,bool Standby);
     bool ParkingDepartureAvailable(int32 Vehicle) const;
     bool CanReleaseParkedStandby(int32 Vehicle) const;
     void ReleaseUnenteredParkingMission(int32 Vehicle);
@@ -396,7 +399,7 @@ private:
     bool PlanYardDestinations();
     bool PlanLegacyYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);
-    bool PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture=false);
+    bool PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture=false,double* PreviewDistanceCm=nullptr);
     TArray<FBox> BuildRoadCorridor(const APortAGVActor& Vehicle,FVector Target,
         const TArray<FVector>* Route,int32 Waypoint,int32 RouteEnd,bool LegacyYardEntry) const;
     int32 FindRoadCorridorBlocker(const APortAGVActor& Vehicle,FVector Target,

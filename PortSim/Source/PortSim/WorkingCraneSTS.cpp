@@ -66,6 +66,7 @@ void APortWorkingCrane::UpdateMovingShipSource(APortContainerActor* Cargo,FVecto
 
 void APortWorkingCrane::ClearSTSState()
 {
+    bRMGApproach=bRMGApproachRaised=false;
     bReverseTransfer=false;
     bAGVHandoverComplete=false;
     AxisVelocity=PlantAcceleration=FVector::ZeroVector;
@@ -205,7 +206,7 @@ void APortWorkingCrane::UpdateShipLandingTarget(FVector Target)
 
 void APortWorkingCrane::SampleSTS(bool Force)
 {
-    if(!STSProfile.bReady || !IsValid(CargoActor) || (!Force && SimulationTime<NextSample)) return;
+    if(!STSProfile.bReady || (!IsValid(CargoActor) && !bRMGApproach) || (!Force && SimulationTime<NextSample)) return;
     FlushParts();
     PortSimPerformance::FScope Timing(TEXT("crane_sensors"));
     NextSample=SimulationTime+STSProfile.SensorPeriod;
@@ -224,6 +225,17 @@ void APortWorkingCrane::SampleSTS(bool Force)
     S.WindVelocityMetersPerSecond=Orientation.UnrotateVector(WindVelocityMetersPerSecond);
     S.SpreaderPosition=HeadPosition()+Orientation.RotateVector(FVector(STSProfile.PositionBias));
     S.SpreaderVelocity=SpreaderVelocity();
+    if(bRMGApproach && !bJobActive)
+    {
+        S.SwayDegrees=SuspensionState.SwayDegrees();
+        S.SwayAngle=SuspensionState.Angle; S.SwayRate=SuspensionState.Rate;
+        S.SkewDegrees=FMath::RadiansToDegrees(SuspensionState.Yaw);
+        S.SpreaderPitchRoll=AttitudeState.Angle; S.SpreaderPitchRollRate=AttitudeState.Rate;
+        S.HoistAcceleration=PlantAcceleration.Z;
+        SampleRMGEnvironment();
+    }
+    else
+    {
     S.CargoPosition=CargoActor->GetActorLocation()+Orientation.RotateVector(STSProfile.Pickup.PoseBias);
     S.CargoVelocity=bCarrying?S.SpreaderVelocity:CargoActor->GetMotionVelocity();
     S.CargoAcceleration=bCarrying?PlantAcceleration:CargoActor->GetMotionAcceleration();
@@ -263,6 +275,7 @@ void APortWorkingCrane::SampleSTS(bool Force)
         const FVector Destination=Local(Slots[1-SourceSlot]);
         S.bCraneClear=!bCoordinatedSTSTravel || Stage!=4 || !bCarrying ||
             STSTransferClear(FVector(Destination.X,Destination.Y,Local(S.SpreaderPosition).Z));
+    }
     }
     for(const auto& Mount:STSProfile.Dynamics.Mounts)
     {
