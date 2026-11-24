@@ -6,9 +6,10 @@
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(FYardReservationTest,"PortSim.Logistics.ExactReceivingCapacity",EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
 bool FYardReservationTest::RunTest(const FString& Parameters)
 {
-    TestEqual(TEXT("Three equal 300-container vessels"),TerminalLayout::TotalVesselContainers,900);
-    const TArray<int32> Sizes={4,3,2,4,3,2,1,4};
-    for (const int32 CargoCount:{600,TerminalLayout::TotalVesselContainers})
+    TestEqual(TEXT("Three vessels support 3000 bookings each"),TerminalLayout::TotalVesselContainers,9000);
+    TArray<int32> Sizes;
+    for(int32 Stack=0;Stack<40;++Stack) Sizes.Add(1+Stack%4);
+    for (const int32 CargoCount:{600,TerminalLayout::ContainersPerVessel})
     {
         int32 Total=0;
         for (int32 Crane=0;Crane<46;++Crane)

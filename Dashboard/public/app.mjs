@@ -9,7 +9,7 @@ import {controlPanel,impactFeed,workerImpactDetails} from './control-view.mjs';
 import {renderTerminalOverview} from './terminal-map.mjs';
 import {renderEnvironment,renderWeatherOverview} from './environment-view.mjs';
 import {renderSTSWind} from './sts-wind-view.mjs';
-let terminalLayout=null,layoutFetched=0,mapMode='all';
+let terminalLayout=null,layoutFetched=0,layoutContent='',mapMode='all';
 
 const $=s=>document.querySelector(s);
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -360,16 +360,26 @@ async function poll(){
  try{
   const response=await fetch('/api/state');if(!response.ok)throw Error();const payload=await response.json();
   const liveChanged=live!==payload.live;state=payload.state;live=payload.live;age=payload.age_seconds;
-  if(state?.run_id&&terminalLayout?.run_id!==state.run_id&&Date.now()-layoutFetched>3000){
+  let layoutChanged=false;
+  if(state?.run_id&&Date.now()-layoutFetched>3000){
    layoutFetched=Date.now();
-   try{const r=await fetch('/api/terminal-layout');if(r.ok){const data=await r.json();if(data.layout?.run_id===state.run_id)terminalLayout=data.layout;}}catch{}
+   try{
+    const r=await fetch('/api/terminal-layout',{cache:'no-store'});
+    if(r.ok){
+     const data=await r.json();
+     if(data.layout?.run_id===state.run_id){
+      const content=JSON.stringify(data.layout);
+      if(content!==layoutContent){terminalLayout=data.layout;layoutContent=content;layoutChanged=true;lastRendered='';}
+     }
+    }
+   }catch{}
   }
   observeControls();
   updateFaultDialog();
   if(!current())selected=actors().find(a=>a.type==='sts')?.id||null;
   renderChrome();
   if(view==='incidents'){if(liveChanged)renderContent();updateScenario();lastRendered=`${state?.generated_at}|${live}`;return;}
-  if(lastRendered!==`${state?.generated_at}|${live}`&&!pointerHeld&&(!['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||(view==='sensors'&&document.activeElement?.id==='sensor-actor'))&&!document.querySelector('details[open]')&&!window.getSelection()?.toString()){
+  if((layoutChanged||lastRendered!==`${state?.generated_at}|${live}`)&&!pointerHeld&&(!['INPUT','SELECT','TEXTAREA'].includes(document.activeElement?.tagName)||(view==='sensors'&&document.activeElement?.id==='sensor-actor'))&&!document.querySelector('details[open]')&&!window.getSelection()?.toString()){
    if(view==='sensors' && $('#sensor-actor')?.options.length===actors().filter(a=>['sts','rmg'].includes(a.type)).length){
     const next=document.createElement('div');next.innerHTML=sensorsPage();
     for(const selector of ['.sensor-info','.sensor-diagram']){

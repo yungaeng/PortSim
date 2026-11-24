@@ -207,7 +207,7 @@ void AQuayCrane::BuildConfiguredVessels()
             VesselActor->SetActorLabel(FString::Printf(TEXT("Ship_%02d"),Vessel+1));
             VesselActor->SetFolderPath(TEXT("PortSim/Equipment"));
 #endif
-            VesselActor->SetActorScale3D(FVector(1.f,TerminalLayout::VesselLengthM/285.f,1.f));
+            VesselActor->SetActorScale3D(FVector(1.f,TerminalLayout::VesselLengthM/300.f,1.f));
             VesselActors.Add(VesselActor);
             VesselBaseTransforms.Add(VesselActor->GetActorTransform());
             VesselBasePivots.Add(BasePosition);
@@ -441,7 +441,7 @@ void AQuayCrane::TickAutomatic(float Dt)
         {
             ToggleLock();
             if (!bLocked) { StopAutomatic(TEXT("Twist lock alignment failed.")); return; }
-            ContainerActors[ActiveCargoIndex]->LocationOwner=ECargoOwner::STS;
+            ContainerActors[ActiveCargoIndex]->SetLocationOwner(ECargoOwner::STS);
             SetAutoStage(ETerminalStage::Lift);
         }
         break;
@@ -481,7 +481,7 @@ void AQuayCrane::TickAutomatic(float Dt)
             JobHandoverAt=AutoElapsed;
             if(bAutoLoading) JobPlacementAt=AutoElapsed;
             if (!bAutoLoading) HoldFleetCargo(true);
-            else ContainerActors[ActiveCargoIndex]->LocationOwner=ECargoOwner::Ship;
+            else ContainerActors[ActiveCargoIndex]->SetLocationOwner(ECargoOwner::Ship);
             FleetStep=0; RMGStep=0; SetAutoStage(ETerminalStage::FleetDeliver);
         }
         break;
@@ -500,7 +500,7 @@ void AQuayCrane::CompleteAutomaticJob()
     { StopAutomatic(TEXT("Final cargo ownership or physical slot mismatch.")); return; }
     SiteLogistics->CompleteCentral(ActiveCargoIndex,!bAutoLoading);
     CargoOnShip[ActiveCargoIndex]=bAutoLoading;
-    ContainerActors[ActiveCargoIndex]->LocationOwner=bAutoLoading?ECargoOwner::Ship:ECargoOwner::Yard;
+    ContainerActors[ActiveCargoIndex]->SetLocationOwner(bAutoLoading?ECargoOwner::Ship:ECargoOwner::Yard);
     ++AutoCompleted; ++Deliveries; ++AGVActors[ActiveAGV]->CompletedJobs;
     ResultsCsv+=FString::Printf(TEXT("C%02d,%s,%.6f,%.1f,%.1f,%.1f,AGV%d,%.1f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f\n"),ActiveCargoIndex+1,
         bAutoLoading?TEXT("Load"):TEXT("Unload"),JobElapsed,Destination.X,Destination.Y,Destination.Z,ActiveAGV+1,GetCargoMassKg(),JobSTSSeconds,JobPrepareSeconds,JobDeliverySeconds,JobPausedSeconds,AutoElapsed,JobHandoverAt,JobPlacementAt);

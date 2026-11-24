@@ -58,9 +58,10 @@ namespace AGVDispatchPolicy
             // Odd/even rows have different exit ends; the old quay parking
             // estimate understated this detour and favoured distant idle AGVs.
             const double ExitY=TerminalLayout::AGVStandbyExitY(DepotBay);
-            const double ExitX=TerminalLayout::SiteCmX(14000.f);
+            const double ExitX=TerminalLayout::SiteCmX(TerminalLayout::AGVDepotOutboundX);
             return FMath::Abs(From.Y-ExitY)+FMath::Abs(From.X-ExitX)+
-                FMath::Abs(ExitY-Target.Y)+FMath::Abs(ExitX-Target.X);
+                FMath::Abs(ExitY-TerminalLayout::AGVDepotAccessY)+FMath::Abs(ExitX-TerminalLayout::SiteCmX(14000.f))+
+                FMath::Abs(TerminalLayout::AGVDepotAccessY-Target.Y)+FMath::Abs(TerminalLayout::SiteCmX(14000.f)-Target.X);
         }
         const double ParkAisleX=TerminalLayout::SiteCmX(TerminalLayout::AGVParkAisleX(0));
         const double BerthApproachX=TerminalLayout::SiteCmX(TerminalLayout::AGVBerthApproachX);

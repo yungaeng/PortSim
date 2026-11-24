@@ -166,4 +166,53 @@ bool FUnchangedCargoTest::RunTest(const FString& Parameters)
     return true;
 }
 
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FActiveCargoPresentationTest,"PortSim.Performance.ActiveCargoPresentation",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FActiveCargoPresentationTest::RunTest(const FString& Parameters)
+{
+    const auto Init=UWorld::InitializationValues().AllowAudioPlayback(false).CreatePhysicsScene(true)
+        .RequiresHitProxies(false).CreateNavigation(false).CreateAISystem(false);
+    auto* World=UWorld::CreateWorld(EWorldType::Game,false,NAME_None,nullptr,true,ERHIFeatureLevel::Num,&Init);
+    ON_SCOPE_EXIT { World->DestroyWorld(false); };
+    auto* Site=World->SpawnActor<APortSiteLogistics>();
+    Site->LaneCount=9;
+    Site->AddShipCargo(FVector(-20000,0,1000),0);
+    Site->AddShipCargo(FVector(-20000,2500,1000),0);
+    Site->AddShipCargo(FVector(-20000,5000,1000),0);
+    auto* Pending=Site->ShipContainers[0].Get();
+    auto* Active=Site->ShipContainers[1].Get();
+    auto* Completed=Site->ShipContainers[2].Get();
+    Completed->LocationOwner=ECargoOwner::Yard;
+    const FVector PendingPose=Pending->GetActorLocation(),ActivePose=Active->GetActorLocation(),CompletedPose=Completed->GetActorLocation();
+    auto* Crane=World->SpawnActor<APortWorkingCrane>();
+    Crane->CargoActor=Active; Site->Equipment.Add(Crane);
+    TArray<FPortVesselMotion> Motions; Motions.SetNum(1);
+    TArray<FVector> Pivots; Pivots.Add(FVector::ZeroVector);
+    FPortSeaState Sea;
+    Site->SetVesselMotions(Motions,Pivots,Sea); Site->ApplyVesselMotions(.05f);
+    Motions[0].TranslationCentimeters=FVector(10000,0,0);
+    Site->SetVesselMotions(Motions,Pivots,Sea); Site->ApplyVesselMotions(.05f);
+    Site->PublishCargoPresentation();
+    TestTrue(TEXT("Unstarted cargo is excluded from presentation"),Pending->GetActorLocation().Equals(PendingPose,0.));
+    TestTrue(TEXT("Selected source follows the vessel"),Active->GetActorLocation().Equals(ActivePose+FVector(10000,0,0),.001));
+    TestTrue(TEXT("Completed yard cargo is excluded"),Completed->GetActorLocation().Equals(CompletedPose,0.));
+    // Publishing must retain old colliders in the broad phase even when the
+    // current vessel sweep is far away from their unrefreshed physical poses.
+    Site->SynchronizeShipCollision(FBox(PendingPose-FVector(100),PendingPose+FVector(100)),1.);
+    TestTrue(TEXT("Query at stale pose synchronizes pending collider"),Pending->GetActorLocation().Equals(PendingPose+FVector(10000,0,0),.001));
+    Sea.bSeaMotionEnabled=false; Motions[0]=FPortVesselMotion();
+    Site->SetVesselMotions(Motions,Pivots,Sea);
+    Site->ApplyVesselMotions(.05f); Site->ApplyVesselMotions(.05f);
+    Site->SynchronizeShipCollision(FBox(PendingPose-FVector(100),PendingPose+FVector(10100,100,100)),1.);
+    const uint64 Version=Site->CargoMotionVersion;
+    for(int32 I=0;I<20;++I) Site->ApplyVesselMotions(.05f);
+    TestEqual(TEXT("Sea OFF reuses stationary motion instead of recalculating cargo"),Site->CargoMotionVersion,Version);
+    TestTrue(TEXT("Sea OFF queries return the fixed base pose"),Pending->GetActorLocation().Equals(PendingPose,.001));
+    Sea.bSeaMotionEnabled=true; Motions[0].TranslationCentimeters=FVector(200,0,0);
+    Site->SetVesselMotions(Motions,Pivots,Sea); Site->ApplyVesselMotions(.05f); Site->PublishCargoPresentation();
+    TestTrue(TEXT("Sea ON invalidates stationary cache"),Site->CargoMotionVersion>Version);
+    TestTrue(TEXT("Active source resumes vessel motion"),Active->GetActorLocation().Equals(ActivePose+FVector(200,0,0),.001));
+    return true;
+}
+
 #endif

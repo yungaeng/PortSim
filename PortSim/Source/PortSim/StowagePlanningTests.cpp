@@ -1,5 +1,6 @@
 #if WITH_DEV_AUTOMATION_TESTS
 #include "YardStackingPolicy.h"
+#include "ContainerSpecification.h"
 #include "ShipStowagePlanning.h"
 #include "CraneTravelBraking.h"
 #include "STSOperatingProfile.h"
@@ -189,6 +190,41 @@ bool FShipStowageTest::RunTest(const FString& Parameters)
     TestFalse(TEXT("Unsafe GM cannot be overruled by destination priority"),PlanShipStowage(Cargo,A).Feasible);
     A.MinimumGMM=.5; const auto Duplicate=Cargo[0]; Cargo.Add(Duplicate);
     TestFalse(TEXT("Duplicate cargo IDs are rejected"),PlanShipStowage(Cargo,A).Feasible);
+    return true;
+}
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FShipLargeCapacityTest,"PortSim.Stowage.ThreeThousandContainerVessel",
+    EAutomationTestFlags::EditorContext|EAutomationTestFlags::EngineFilter)
+bool FShipLargeCapacityTest::RunTest(const FString& Parameters)
+{
+    FPortShipStowageAssumptions A; FString Error;
+    if(!TestTrue(TEXT("Expanded vessel assumptions load"),A.Load(FPaths::ProjectConfigDir()/TEXT("Stowage_Planning.json"),Error))) return false;
+    A.Bays=TerminalLayout::VesselBays; A.Rows=TerminalLayout::VesselRows; A.Tiers=TerminalLayout::VesselTiers;
+    TArray<FPortShipPlanningCargo> Cargo;
+    for(int32 I=0;I<TerminalLayout::ContainersPerVessel;++I)
+    {
+        const auto Spec=PortContainerSpecification::ForSequence(2000+I,I,TerminalLayout::ContainersPerVessel);
+        Cargo.Add({2000+I,Spec.LengthFt,Spec.GrossMassKg(),FPortCargoInformation::ForSequence(2000+I,Spec.LengthFt)});
+    }
+    const auto Plan=PlanShipStowage(Cargo,A);
+    if(!TestTrue(TEXT("3000 mixed-size bookings have a simultaneous supported plan"),Plan.Feasible))
+    { AddError(Plan.Reason); return false; }
+    TestEqual(TEXT("No booking is hidden or dropped"),Plan.Placements.Num(),3000);
+    FSTSOperatingProfile Profile;
+    if(!TestTrue(TEXT("STS profile loads"),Profile.Load(FPaths::ProjectDir()/TEXT("../Document/STS/STS_ReferenceData.json"),FPaths::ProjectConfigDir()/TEXT("STS_Simulation.json")))) return false;
+    TSet<FIntVector> Slots;
+    for(const auto& P:Plan.Placements)
+    {
+        const auto Spec=PortContainerSpecification::ForSequence(P.CargoID,P.CargoID-2000,3000);
+        TestFalse(TEXT("Physical subslots are unique"),Slots.Contains(FIntVector((P.Bay-1)*2+(P.Subslot==2),P.Row,P.Tier)));
+        Slots.Add(FIntVector((P.Bay-1)*2+(P.Subslot==2),P.Row,P.Tier));
+        TestTrue(TEXT("Cargo stays inside the deck width"),FMath::Abs(P.PositionM.Y)+Spec.WidthCm*.005<=22.);
+        TestTrue(TEXT("Cargo clears the expanded bow and aft superstructure"),FMath::Abs(P.PositionM.X)+Spec.LengthCm*.005<=154.9);
+        const FVector CraneLocal((TerminalLayout::VesselCenterXM+P.PositionM.Y)*100.-1200.,0,P.PositionM.Z*100.+Spec.HeightCm*.5);
+        TestTrue(TEXT("Every box is inside existing STS trolley and lift limits"),Profile.ContainsTarget(CraneLocal));
+        TestTrue(TEXT("Stack and lashing limits remain enforced"),P.StackKg<=A.MaximumStackKg && P.LashingN<=A.MaximumLashingN);
+    }
+    TestTrue(TEXT("Stability limits remain enforced"),Plan.CorrectedGMM>=A.MinimumGMM && Plan.CorrectedGMM<=A.MaximumGMM && Plan.HeelDegrees<=A.MaximumHeelDegrees);
     return true;
 }
 #endif

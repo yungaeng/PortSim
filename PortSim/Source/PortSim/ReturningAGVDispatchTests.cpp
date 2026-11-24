@@ -67,6 +67,13 @@ bool FReturningAGVDispatchTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Commit releases obsolete road reservations without moving the AGV"),
         !Site->RoadReservations.Contains(ID) && !Site->RoadReservationEndWaypoint.Contains(ID) &&
         !Job.Route.IsEmpty() && Job.Route.Last().Equals(Site->QuayPark(4),.1f) && Returning->GetActorTransform().Equals(Pose));
+    for(int32 STS=0;STS<9;++STS)
+    {
+        Site->Manifest[0].STS=STS;
+        auto& Pickup=Site->Jobs[0]; Pickup=FSiteTransfer();
+        Pickup.Stage=6; Pickup.STS=STS; Pickup.Cargo=0; Pickup.bParkingDeparture=true;
+        TestTrue(FString::Printf(TEXT("Depot route reaches expanded STS %d"),STS+1),Site->PlanRoadRoute(0,false));
+    }
     World->DestroyWorld(false); return true;
 }
 #endif

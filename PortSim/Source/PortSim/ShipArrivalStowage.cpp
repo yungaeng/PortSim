@@ -25,9 +25,11 @@ bool APortSiteLogistics::PlanArrivalStowage()
     ShipStowagePlans.Reset();
     ShipStowageAssumptions.Bays=TerminalLayout::VesselBays;
     ShipStowageAssumptions.Rows=TerminalLayout::VesselRows;
+    ShipStowageAssumptions.BayPitchM=TerminalLayout::VesselBayPitchM;
+    ShipStowageAssumptions.RowPitchM=TerminalLayout::VesselRowPitchM;
     // Authored hull/deck clearances. Grow the real visible stack, never hide
     // another booking batch at the same occupied coordinates as the old waves.
-    constexpr int32 MaximumArrivalTiers=8;
+    constexpr int32 MaximumArrivalTiers=TerminalLayout::VesselTiers;
     TMap<int32,int32> ByID;
     for(int32 I=0;I<Manifest.Num();++I) ByID.Add(Manifest[I].ID,I);
     for(int32 Vessel=0;Vessel<ConfiguredShips;++Vessel)
@@ -48,7 +50,7 @@ bool APortSiteLogistics::PlanArrivalStowage()
                 FVector(C.Actor->CoGOffsetCm.Y,C.Actor->CoGOffsetCm.X,C.Actor->CoGOffsetCm.Z)*.01});
         FPortShipStowageResult Plan;
         auto Layout=ShipStowageAssumptions;
-        for(Layout.Tiers=TerminalLayout::VesselTiers;Layout.Tiers<=MaximumArrivalTiers;++Layout.Tiers)
+        for(Layout.Tiers=3;Layout.Tiers<=MaximumArrivalTiers;++Layout.Tiers)
         {
             Plan=PlanShipStowage(Bookings,Layout);
             if(Plan.Feasible) break;
@@ -65,7 +67,7 @@ bool APortSiteLogistics::PlanArrivalStowage()
             const auto* C=I?Manifest[*I].Actor.Get():nullptr;
             if(!C || FMath::Abs(P.PositionM.X)+C->ExternalDimensionsCm.Y*.005>
                     TerminalLayout::VesselLengthM*.5-12. ||
-                P.PositionM.Y<-15.5 || P.PositionM.Y>15.5 ||
+                FMath::Abs(P.PositionM.Y)+C->ExternalDimensionsCm.X*.005>22. ||
                 P.PositionM.Z+C->ExternalDimensionsCm.Z*.005>40.)
             { Stop(TEXT("Arrival plan exceeds authored hull/deck/hoist envelope")); return false; }
         }

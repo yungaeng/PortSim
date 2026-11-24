@@ -3,13 +3,14 @@ param(
     [ValidateSet(1,2,4,8,16)][int]$PlaybackRate=8,
     [ValidateRange(10,3600)][int]$Seconds=60,
     [ValidateRange(1,3)][int]$Ships=3,
-    [ValidateRange(1,200)][int]$CargoPerShip=200,
+    [ValidateRange(1,3000)][int]$CargoPerShip=200,
     [switch]$Render,
     [switch]$EngineStats,
     [switch]$FullPhysics,
     [switch]$SingleThreadedPhysics,
     [switch]$BatchLivePhysics,
     [switch]$NoReplay,
+    [switch]$NoSea,
     [switch]$RepeatUnchangedWork,
     [string]$LogPath,
     [string]$SummaryPath
@@ -32,6 +33,7 @@ if($SingleThreadedPhysics) { $arguments+='-SingleThreadedPhysics' }
 if($FullPhysics) { $arguments+='-PortSimFullPhysics' }
 if($RepeatUnchangedWork) { $arguments+='"-ExecCmds=PortSim.SkipUnchangedUpdates 0"' }
 if($NoReplay) { $arguments+='-PortSimNoReplay' }
+if($NoSea) { $arguments+='-PortSimNoSea' }
 $process=Start-Process -FilePath (Join-Path $Engine 'Engine/Binaries/Win64/UnrealEditor-Cmd.exe') `
     -ArgumentList $arguments -WindowStyle Hidden -PassThru
 $null=$process.Handle
@@ -84,6 +86,7 @@ $result=[ordered]@{
     SkipUnchangedUpdates=(-not [bool]$RepeatUnchangedWork)
     ScopeSemantics="Inclusive; do not sum overlapping scopes or worker time";Scopes=@($metricMap.Values | Sort-Object TotalMs -Descending)
     Ships=$Ships;CargoPerShip=$CargoPerShip
+    SeaMotion=(-not [bool]$NoSea)
     InitialShipCargo=[int]$inventory[-1].Groups[1].Value;InitialYardCargo=[int]$inventory[-1].Groups[2].Value
     RequestedRate=$PlaybackRate;BatchLivePhysics=[bool]$BatchLivePhysics;Render=[bool]$Render;SingleThreadedPhysics=[bool]$SingleThreadedPhysics;FullPhysics=[bool]$FullPhysics;BufferedReplay=(-not [bool]$NoReplay);WallSeconds=[double]$last.Groups[1].Value
     ProcessedSimulationSeconds=[double]$last.Groups[2].Value;AchievedRate=[double]$last.Groups[3].Value

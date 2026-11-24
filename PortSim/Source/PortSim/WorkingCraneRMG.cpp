@@ -27,7 +27,7 @@ bool APortWorkingCrane::SecureRMGToAGV()
         Stop(TEXT("RMG receiving AGV cargo restraint failed"));
         return false;
     }
-    CargoActor->LocationOwner=ECargoOwner::AGV;
+    CargoActor->SetLocationOwner(ECargoOwner::AGV);
     HandoverAGV->SetPayload(CargoActor->MassKg);
     bAGVHandoverComplete=true;
     return true;

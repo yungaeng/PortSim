@@ -14,6 +14,10 @@ struct FPortShipStowageAssumptions
     double MaximumLongitudinalCGM=5;
     bool UseDeckZones=false;
     int32 Bays=10, Rows=8, Tiers=8;
+    bool IsEndBay(int32 Bay) const { return Bay<(Bays>=20?2:1) || Bay>=Bays-(Bays>=20?2:1); }
+    bool IsPoweredRow(int32 Row) const { return Rows>=16?FMath::Abs(Row-(Rows-1)*.5)<=1.5:Row==Rows/2 || Row==(Rows-1)/2; }
+    bool IsFlammableBay(int32 Bay) const { return Bay>=Bays-(Bays>=20?2:1); }
+    bool IsCorrosiveBay(int32 Bay) const { return Bay<(Bays>=20?2:1); }
     bool Load(const FString& Path,FString& Error);
 };
 struct FPortShipPlanningCargo

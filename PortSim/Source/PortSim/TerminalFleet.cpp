@@ -119,7 +119,7 @@ void AQuayCrane::HoldFleetCargo(bool OnAGV)
     Cargo->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     Cargo->SetSimulatePhysics(false);
     bAGVHasCargo=OnAGV; bRMGHasCargo=!OnAGV;
-    ContainerActors[ActiveCargoIndex]->LocationOwner=OnAGV?ECargoOwner::AGV:ECargoOwner::RMG;
+    ContainerActors[ActiveCargoIndex]->SetLocationOwner(OnAGV?ECargoOwner::AGV:ECargoOwner::RMG);
 }
 
 void AQuayCrane::ReleaseFleetCargo()
@@ -151,7 +151,7 @@ bool AQuayCrane::TickRMGTransfer(FVector Source,FVector Destination,float Dt)
     else
     {
         Cargo->SetSimulatePhysics(false);
-        Container->LocationOwner=ECargoOwner::Yard;
+        Container->SetLocationOwner(ECargoOwner::Yard);
     }
     ++RMGStep;
     return true;
@@ -208,7 +208,7 @@ void AQuayCrane::TickFleet(float Dt)
             const FVector Destination=TerminalSlot(ActiveCargoIndex,false);
             const bool Stable=FVector::Dist(Cargo->GetComponentLocation(),Destination)<20.f && Cargo->GetPhysicsLinearVelocity().Size()<8.f && Cargo->GetUpVector().Z>.99f;
             FleetSettle=Stable?FleetSettle+Dt:0;
-            if (FleetSettle>1.f) { ContainerActors[ActiveCargoIndex]->LocationOwner=ECargoOwner::Yard; JobPlacementAt=AutoElapsed; FleetStep=3; }
+            if (FleetSettle>1.f) { ContainerActors[ActiveCargoIndex]->SetLocationOwner(ECargoOwner::Yard); JobPlacementAt=AutoElapsed; FleetStep=3; }
         }
         else if (FleetStep==3 && MoveAGV(EFleetDestination::Park,Dt)) CompleteAutomaticJob();
     }

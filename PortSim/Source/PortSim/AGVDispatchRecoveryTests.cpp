@@ -119,7 +119,7 @@ bool FBlockedPickupDispatchTest::RunTest(const FString& Parameters)
     auto& Departure=Site->Jobs.AddDefaulted_GetRef();
     Departure.Stage=7;
     Departure.STS=0;
-    const FVector SecondTurn(TerminalLayout::SiteCmX(14000),TerminalLayout::AGVStandbyExitY(2),0);
+    const FVector SecondTurn(TerminalLayout::SiteCmX(TerminalLayout::AGVDepotOutboundX),TerminalLayout::AGVStandbyExitY(2),0);
     const FBox BusySpine(SecondTurn-FVector(300,300,250),SecondTurn+FVector(300,300,250));
     Site->RoadReservations.Add(997,{BusySpine});
     Site->ReservationIndex.Set(997,{BusySpine});

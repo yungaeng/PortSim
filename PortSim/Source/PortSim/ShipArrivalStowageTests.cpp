@@ -41,12 +41,12 @@ bool FShipArrivalPlacementTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("The plan has a real ship slot"),C.ShipSlot.CargoID==C.ID && C.ShipSlot.Tier>=1);
         TestTrue(TEXT("Only short containers occupy a 20ft subslot"),Actor->LengthFt==20?
             (C.ShipSlot.Subslot==1 || C.ShipSlot.Subslot==2):C.ShipSlot.Subslot==0);
-        const bool EndBay=C.ShipSlot.Bay==1 || C.ShipSlot.Bay==TerminalLayout::VesselBays;
+        const bool EndBay=Site->ShipStowageAssumptions.IsEndBay(C.ShipSlot.Bay-1);
         if(Actor->LengthFt==45) TestTrue(TEXT("45ft needs an enabled long cell"),EndBay);
         if(Actor->CargoInformation.HandlingType==TEXT("reefer")) TestTrue(TEXT("Reefers have a powered slot"),
-            (C.ShipSlot.Row==5 || C.ShipSlot.Row==6));
-        if(Actor->CargoInformation.HazardGroup==TEXT("flammable")) TestEqual(TEXT("Flammable group in declared end bay"),C.ShipSlot.Bay,10);
-        if(Actor->CargoInformation.HazardGroup==TEXT("corrosive")) TestEqual(TEXT("Corrosive group in opposite end bay"),C.ShipSlot.Bay,1);
+            Site->ShipStowageAssumptions.IsPoweredRow(C.ShipSlot.Row-1));
+        if(Actor->CargoInformation.HazardGroup==TEXT("flammable")) TestTrue(TEXT("Flammable group in declared end bays"),Site->ShipStowageAssumptions.IsFlammableBay(C.ShipSlot.Bay-1));
+        if(Actor->CargoInformation.HazardGroup==TEXT("corrosive")) TestTrue(TEXT("Corrosive group in opposite end bays"),Site->ShipStowageAssumptions.IsCorrosiveBay(C.ShipSlot.Bay-1));
         if(C.ShipSlot.BelowCargoID!=INDEX_NONE)
         {
             ++Supported; const int32* LowerIndex=ByID.Find(C.ShipSlot.BelowCargoID);
@@ -105,8 +105,8 @@ bool FShipArrivalPlacementTest::RunTest(const FString& Parameters)
         TestTrue(TEXT("Reported heel uses the actual ShipHull centreline"),FMath::IsNearlyEqual(Plan.HeelDegrees,Heel,1.e-8));
     }
     // Clearance changes availability; it does not bypass the remaining upper boxes.
-    for(auto& C:Site->Manifest) C.Actor->LocationOwner=ECargoOwner::STS;
-    Site->Manifest[0].Actor->LocationOwner=ECargoOwner::Ship;
+    for(auto& C:Site->Manifest) C.Actor->SetLocationOwner(ECargoOwner::STS);
+    Site->Manifest[0].Actor->SetLocationOwner(ECargoOwner::Ship);
     TestTrue(TEXT("Pickup becomes available after the physical upper boxes leave"),Site->SourceAccessible(0));
     World->DestroyWorld(false);
     return true;

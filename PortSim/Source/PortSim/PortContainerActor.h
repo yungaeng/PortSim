@@ -54,6 +54,7 @@ public:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Container", meta=(ClampMin="1")) float MassKg=12000.f;
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category="Container") FVector CoGOffsetCm=FVector::ZeroVector;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") ECargoOwner LocationOwner=ECargoOwner::Ship;
+    void SetLocationOwner(ECargoOwner NewOwner);
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") TObjectPtr<UStaticMeshComponent> Body;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Container") TObjectPtr<UStaticMeshComponent> Visual;
     float SensorHalfLengthCm() const { return PortSpreaderTelescope::TwistlockHalfLengthCm(ExternalDimensionsCm.Y); }

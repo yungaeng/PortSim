@@ -100,11 +100,11 @@ bool FAGVDispatchPolicyTest::RunTest(const FString& Parameters)
             TerminalLayout::AGVStandbyY(Bay),0);
     };
     const double FirstRow=AGVDispatchPolicy::EstimatedApproachDistanceCm(DepotPosition(0),Target,4,0);
-    const double SecondRow=AGVDispatchPolicy::EstimatedApproachDistanceCm(DepotPosition(8),Target,4,8);
+    const double SecondRow=AGVDispatchPolicy::EstimatedApproachDistanceCm(DepotPosition(TerminalLayout::AGVStandbyColumns),Target,4,TerminalLayout::AGVStandbyColumns);
     TestEqual(TEXT("Opposite depot rows sharing an exit have equal approach cost, despite different straight-line distances"),
         FirstRow,SecondRow);
     TestTrue(TEXT("The next depot aisle incurs more travel on the southbound spine"),
-        AGVDispatchPolicy::EstimatedApproachDistanceCm(DepotPosition(16),Target,4,16)>FirstRow);
+        AGVDispatchPolicy::EstimatedApproachDistanceCm(DepotPosition(TerminalLayout::AGVStandbyColumns*2),Target,4,TerminalLayout::AGVStandbyColumns*2)>FirstRow);
     TestTrue(TEXT("Depot ETA includes its mandatory exit detour instead of straight-line pickup distance"),
         FirstRow>FVector::Dist2D(DepotPosition(0),Target));
     return true;

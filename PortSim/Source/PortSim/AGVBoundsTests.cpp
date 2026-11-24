@@ -13,7 +13,9 @@ bool FAGVBoundsTest::RunTest(const FString& Parameters)
 
     auto Check=[&](bool Value,const char* Name) { TestTrue(UTF8_TO_TCHAR(Name),Value); };
     auto Fits=[](float X,float Y,float EX,float EY) { return AGVEnvelopeInside(X-EX,X+EX,Y-EY,Y+EY); };
-    Check(!Fits(SiteCmX(16500),51500,210,730),"old right-side route is forbidden");
+    Check(!Fits(SiteCmX(23000),51500,210,730),"routes beyond the expanded depot are forbidden");
+    Check(Fits(SiteCmX(AGVDepotOutboundX),55000,210,730),"expanded depot spine stays within its dedicated boundary");
+    Check(!Fits(SiteCmX(16500),41000,210,730),"old right-side route below the depot is forbidden");
     Check(!Fits(SiteCmX(14500),-55000,730,210),"old off-map return is forbidden");
     Check(!Fits(SiteCmX(2500),56000,210,730),"worker-rest site is excluded");
     const TArray<FVector> UnsafeDepotRoute={FVector(SiteCmX(15300),36184.97,0),FVector(SiteCmX(15300),34700,0)};

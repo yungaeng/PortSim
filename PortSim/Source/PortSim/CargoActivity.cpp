@@ -7,6 +7,7 @@
 
 void APortSiteLogistics::RemoveCargoActivity(APortContainerActor* Cargo)
 {
+    InvalidateShipRemaining();
     FreeCargo.Remove(Cargo); MovingCargo.Remove(Cargo); FixedCargo.Remove(Cargo);
     CargoMotionVersions.Remove(Cargo);
     IndexedCargoCount=-1;
@@ -24,6 +25,7 @@ void APortSiteLogistics::RefreshCargoActivity(APortContainerActor* Cargo)
 
 void APortSiteLogistics::RebuildCargoActivity()
 {
+    InvalidateShipRemaining();
     FreeCargo.Reset(); MovingCargo.Reset(); FixedCargo.Reset();
     for(const auto& Cargo:ShipContainers) RefreshCargoActivity(Cargo);
     CargoMotionVersions.Reset(); IndexedCargoCount=-1;
@@ -54,17 +56,18 @@ void APortSiteLogistics::UpdateCargoMotion(APortContainerActor* Actor)
 void APortSiteLogistics::PublishCargoPresentation()
 {
     PortSimPerformance::FScope Timing(TEXT("cargo_presentation"));
-    for(const auto& Cargo:FixedCargo) if(auto* Box=Cargo.Get())
+    // Attached cargo follows its carrier and free cargo is published by Chaos.
+    // Only a crane's selected source needs vessel interpolation for presentation.
+    // Do not touch thousands of unstarted boxes or completed yard placements.
+    for(const auto& Crane:Equipment) if(IsValid(Crane))
     {
-        UpdateCargoMotion(Box);
-        if(Box->LocationOwner==ECargoOwner::Ship) Box->ApplySecuredMotionFraction(1.);
+        auto* Box=Crane->CargoActor.Get();
+        if(IsValid(Box) && Box->LocationOwner==ECargoOwner::Ship && !Box->GetAttachParentActor())
+        { UpdateCargoMotion(Box); Box->ApplySecuredMotionFraction(1.); }
     }
-    for(int32 I=0;I<CargoBays.Num();++I)
-    {
-        auto& Bay=CargoBays[I];
-        if(Bay.FrameBounds.IsValid)
-        { Bay.SweptBounds=Bay.FrameBounds; CargoBayIndex.Set(I,{Bay.SweptBounds}); }
-    }
+    // Unselected boxes retain their last physical pose. Keep previous bay bounds
+    // in the query index as well as the current vessel sweep: resetting to the
+    // latest frame alone would miss stale colliders during sensor queries.
     for(const auto& Crane:Equipment) if(IsValid(Crane)) Crane->DeferRopeVisuals(false);
 }
 

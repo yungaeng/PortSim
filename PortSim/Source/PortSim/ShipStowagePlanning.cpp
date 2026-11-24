@@ -92,13 +92,13 @@ FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Car
             {
                 // Concept-vessel fixtures: powered centre rows; separated DG
                 // end bays; 45ft-capable end cells. These are NOT an IMDG table.
-                const bool EndBay=Bay==0 || Bay==A.Bays-1;
-                const bool Powered=Row==A.Rows/2 || Row==(A.Rows-1)/2;
+                const bool EndBay=A.IsEndBay(Bay);
+                const bool Powered=A.IsPoweredRow(Row);
                 if(C.LengthFt==45 && !EndBay) continue;
                 if(C.Information.HandlingType==TEXT("reefer")) { if(!Powered) continue; }
                 else if(Powered && !EndBay) continue;
-                if(C.Information.HazardGroup==TEXT("flammable") && Bay!=A.Bays-1) continue;
-                if(C.Information.HazardGroup==TEXT("corrosive") && Bay!=0) continue;
+                if(C.Information.HazardGroup==TEXT("flammable") && !A.IsFlammableBay(Bay)) continue;
+                if(C.Information.HazardGroup==TEXT("corrosive") && !A.IsCorrosiveBay(Bay)) continue;
                 if(C.Information.HazardGroup==TEXT("none") && EndBay && C.LengthFt!=45) continue;
             }
             const auto& Stack=Columns[Col]; const int32 Tier=Stack.CargoIndices.Num();

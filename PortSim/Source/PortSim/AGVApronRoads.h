@@ -39,8 +39,8 @@ namespace AGVApronRoads
     {
         using namespace TerminalLayout;
         Network.RestrictNarrowCrossing(AGVCentralInboundY,AGVCentralReturnY);
-        Network.Add(P(AGVApronNorthX,AGVSouthReturnY),P(AGVApronNorthX,AGVNorthInboundY));
-        Network.Add(P(AGVApronSouthX,AGVNorthInboundY),P(AGVApronSouthX,AGVSouthReturnY));
+        Network.Add(P(AGVApronNorthX,AGVSouthReturnY),P(AGVApronNorthX,AGVQuayNorthY));
+        Network.Add(P(AGVApronSouthX,AGVQuayNorthY),P(AGVApronSouthX,AGVSouthReturnY));
         // The old parked-row jog is unnecessary. All three cross-terminal
         // corridors now connect directly across the vacant apron.
         for(float Y:{AGVSouthLoadedY,AGVCentralInboundY,AGVNorthInboundY})

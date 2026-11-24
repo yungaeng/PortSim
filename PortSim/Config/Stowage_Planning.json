@@ -1,21 +1,21 @@
 {
   "basis": "simulation_assumptions_not_vessel_approved",
-  "lightship_kg": 30000000,
+  "lightship_kg": 80000000,
   "lightship_kg_m": 9,
-  "km_m": 12,
+  "km_m": 13,
   "free_surface_moment_kg_m": 3000000,
   "minimum_gm_m": 0.5,
   "maximum_gm_m": 4.5,
   "maximum_heel_deg": 5,
-  "maximum_stack_kg": 150000,
-  "maximum_lashing_n": 200000,
+  "maximum_stack_kg": 250000,
+  "maximum_lashing_n": 600000,
   "lateral_acceleration_mps2": 1.47,
   "deck_height_m": 4.5,
-  "bay_pitch_m": 18,
-  "row_pitch_m": 3,
+  "bay_pitch_m": 14,
+  "row_pitch_m": 2.5,
   "container_height_m": 2.591,
   "twin20_pitch_m": 6.2,
   "maximum_longitudinal_cg_m": 5,
   "use_deck_zones": true,
-  "notes": "Applied to initial arrival actors. Concept vessel: 10 bays x 10 rows, 2..8 visible tiers; powered centre rows, flammable/corrosive in opposite end bays, 45ft-capable end cells, same-length supported stacks and separate 20ft pads. Zone/geometry/LCG limits are simulation assumptions, not an actual ship cell guide, IMDG segregation table, trim or hull strength calculation. Constant KM and four-way static lashing moment proxy; not vessel-approved hydrostatics or a cargo securing manual."
+  "notes": "Expanded concept vessel: 332 m hull, 22 bays x 17 rows x up to 12 tiers, maximum 3000 bookings per vessel. Powered centre rows and two separate end-bay zones. Strength, stability and lashing inputs are explicit simulation assumptions for this larger model, not vessel-approved hydrostatics or cargo securing limits."
 }

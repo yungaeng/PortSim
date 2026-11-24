@@ -533,7 +533,7 @@ void APortSiteLogistics::AdvanceLoadedAGVRecoveries(float Dt)
             if(C->LocationOwner!=ECargoOwner::AGV || C->GetAttachParentActor()!=Old || C->GetBody()->IsSimulatingPhysics())
             {R.Status=TEXT("화물 소유권 확인 실패");continue;}
             C->AttachToActor(RS,FAttachmentTransformRules::KeepWorldTransform);
-            C->LocationOwner=ECargoOwner::ReachStacker;
+            C->SetLocationOwner(ECargoOwner::ReachStacker);
             Old->SetPayload(FMath::Max(0.f,Old->PayloadKg-C->MassKg));
             R.Phase=2; R.HoldSeconds=0;
             RecordRecoveryEvent(TEXT("loaded_agv_lift"),Old,Old,RS,C);
@@ -563,7 +563,7 @@ void APortSiteLogistics::AdvanceLoadedAGVRecoveries(float Dt)
         {
             R.Status=TEXT("안착 확인 · 잠금 해제");
             if(R.HoldSeconds<2 || !C->GetActorTransform().Equals(Destination,.1f)) continue;
-            C->AttachToActor(New,FAttachmentTransformRules::KeepWorldTransform); C->LocationOwner=ECargoOwner::AGV;
+            C->AttachToActor(New,FAttachmentTransformRules::KeepWorldTransform); C->SetLocationOwner(ECargoOwner::AGV);
             New->SetPayload(New->PayloadKg+C->MassKg);
             RecordRecoveryEvent(TEXT("loaded_agv_seated"),Old,RS,New,C);
             if(++R.Box<R.Cargo.Num()) {R.Phase=1;R.HoldSeconds=0;continue;}

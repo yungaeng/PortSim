@@ -5,16 +5,19 @@
 namespace TerminalLayout
 {
     constexpr int VesselCount = 3;
-    constexpr int VesselRows = 10, VesselBays = 10, VesselTiers = 3;
-    constexpr int ContainersPerVessel = VesselRows * VesselBays * VesselTiers;
+    constexpr int VesselRows = 17, VesselBays = 22, VesselTiers = 12;
+    constexpr float VesselBayPitchM=14.f, VesselRowPitchM=2.5f;
+    constexpr int ContainersPerVessel = 3000;
+    static_assert(VesselRows*VesselBays*VesselTiers>=ContainersPerVessel,"Ship grid must hold its booking limit");
     constexpr int TotalVesselContainers = VesselCount * ContainersPerVessel;
-    // Three 210 m vessels stop before the worker-rest building (Y=247..333 m).
-    constexpr float VesselLengthM=210.f;
+    // Three expanded vessels remain in the water within the 1,050 m quay.
+    constexpr float VesselLengthM=332.f;
     constexpr float VesselOriginXM=-18.f, VesselCenterXM=-32.f; // ShipHull is -14m from the actor origin.
     constexpr float VesselOriginZM=2.5f, VesselDeckTopM=4.5f; // ShipDeck centre +1.9m, half thickness 0.1m.
-    constexpr float VesselCenterY(int Index) { return -390.f+Index*230.f; }
+    constexpr float VesselCenterY(int Index) { return -350.f+Index*350.f; }
     constexpr float STSCenterY(int Index) { return VesselCenterY(Index/3)+(Index%3-1)*70.f; }
-    static_assert(VesselCenterY(2)+VesselLengthM*.5f+7.f<247.f,"Ships must stop before worker rest");
+    static_assert(VesselCenterY(2)+VesselLengthM*.5f+7.f<525.f,"Ships must stay inside the north quay extent");
+    static_assert(VesselCenterY(1)-VesselCenterY(0)>VesselLengthM+14.f,"Expanded vessels must not overlap");
     static_assert(VesselCenterY(0)-VesselLengthM*.5f>-525.f,"Ships must stay inside quay extent");
     constexpr float YardScale = 1.f;
     constexpr float NearRailX = 5500.f;
@@ -95,7 +98,9 @@ namespace TerminalLayout
     {
         if(!IsOperationalYardBay(Bay) || (Bay==6 && Row==4)) return 0;
         if(Bay==4 && Row==2) return 1;
-        return (Bay*7+Row+Block)%11==0?0:2+(Bay+Row+Block)%3;
+        // Five supported tiers retain the existing roads, rail envelopes and
+        // dedicated handling zones while admitting all three 3000-box vessels.
+        return (Bay*7+Row+Block)%11==0?0:5;
     }
     constexpr int ReceivingSlotCount(bool Split20=true)
     {
@@ -104,6 +109,7 @@ namespace TerminalLayout
             for(int Row=0;Row<7;++Row) Count+=YardTiers(Block,Bay,Row)*(Split20?YardPads(YardSizeFt(Bay)):1);
         return Count;
     }
+    static_assert(ReceivingSlotCount()>=TotalVesselContainers,"Yard must accommodate all three maximum vessel manifests");
     constexpr float RMGHomeX(int Half) { return SiteX(Half?517.f:270.f); }
     constexpr float RMGHandoverX(int Half) { return SiteX(Half?420.f:180.f); }
     constexpr float RMGHalfGaugeM=16.f; // Physical rail gauge: 32 m, never scaled.
@@ -141,17 +147,19 @@ namespace TerminalLayout
     constexpr float AGVSouthReturnY = -50250.f;
     // All 60 AGVs start and wait in this depot. Alternate entry/exit aisles
     // serve pairs of rows in one direction, keeping opposing traffic apart.
-    constexpr int AGVStandbyColumns=8, AGVStandbyRows=8;
-    constexpr int AGVChargeBays=60; // last row uses four of its eight bays
+    constexpr int AGVStandbyColumns=15, AGVStandbyRows=4;
+    constexpr int AGVChargeBays=60; // four complete rows of fifteen bays
     constexpr float AGVStandbyPitchX=900.f;
     constexpr float AGVStandbyPitchY=3300.f;
     constexpr float AGVStandbyX(int Bay) { return 4800.f+(Bay%AGVStandbyColumns)*AGVStandbyPitchX; }
-    constexpr float AGVStandbyY(int Bay) { return 38500.f+(Bay/AGVStandbyColumns)*AGVStandbyPitchY; }
+    constexpr float AGVStandbyY(int Bay) { return 52000.f+(Bay/AGVStandbyColumns)*AGVStandbyPitchY; }
     constexpr float AGVStandbyEntryY(int Bay)
     { return AGVStandbyY(Bay)+((Bay/AGVStandbyColumns)%2?1.f:-1.f)*AGVStandbyPitchY*.5f; }
     constexpr float AGVStandbyExitY(int Bay)
     { return AGVStandbyY(Bay)-((Bay/AGVStandbyColumns)%2?1.f:-1.f)*AGVStandbyPitchY*.5f; }
-    constexpr float AGVStandbyNorthY=63250.f;
+    constexpr float AGVStandbyNorthY=63550.f;
+    constexpr float AGVDepotAccessY=48550.f, AGVQuayNorthY=AGVDepotAccessY;
+    constexpr float AGVDepotInboundX=19000.f, AGVDepotOutboundX=20500.f;
     static_assert(AGVChargeBays==60,"Every AGV needs its own depot bay");
     // Road reservations expand BOTH moving corridors by 170 cm at turns.
     // Physical chassis clearance alone admitted bays that could never depart.
@@ -256,9 +264,10 @@ namespace TerminalLayout
     {
         if (MinX<QuayLeftX || MaxX>SiteCmX(66000.f) || MinY<-52000.f || MaxY>64500.f)
             return false;
-        if(MaxY>36000.f && (MinX<SiteCmX(4000.f) || MaxX>SiteCmX(15000.f))) return false;
+        if(MaxY>36000.f && (MinX<SiteCmX(4000.f) || MaxX>SiteCmX(MinY>=47000.f?22000.f:15000.f))) return false;
         // Only the quay/spine corridor extends beyond the operational yard.
-        return MaxX<=SiteCmX(18000.f) || (MinY>=-51700.f && MaxY<=35500.f);
+        return MaxX<=SiteCmX(18000.f) || (MinY>=47000.f && MaxX<=SiteCmX(22000.f)) ||
+            (MinY>=-51700.f && MaxY<=35500.f);
     }
 
     constexpr float YardSlotX(int Index)

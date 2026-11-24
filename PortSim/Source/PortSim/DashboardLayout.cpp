@@ -75,8 +75,8 @@ TUniquePtr<FJsonObject> DashboardLayout::Capture(UWorld* World,const FString& Ru
     Root->SetArrayField(TEXT("central_road_m"),Numbers({TerminalLayout::SiteX(145),TerminalLayout::CentralRoadY,
         TerminalLayout::SiteX(635),TerminalLayout::CentralRoadWidthM}));
     Root->SetArrayField(TEXT("yard_view_m"),Numbers({TerminalLayout::SiteX(165),-515,TerminalLayout::SiteX(660),360}));
-    Root->SetArrayField(TEXT("quay_view_m"),Numbers({-65,-525,TerminalLayout::SiteX(178),350}));
-    Root->SetArrayField(TEXT("depot_view_m"),Numbers({TerminalLayout::SiteX(30),345,TerminalLayout::SiteX(170),650}));
+    Root->SetArrayField(TEXT("quay_view_m"),Numbers({-65,-525,TerminalLayout::SiteX(178),525}));
+    Root->SetArrayField(TEXT("depot_view_m"),Numbers({TerminalLayout::SiteX(30),490,TerminalLayout::SiteX(225),650}));
     Root->SetArrayField(TEXT("vessel_size_m"),Numbers({45,TerminalLayout::VesselLengthM}));
     return Root;
 }

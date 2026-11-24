@@ -50,7 +50,7 @@ bool FTerminalReplayCheckpointTest::RunTest(const FString& Parameters)
     Vehicle->Sensors.WheelOdometryCm=123;
     Site->RoadReservations.Add(123,{FBox(FVector::ZeroVector,FVector(100))});
     Site->Manifest[0].State=1;
-    Site->Manifest[0].Actor->LocationOwner=ECargoOwner::AGV;
+    Site->Manifest[0].Actor->SetLocationOwner(ECargoOwner::AGV);
     Vehicle->SetActorLocation(InitialPosition+FVector(1000,2000,0));
     Owner->Environment->AdvanceEnvironment(.1f);
     TestTrue(TEXT("Checkpoint restores immediately"),Initial->Restore());

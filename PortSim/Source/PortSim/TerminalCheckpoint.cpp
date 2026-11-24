@@ -168,6 +168,7 @@ void FTerminalCheckpoint::Capture(APortWorkingCrane& O)
 
 void FTerminalCheckpoint::Capture(APortSiteLogistics& O)
 {
+    Values(O.bShipRemainingDirty,O.CachedShipRemaining,O.CachedShipManifestCount);
     Values(O.IncidentMeasureClock,O.IncidentHaltSeconds,O.IncidentCompletionTimes,O.bIncidentReferenceClean,
         O.IncidentEnvironmentRevision,O.IncidentComparisonKey,O.IncidentRuns,O.IncidentClock,O.bIncidentInputUsed);
     Values(O.FreeCargo,O.MovingCargo,O.FixedCargo,O.CargoBays,O.CargoBayIndex,O.CargoSources,

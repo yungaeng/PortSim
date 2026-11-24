@@ -115,7 +115,7 @@ void APortWorkingCrane::AdvancePickup(float Dt)
         if(!BeforeAttachment.Equals(CargoActor->GetActorLocation(),.01))
         {Stop(TEXT("Pickup attachment changed the achieved cargo position"));return;}
         LockedCargoTransform=CargoActor->GetActorTransform().GetRelativeTransform(Spreader->GetComponentTransform());
-        CargoActor->LocationOwner=bSTS?ECargoOwner::STS:ECargoOwner::RMG;bCarrying=true;
+        CargoActor->SetLocationOwner(bSTS?ECargoOwner::STS:ECargoOwner::RMG);bCarrying=true;
         Pickup.Attached(Observation.SpreaderPosition);SampleSTS(true);return;
     }
     MoveSTS(Local(Pickup.Target),Dt);

@@ -94,6 +94,10 @@ IMPLEMENT_SIMPLE_AUTOMATION_TEST(FVesselThreeTierInputTest,"PortSim.VesselInput.
 bool FVesselThreeTierInputTest::RunTest(const FString& Parameters)
 {
     FPortVesselInput Stowage,Operations; FString Error;
+    FPortVesselInput Large,Overflow;
+    TestTrue(TEXT("3000 supported physical slots parse"),ParseInput(InputRoot()/TEXT("Stowage/stowage_3000.csv"),1,Large,Error));
+    TestEqual(TEXT("Full vessel inventory is retained"),Large.Rows.Num(),3000);
+    TestFalse(TEXT("3001 bookings exceed the per-vessel limit"),ParseContent(SerializeInput(Large,1)+TEXT("OVERFLOW,22,17,12\n"),TEXT("overflow.csv"),1,Overflow,Error));
     if(!TestTrue(TEXT("300-container stowage parses"),ParseInput(InputRoot()/TEXT("Stowage/stowage_300.csv"),1,Stowage,Error)))
     { AddError(Error); return false; }
     if(!TestTrue(TEXT("Exchange operations parse"),ParseInput(InputRoot()/TEXT("Operations/operations_300_d100_l100.csv"),0,Operations,Error)))
@@ -162,8 +166,8 @@ bool AQuayCrane::ApplyPendingVesselInputs()
 bool AQuayCrane::ValidateVesselInput(int32 Vessel,const FPortVesselInput& Input,FString& Error) const
 {
     const int32 Total=PendingCargoTotal()-PendingCargo[Vessel]+Input.Rows.Num();
-    if(Vessel<PendingShips && Total>5594)
-    { Error=TEXT("전체 화물이 야드 수용량 5594개를 초과합니다."); return false; }
+    if(Vessel<PendingShips && Total>TerminalLayout::ReceivingSlotCount(bUnifiedTerminal))
+    { Error=FString::Printf(TEXT("전체 화물이 야드 수용량 %d개를 초과합니다."),TerminalLayout::ReceivingSlotCount(bUnifiedTerminal)); return false; }
     TSet<FName> Names;
     int32 Offset=0;
     for(int32 V=0;V<PendingShips;++V)

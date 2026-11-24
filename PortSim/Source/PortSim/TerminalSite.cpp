@@ -365,8 +365,8 @@ void AQuayCrane::BuildTerminalSite()
                     const int32 Row=InputRow?InputRow->GridSlot.Y:Local%ShipRows;
                     const int32 Bay=InputRow?InputRow->GridSlot.X:(Local/ShipRows)%ShipBays;
                     const int32 Tier=InputRow?InputRow->GridSlot.Z:Local/(ShipRows*ShipBays);
-                    const float BayY=bUnifiedTerminal?-81.f+Bay*18.f:-99.f+Bay*13.f;
-                    const FVector Position(InputRow?-45.5+Row*3:-49+Row*3,Y+BayY,
+                    const float BayY=bUnifiedTerminal?(Bay-(ShipBays-1)*.5f)*TerminalLayout::VesselBayPitchM:-99.f+Bay*13.f;
+                    const FVector Position(bUnifiedTerminal?TerminalLayout::VesselCenterXM+(Row-(ShipRows-1)*.5f)*TerminalLayout::VesselRowPitchM:-49+Row*3,Y+BayY,
                         InputRow?TerminalLayout::VesselDeckTopM+1.2955+Tier*2.591:5.695+Tier*2.59);
                     const float CraneSpacing=bUnifiedTerminal?70.f:100.f;
                     const int32 Nearest=FMath::Clamp(FMath::RoundToInt((Position.Y-(Y-CraneSpacing))/CraneSpacing),0,2)+(bUnifiedTerminal?VesselIndex*3:(Y<0?0:5));
@@ -379,7 +379,8 @@ void AQuayCrane::BuildTerminalSite()
                 }
         if(Imported) for(const auto& R:ConfiguredVesselOperations[VesselIndex].Rows) if(R.Operation==TEXT("LOAD"))
         {
-            const FVector Position(-45.5+R.GridSlot.Y*3,Y-81.f+R.GridSlot.X*18.f,
+            const FVector Position(TerminalLayout::VesselCenterXM+(R.GridSlot.Y-(ShipRows-1)*.5f)*TerminalLayout::VesselRowPitchM,
+                Y+(R.GridSlot.X-(ShipBays-1)*.5f)*TerminalLayout::VesselBayPitchM,
                 TerminalLayout::VesselDeckTopM+1.2955+R.GridSlot.Z*2.591);
             const int32 Nearest=VesselIndex*3+FMath::Clamp(FMath::RoundToInt((Position.Y-Y)/70.f)+1,0,2);
             SiteLogistics->AddShipCargo(Position*100.,Nearest,0,FName(*R.ContainerId),true,false,R.GridSlot);
@@ -396,7 +397,8 @@ void AQuayCrane::BuildTerminalSite()
     const FVector2D Operations(TerminalLayout::PhotoAnchorX(30.6f),TerminalLayout::PhotoAnchorY(40.7f));
     const FVector2D Substation(TerminalLayout::PhotoAnchorX(34.3f),TerminalLayout::PhotoAnchorY(64.7f));
     const FVector2D Rest(TerminalLayout::PhotoAnchorX(74.2f),TerminalLayout::PhotoAnchorY(9.8f));
-    const FVector2D Maintenance(TerminalLayout::PhotoAnchorX(58.8f),TerminalLayout::PhotoAnchorY(8.3f));
+    // Move the maintenance group inland, clear of the AGV standby columns.
+    const FVector2D Maintenance(TerminalLayout::PhotoAnchorX(58.8f)+40.f,TerminalLayout::PhotoAnchorY(8.3f));
     const FVector2D CIS(TerminalLayout::PhotoAnchorX(23.1f),TerminalLayout::PhotoAnchorY(23.2f));
     const FVector2D RepairWash(TerminalLayout::PhotoAnchorX(37.1f),TerminalLayout::PhotoAnchorY(13.7f));
     // Footprints and open areas follow the approved top-down plan V3.
@@ -428,14 +430,20 @@ void AQuayCrane::BuildTerminalSite()
 
     // Sixty independent standby/charging positions, with alternating one-way
     // aisles. Expand the former staff parking northward beside the empty yard.
-    Box(Roads,FVector(78,500.5f,.24),FVector(80,280,.06));
-    RoadSegment(Roads,{125,347},{125,TerminalLayout::AGVStandbyNorthY/100.f},14);
-    RoadSegment(Roads,{140,TerminalLayout::AGVStandbyNorthY/100.f},{140,347},14);
+    Box(Roads,FVector(120,569.5f,.24),FVector(180,140,.06));
+    RoadSegment(Roads,{125,347},{125,TerminalLayout::AGVDepotAccessY/100.f},14);
+    RoadSegment(Roads,{125,TerminalLayout::AGVDepotAccessY/100.f},{190,TerminalLayout::AGVDepotAccessY/100.f},14);
+    RoadSegment(Roads,{190,TerminalLayout::AGVDepotAccessY/100.f},{190,TerminalLayout::AGVStandbyNorthY/100.f},14);
+    RoadSegment(Roads,{205,TerminalLayout::AGVStandbyNorthY/100.f},{205,TerminalLayout::AGVDepotAccessY/100.f},14);
+    RoadSegment(Roads,{205,TerminalLayout::AGVDepotAccessY/100.f},{140,TerminalLayout::AGVDepotAccessY/100.f},14);
+    RoadSegment(Roads,{140,TerminalLayout::AGVDepotAccessY/100.f},{140,347},14);
+    for(float X:{50.f,80.f,110.f})
+        RoadSegment(Roads,{X,347},{X,TerminalLayout::AGVQuayNorthY/100.f},10);
     for(int32 Aisle=0;Aisle<=TerminalLayout::AGVStandbyRows;++Aisle)
     {
         const float Y=(TerminalLayout::AGVStandbyY(0)-TerminalLayout::AGVStandbyPitchY*.5f+
             Aisle*TerminalLayout::AGVStandbyPitchY)/100.f;
-        RoadSegment(Roads,{48,Y},{Aisle%2?140.f:125.f,Y},18);
+        RoadSegment(Roads,{48,Y},{Aisle%2?205.f:190.f,Y},18);
     }
     for(int32 Bay=0;Bay<TerminalLayout::AGVChargeBays;++Bay)
     {
@@ -446,7 +454,7 @@ void AQuayCrane::BuildTerminalSite()
         Box(Blue,FVector(X+3.1f,Y,1.2),FVector(.6,1,2.4));
         Box(Green,FVector(X+3.1f,Y-.55f,1.7),FVector(.5,.08,.5));
     }
-    Label(TEXT("AGV 대기·충전소 · 60대"),FVector(78,642,.5),2.5f);
+    Label(TEXT("AGV 대기·충전소 · 60대"),FVector(120,642,.5),2.5f);
 
     // Three distinct blue roofs identified in close-up 2.
     // Shared maintenance apron: retain parking markings without an oversized perimeter box.

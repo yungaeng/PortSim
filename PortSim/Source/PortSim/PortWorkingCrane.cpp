@@ -159,7 +159,11 @@ void APortWorkingCrane::ResetOperation()
         if (IsValid(CargoActor)) CargoActor->DetachFromActor(FDetachmentTransformRules::KeepWorldTransform);
         CargoActor=nullptr; bJobActive=bCarrying=bPaused=bResumePhysics=false; bDestinationReady=true;
         SourceSlot=Stage=CompletedJobs=0; Fault.Empty(); Speed=StageTime=SettleTime=0;
-        Head=Local(Slots[0]); Head.Z=SafeZ; JobStartHead=Head; StageHoldTarget=Head; UpdateParts();
+        // Park an idle STS over its quay handover pad, not inside a tall ship
+        // stack at the source X. RMG keeps its existing source-side home pose.
+        Head=Local(Slots[bSTS?1:0]);
+        if(bSTS) Head.Y=0; // Retain the crane's configured rail home position.
+        Head.Z=SafeZ; JobStartHead=Head; StageHoldTarget=Head; UpdateParts();
         for (const auto& Pad:Pads) { Pad->SetCollisionEnabled(ECollisionEnabled::NoCollision); Pad->SetVisibility(false); }
         return;
     }
@@ -171,7 +175,7 @@ void APortWorkingCrane::ResetOperation()
     Body->SetSimulatePhysics(true);
     Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
     Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-    CargoActor->LocationOwner=bSTS?ECargoOwner::Ship:ECargoOwner::Yard;
+    CargoActor->SetLocationOwner(bSTS?ECargoOwner::Ship:ECargoOwner::Yard);
     SourceSlot=Stage=CompletedJobs=0;
     bCarrying=bPaused=bResumePhysics=false;
     Fault.Empty(); Speed=StageTime=0; SettleTime=0;
@@ -645,7 +649,7 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
         Body->BodyInstance.SetBodyTransform(ReleasePose,ETeleportType::TeleportPhysics,false);
         Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
         Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
-        CargoActor->LocationOwner=bSTS && (bReverseTransfer || (1-SourceSlot)==0)?ECargoOwner::Ship:ECargoOwner::Yard;
+        CargoActor->SetLocationOwner(bSTS && (bReverseTransfer || (1-SourceSlot)==0)?ECargoOwner::Ship:ECargoOwner::Yard);
         }
         bCarrying=false;
     }

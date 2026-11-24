@@ -30,6 +30,7 @@ struct FSiteYardSlot
 struct FSiteShipCargo
 {
     bool bExplicitPlacement=false;
+    int32 GeneratedYardSlot=INDEX_NONE;
     FTransform Transform;
     FName ContainerName;
     FPortShipPlacement ShipSlot;
@@ -171,6 +172,7 @@ public:
     void ExportDashboard(bool Paused, bool Force=false);
     bool Validate(FString& Error) const;
     int32 ShipRemaining() const;
+    void InvalidateShipRemaining() const { bShipRemainingDirty=true; }
     int32 InTransit() const;
     bool IsIdle() const;
     APortAGVActor* LoadedVehicle(APortAGVActor* Preferred=nullptr) const;
@@ -207,6 +209,7 @@ private:
     friend class FApronManifestRoutesTest;
     friend class FShipArrivalPlacementTest;
     friend class FNoEventCollisionTest;
+    friend class FActiveCargoPresentationTest;
     friend class FInlandRoadTrafficTest;
     friend class FTrafficJunctionTest;
     friend class FEquipmentRecoveryTest;
@@ -288,6 +291,8 @@ private:
     bool SaveReports() const;
     void BeginReport();
     TArray<FSiteShipCargo> Manifest;
+    mutable bool bShipRemainingDirty=true;
+    mutable int32 CachedShipRemaining=0, CachedShipManifestCount=-1;
     TArray<FSiteShipCargo> InitialManifestPlan;
     struct FDeferredYardLease { int32 Vehicle,Slot; };
     TArray<FDeferredYardLease> DeferredYardLeases;
@@ -381,9 +386,9 @@ private:
     FVector ChargingBayPosition(int32 Bay) const;
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
     void AssignReturnSTS(int32 Vehicle);
-    void PrepareNextCargo(int32 Lane);
+    void PrepareNextCargo(int32 Lane,TOptional<TArray<int32>>* SourceCandidates=nullptr);
     bool SourceAccessible(int32 Cargo) const;
-    void PrepareExecutableCargo(int32 Lane);
+    void PrepareExecutableCargo(int32 Lane,TOptional<TArray<int32>>* SourceCandidates=nullptr);
     FString YardAdmissionReason(int32 Cargo,int32 Vehicle=INDEX_NONE) const;
     bool ReserveYardApproach(int32 Lane,bool AllowAdvanceBooking=false);
     void ReleaseYardApproachIfClear(int32 Lane);
@@ -396,6 +401,7 @@ private:
     double PendingSimulationSeconds=0;
     int32 YardApproachKey(const FSiteYardSlot& Slot) const { return LaneCount==9?Slot.Crane:Slot.Block; }
     bool ReserveYard(int32 Lane);
+    bool LimitGeneratedCargoToYardCapacity();
     bool PlanYardDestinations();
     bool PlanLegacyYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);

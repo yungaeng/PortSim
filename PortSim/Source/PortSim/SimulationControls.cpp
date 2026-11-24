@@ -24,7 +24,7 @@ FString RunSettingsPath()
 int32 AQuayCrane::PendingCargoTotal() const
 { int32 Total=0; for(int32 I=0;I<PendingShips;++I) Total+=PendingCargo[I]; return Total; }
 int32 AQuayCrane::PendingCargoLimit(int32 Vessel) const
-{ return TerminalLayout::ReceivingSlotCount(bUnifiedTerminal)-PendingCargoTotal()+PendingCargo[Vessel]; }
+{ return FMath::Min(TerminalLayout::ContainersPerVessel,TerminalLayout::ReceivingSlotCount(bUnifiedTerminal)-PendingCargoTotal()+PendingCargo[Vessel]); }
 void AQuayCrane::SetPendingShips(int32 Count)
 {
     const int32 Old=PendingShips;
@@ -54,7 +54,7 @@ void AQuayCrane::LoadRunSettings()
         for(int32 I=0;I<3;++I)
         {
             double Count=200; Object->TryGetNumberField(FString::Printf(TEXT("cargo_%d"),I+1),Count);
-            PendingCargo[I]=FMath::IsFinite(Count)?int32(FMath::Clamp(Count,1.,double(I<PendingShips?Budget-(PendingShips-I-1):TerminalLayout::ReceivingSlotCount(bUnifiedTerminal)))):1;
+            PendingCargo[I]=FMath::IsFinite(Count)?int32(FMath::Clamp(Count,1.,double(FMath::Min(TerminalLayout::ContainersPerVessel,I<PendingShips?Budget-(PendingShips-I-1):TerminalLayout::ReceivingSlotCount(bUnifiedTerminal))))):1;
             if(I<PendingShips) Budget-=PendingCargo[I];
         }
         if(Environment && !FParse::Param(FCommandLine::Get(),TEXT("unattended")))
@@ -83,7 +83,7 @@ void AQuayCrane::LoadRunSettings()
             Object->TryGetBoolField(FString::Printf(TEXT("file_mode_%d"),I+1),PendingFileMode[I]);
             double Manual=ManualCargo[I];
             if(Object->TryGetNumberField(FString::Printf(TEXT("manual_cargo_%d"),I+1),Manual) && FMath::IsFinite(Manual))
-                ManualCargo[I]=int32(FMath::Clamp(Manual,1.,double(TerminalLayout::ReceivingSlotCount(bUnifiedTerminal))));
+                ManualCargo[I]=int32(FMath::Clamp(Manual,1.,double(FMath::Min(TerminalLayout::ContainersPerVessel,TerminalLayout::ReceivingSlotCount(bUnifiedTerminal)))));
         }
     }
     if(bUnifiedTerminal && Object.IsValid()) RestoreVesselInputs(*Object);

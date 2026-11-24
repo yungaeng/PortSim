@@ -54,6 +54,13 @@ void APortContainerActor::EndPlay(const EEndPlayReason::Type Reason)
     Super::EndPlay(Reason);
 }
 
+void APortContainerActor::SetLocationOwner(ECargoOwner NewOwner)
+{
+    if(LocationOwner==NewOwner) return;
+    LocationOwner=NewOwner;
+    if(auto* Site=Cast<APortSiteLogistics>(GetOwner())) Site->InvalidateShipRemaining();
+}
+
 void APortContainerActor::SetPhysicalParameters(float Mass,FVector CoGOffset)
 {
     MassKg=Mass; CargoMassKg=FMath::Max(0.f,MassKg-TareMassKg); CoGOffsetCm=CoGOffset;
@@ -237,7 +244,7 @@ void APortContainerActor::ResetCargo(FVector Position)
     Body->SetPhysicsLinearVelocity(FVector::ZeroVector);
     Body->SetPhysicsAngularVelocityInDegrees(FVector::ZeroVector);
     Body->WakeAllRigidBodies();
-    LocationOwner=ECargoOwner::Ship;
+    SetLocationOwner(ECargoOwner::Ship);
 }
 
 void APortContainerActor::ApplyContainerAppearance()
