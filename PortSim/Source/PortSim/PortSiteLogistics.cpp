@@ -966,7 +966,7 @@ int32 APortSiteLogistics::NearestDispatchVehicle(int32 STS,bool Standby)
         Probe.Stage=Standby?7:6; Probe.STS=STS; Probe.Cargo=PreparedCargo[STS];
         Probe.bParkingDeparture=Parked;
         double Distance=0;
-        const bool Reachable=PlanRoadRoute(I,false,false,&Distance);
+        const bool Reachable=PlanRoadRoute(I,false,false,MAX_dbl,&Distance);
         Jobs[I]=MoveTemp(Saved);
         if(!Reachable) continue;
         const bool Tie=FMath::IsNearlyEqual(Distance,BestDistance,.1);
@@ -1630,6 +1630,11 @@ bool APortSiteLogistics::PlanLegacyYardDestinations()
 
 bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture,double* PreviewDistanceCm)
 {
+    return PlanRoadRoute(Lane,Congested,RequireClearDeparture,MAX_dbl,PreviewDistanceCm);
+}
+
+bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture,double MaxTravelCost,double* PreviewDistanceCm)
+{
     PortSimPerformance::FScope Profile(TEXT("road_planning"));
     auto& Job=Jobs[Lane]; auto* Vehicle=Vehicles[Lane].Get();
     // Do not replace a valid route while the chassis is midway through a turn.
@@ -2204,7 +2209,7 @@ bool APortSiteLogistics::PlanRoadRoute(int32 Lane,bool Congested,bool RequireCle
             for(int32 I=Begin;I<End;++I) { Sum+=FVector::Dist2D(From,Route[I])+Cost(From,Route[I]); From=Route[I]; }
             return Sum;
         };
-        if(Total(Candidate,0,Candidate.Num())+500>=
+        if(Total(Candidate,0,Candidate.Num())>MaxTravelCost || Total(Candidate,0,Candidate.Num())+500>=
             Total(Job.Route,Job.Waypoint,ExistingRouteEnd)) return false;
         ++Job.Reroutes;
         PORTSIM_SIM_LOG(LogTemp,Display,TEXT("AGV_REROUTE: V%d stage=%d count=%d"),ID,Job.Stage,Job.Reroutes);

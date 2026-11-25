@@ -12,6 +12,9 @@ namespace TerminalLayout
     constexpr int TotalVesselContainers = VesselCount * ContainersPerVessel;
     // Three expanded vessels remain in the water within the 1,050 m quay.
     constexpr float VesselLengthM=332.f;
+    constexpr float STSSpacingM=70.f;
+    inline int32 VesselDischargeZone(double LongitudinalM)
+    { return FMath::Clamp(FMath::RoundToInt(LongitudinalM/STSSpacingM)+1,0,2); }
     constexpr float VesselOriginXM=-18.f, VesselCenterXM=-32.f; // ShipHull is -14m from the actor origin.
     constexpr float VesselOriginZM=2.5f, VesselDeckTopM=4.5f; // ShipDeck centre +1.9m, half thickness 0.1m.
     constexpr float VesselCenterY(int Index) { return -350.f+Index*350.f; }

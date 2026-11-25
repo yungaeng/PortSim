@@ -8,6 +8,7 @@
 #include "UObject/UnrealType.h"
 #include "TrafficSpatialIndex.h"
 #include "IncidentScenarios.h"
+#include "EquipmentPerformance.h"
 #include "PortSiteLogistics.generated.h"
 
 class FJsonObject;
@@ -57,6 +58,10 @@ struct FSiteTransfer
     // Stage 10 is the second STS pickup of a paired 20 ft trip.
     static constexpr int32 ToCharge=11, ReturnToStandby=12, Charging=13, ToRecovery=14;
     int32 Cargo=INDEX_NONE, Slot=INDEX_NONE, RMG=INDEX_NONE, STS=INDEX_NONE, Stage=0, Waypoint=0;
+    int32 FixedPickupPadSTS=INDEX_NONE;
+    FString IncidentRoadCause;
+    int32 IncidentRerouteStage=INDEX_NONE;
+    bool bWaitForIncidentAtBay=false;
     int32 ExtraCargo=INDEX_NONE;
     bool bLoadingExtra=false;
     int32 TripID=0;
@@ -206,6 +211,26 @@ public:
     UPROPERTY(VisibleAnywhere,BlueprintReadOnly) TArray<TObjectPtr<APortContainerActor>> PlacedContainers;
     UPROPERTY() TArray<TObjectPtr<APortWorkingCrane>> Equipment;
 private:
+    friend class FEquipmentPerformanceTest;
+    TMap<FString,double> EquipmentWorkingSeconds;
+    FPortBerthPerformance BerthPerformance[3];
+    void ResetEquipmentPerformance();
+    void AdvanceEquipmentPerformance(float Dt,bool Paused);
+    TSharedPtr<FJsonObject> CaptureEquipmentPerformance(const AActor* Actor) const;
+    TSharedPtr<FJsonObject> CaptureBerthPerformance(int32 Berth) const;
+    double NextIncidentYardPlanAt=0.;
+    FPortIncidentRoadClosure* FindIncidentRoadClosure(FVector From,FVector To,bool Record=false);
+    void SetAGVIncidentDriveFailure(int32 Lane,bool Failed,double ClearanceM,double RepairDelay);
+    void RefreshAGVIncidentControl();
+    bool HoldForIncidentRoad(int32 Lane,FVector From,FVector Target,float Dt);
+    void RerouteAroundIncident(int32 Lane);
+    FPortIncidentRoadClosure* LoadedDepartureIncident(int32 Lane);
+    void RecordIncidentDetour(int32 Lane,const FPortIncidentRoadClosure& Zone);
+    void ReleaseFutureRoadClaims(int32 VehicleID);
+    void ReassignIncidentPickup(int32 Lane);
+    bool StartRoadRoute(int32 Lane);
+    bool ApplyDashboardAction(const FJsonObject& Command,FString& Error);
+    bool NeedsSTSPickupRebind(int32 Vehicle) const;
     friend class FLoadedTrafficRecoveryTest;
     friend class FApronIntersectionRecoveryTest;
     friend class FApronManifestRoutesTest;
@@ -410,7 +435,8 @@ private:
     bool PlanYardDestinations();
     bool PlanLegacyYardDestinations();
     void PrepareRoute(int32 Lane,bool Return);
-    bool PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture=false,double* PreviewDistanceCm=nullptr);
+    bool PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture=false,double MaxTravelCost=MAX_dbl,double* PreviewDistanceCm=nullptr);
+    bool PlanRoadRoute(int32 Lane,bool Congested,bool RequireClearDeparture,double* PreviewDistanceCm);
     TArray<FBox> BuildRoadCorridor(const APortAGVActor& Vehicle,FVector Target,
         const TArray<FVector>* Route,int32 Waypoint,int32 RouteEnd,bool LegacyYardEntry) const;
     int32 FindRoadCorridorBlocker(const APortAGVActor& Vehicle,FVector Target,
