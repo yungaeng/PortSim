@@ -67,22 +67,22 @@ void APortAGVActor::AdvanceDynamics(double TargetSpeedMps,double CurvaturePerM,d
     LastCurvaturePerCm=FMath::Abs(Dynamics.U)>.01?Dynamics.YawRate/FMath::Abs(Dynamics.U)*.01:0;
     Sensors.WheelOdometryCm+=FMath::Abs(Dynamics.WheelDistanceM-WheelBefore)*100;
     Sensors.LateralSlipCm=(Dynamics.SideSlipDistanceM-SlipBefore)*100;
-    Sensors.SteeringAngleDegrees=FMath::RadiansToDegrees((Dynamics.Wheels[4].Steer+Dynamics.Wheels[5].Steer)*.5);
+    Sensors.SteeringAngleDegrees=FMath::RadiansToDegrees((Dynamics.Wheels[2].Steer+Dynamics.Wheels[3].Steer)*.5);
     UpdateOdometry(Previous); UpdateWheelVisuals();
 }
 
 void APortAGVActor::UpdateWheelVisuals()
 {
-    // Construction order is side(-/+) then axle(-/0/+), tire then hub.
-    for(int Side=0;Side<2;++Side) for(int Axle=0;Axle<3;++Axle)
+    // Construction order is side(-/+) then axle(rear/front), tire then hub.
+    for(int Side=0;Side<2;++Side) for(int Axle=0;Axle<2;++Axle)
     {
         const auto& W=Dynamics.Wheels[Axle*2+Side];
         const double Steer=FMath::RadiansToDegrees(W.Steer),Spin=FMath::RadiansToDegrees(W.Angle);
         const FQuat Q=FQuat(FVector::UpVector,Steer*PI/180.)*
             FQuat(FVector::ForwardVector,Spin*PI/180.)*FRotator(90,0,0).Quaternion();
-        for(int Part=0;Part<2;++Part) if(WheelMeshes.IsValidIndex((Side*3+Axle)*2+Part))
+        for(int Part=0;Part<2;++Part) if(WheelMeshes.IsValidIndex((Side*2+Axle)*2+Part))
         {
-            auto* Mesh=WheelMeshes[(Side*3+Axle)*2+Part].Get();
+            auto* Mesh=WheelMeshes[(Side*2+Axle)*2+Part].Get();
             if(!PortSimUpdates::SkipUnchanged() || !Mesh->GetRelativeTransform().GetRotation().Equals(Q,0.))
                 Mesh->SetRelativeRotation(Q);
         }

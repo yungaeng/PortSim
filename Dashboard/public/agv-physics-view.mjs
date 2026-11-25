@@ -6,7 +6,7 @@ const row=(label,value)=>`<div class="kv-row"><span>${label}</span><b>${value}</
 const caseNames={dry_brake:'건조 노면 제동',wet_brake:'젖은 노면 제동',ice_brake:'결빙 노면 제동',center_turn:'중앙 CoG 선회',eccentric_turn:'편심 CoG 선회',high_eccentric_turn:'높은 편심 CoG 선회',controlled_high_turn:'높은 편심 · 안정성 제어'};
 export function renderAGVSensors(a){
  const p=a.agv_physics;
- return '<div class="detail-subhead">Wheel / Steering · IMU</div>'+row('차륜 RPM (후좌/후우/중좌/중우/전좌/전우)',(p.wheels||[]).map(w=>n(w.rpm,1)).join(' / '))+
+ return '<div class="detail-subhead">Wheel / Steering · IMU</div>'+row('차륜 RPM (후좌/후우/전좌/전우)',(p.wheels||[]).map(w=>n(w.rpm,1)).join(' / '))+
   row('휠 누적거리',`${n(a.wheel_odometry_m)} m`)+row('전륜 평균 조향각',`${n(a.steering_angle_deg)}°`)+row('Transponder 추정 XYZ',`${vec(a.estimated_position_m)} m`)+row('위치 오차',`${n(a.position_error_mm)} mm`)+
   row('IMU specific force X/Y/Z',`${vec(p.imu_specific_force_mps2)} m/s²`)+row('IMU 각속도 roll/pitch/yaw',`${vec(p.imu_gyro_rad_s)} rad/s`)+
   '<div class="detail-subhead">FMS · LiDAR</div>'+row('FMS',a.fms_hold?'예약 대기':'진입 허용')+row('다음 목표 XYZ',`${vec(a.fms_next_node_m)} m`)+
@@ -17,7 +17,7 @@ export function renderAGVSensors(a){
 export function renderAGVPhysics(a){
  const p=a?.agv_physics;if(!p)return '<div class="note">AGV 타이어·안정성 데이터가 필요합니다. 새 엔진을 실행하세요.</div>';
  const total=p.left_load_n+p.right_load_n,left=Number.isFinite(total)&&total>0?Math.max(0,Math.min(100,p.left_load_n/total*100)):50;
- let h='<div class="detail-subhead">타이어 · CoG 안정성 <span>6개 등가 접촉점</span></div>';
+ let h='<div class="detail-subhead">타이어 · CoG 안정성 <span>2축 · 4개 접촉점</span></div>';
  h+=row('전체 질량 / 합성 CoG',`${n(p.mass_kg/1000)} t · ${vec(p.combined_cog_m)} m`);
  h+=row('화물 CoG (노면 기준)',`${vec(p.cargo_cog_m)} m`);
  h+=row('차체 속도 X / Y',`${vec(p.velocity_body_mps)} m/s`)+row('가속도 X / Y',`${vec(p.acceleration_body_mps2)} m/s²`);

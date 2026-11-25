@@ -1,4 +1,5 @@
 #include "ShipStowagePlanning.h"
+#include "TerminalLayout.h"
 #include "Misc/FileHelper.h"
 #include "Dom/JsonObject.h"
 #include "Serialization/JsonSerializer.h"
@@ -36,7 +37,8 @@ bool FPortShipStowageAssumptions::Load(const FString& Path,FString& Error)
     return true;
 }
 
-FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Cargo,const FPortShipStowageAssumptions& A)
+FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Cargo,
+    const FPortShipStowageAssumptions& A,bool bBalanceDischarge)
 {
     FPortShipStowageResult Result;
     for(double V:{A.MaximumStackKg,A.MaximumLashingN,A.MaximumHeelDegrees,A.DeckHeightM})
@@ -79,6 +81,12 @@ FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Car
     });
     double Displacement=A.LightshipKg, VerticalMoment=A.LightshipKg*A.LightshipKGM, TransverseMoment=0, LongitudinalMoment=0;
     Result.CorrectedGMM=A.KMM-A.LightshipKGM-A.FreeSurfaceMomentKgM/A.LightshipKg;
+    double WorkByZone[3]={};
+    auto DischargeWork=[](const FVector& Position,int32 Zone)
+    {
+        // Estimate one STS cycle and add the extra gantry travel away from its pad.
+        return 120.+2.*FMath::Abs(Position.X-(Zone-1)*TerminalLayout::STSSpacingM);
+    };
     for(int32 Index:Order)
     {
         const auto& C=Cargo[Index];
@@ -137,8 +145,15 @@ FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Car
             // Preserve unused columns for later port groups whose heavier boxes
             // cannot sit above today's lighter stack. Reuse compatible stacks
             // after all safety limits pass, rather than exhausting the floor first.
-            const double Score=Heel*1000.+FMath::Abs(LCG)*100.+(Tier==0?500.:Tier*10.)+
+            double Score=Heel*1000.+FMath::Abs(LCG)*100.+(Tier==0?500.:Tier*10.)+
                 (C.LengthFt==20 && !Columns[Col^1].CargoIndices.IsEmpty()?-100.:0.);
+            if(bBalanceDischarge)
+            {
+                const int32 Zone=TerminalLayout::VesselDischargeZone(Position.X);
+                const double Work=DischargeWork(Position,Zone);
+                // Marginal growth in the squared STS workloads after hard ship checks pass.
+                Score+=.002*(2.*WorkByZone[Zone]+Work)*Work;
+            }
             if(Score<BestScore) { Best=Col; BestScore=Score; BestGM=GM; BestHeel=Heel; BestLash=Lashing; BestPosition=Position; }
         }
         if(Best==INDEX_NONE) { Result.Reason=TEXT("No placement satisfies port access, GM, heel, stack and lashing limits"); return Result; }
@@ -155,6 +170,11 @@ FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Car
         Result.Placements.Add(Placement);
         Result.CorrectedGMM=BestGM; Result.HeelDegrees=BestHeel;
         Result.LongitudinalCGM=LongitudinalMoment/Displacement;
+        if(bBalanceDischarge)
+        {
+            const int32 Zone=TerminalLayout::VesselDischargeZone(BestPosition.X);
+            WorkByZone[Zone]+=DischargeWork(BestPosition,Zone);
+        }
     }
     Result.Feasible=true; Result.Reason=TEXT("Feasible under explicit simulation assumptions");
     return Result;

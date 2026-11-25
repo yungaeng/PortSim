@@ -14,7 +14,9 @@ int32 APortSiteLogistics::LoadedCount() const
 
 FVector APortSiteLogistics::TransferQuay(const FSiteTransfer& Job) const
 {
-    return Job.ExportIndex==INDEX_NONE?CargoQuay(Job.Cargo):QuayPark(Job.STS);
+    if(Job.ExportIndex!=INDEX_NONE) return QuayPark(Job.STS);
+    if(Job.FixedPickupPadSTS!=INDEX_NONE) return QuayPark(Job.FixedPickupPadSTS);
+    return CargoQuay(Job.Cargo);
 }
 
 void APortSiteLogistics::ScheduleExport()
@@ -31,6 +33,8 @@ void APortSiteLogistics::ScheduleExport()
             !CraneAvailable(YardCraneCount+STS) || Equipment[YardCraneCount+STS]->IsBusy() ||
             !CraneAvailable(RMG) || Equipment[RMG]->IsBusy() || RMGBusy[RMG] || BlocksBusy[Slot.Block] ||
             YardApproachOwners[YardApproachKey(Slot)]!=INDEX_NONE) continue;
+        const FVector Quay=QuayPark(STS);
+        if(IsIncidentYardBlocked(Candidate.PlannedSlot)||IncidentRoadBlocked(Quay,Quay+FVector(0,.1,0))) continue;
         auto SameColumn=[&](const FSiteShipCargo& C)
         {
             return C.STS/3==STS/3 && C.ShipSlot.Bay==Candidate.ShipSlot.Bay &&
@@ -63,7 +67,7 @@ void APortSiteLogistics::ScheduleExport()
     Booking.State=1;
     STSOwners[Job.STS]=Lane; RMGBusy[Job.RMG]=true;
     YardApproachOwners[YardApproachKey(Yard[Job.Slot])]=Lane;
-    if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 AGV의 초기 안벽 접근 경로를 만들 수 없습니다."));
+    if(!StartRoadRoute(Lane)) Stop(TEXT("적하 AGV의 초기 안벽 접근 경로를 만들 수 없습니다."));
 }
 
 void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
@@ -74,15 +78,16 @@ void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
     auto* Vehicle=Vehicles[Lane].Get();
     auto* RMG=Equipment[Job.RMG].Get();
     auto* STS=Equipment[YardCraneCount+Job.STS].Get();
-    if(Job.Time>12000) { Stop(TEXT("적하 작업 제한 시간 초과")); return; }
+    if(Job.Time-Job.EquipmentDowntimeSeconds>12000) { Stop(TEXT("적하 작업 제한 시간 초과")); return; }
     switch(Job.Stage)
     {
     case 6:
         if(!Drive(Lane,Dt)) return;
+        if(Vehicle->bIncidentHandoverHold) {Job.EquipmentDowntimeSeconds+=Dt;return;}
         if(Booking.HandoverMask==0)
         {
             Job.Stage=3;
-            if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 컨테이너 야드 접근 경로 오류"));
+            if(!StartRoadRoute(Lane)) Stop(TEXT("적하 컨테이너 야드 접근 경로 오류"));
         }
         else
         {
@@ -97,6 +102,7 @@ void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
         break;
     case 3:
         if(!Drive(Lane,Dt)) return;
+        if(Vehicle->bIncidentHandoverHold) {Job.EquipmentDowntimeSeconds+=Dt;return;}
         if(!RMG->AssignCargo(Cargo,Cargo->GetActorLocation(),Vehicle->CargoPosition(),false,false,Vehicle,true))
         { Stop(TEXT("적하 RMG 인계 실패: ")+RMG->Fault); return; }
         Job.Stage=4;
@@ -109,14 +115,14 @@ void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
         Yard[Job.Slot].Occupied=false;
         Booking.HandoverMask|=1;
         Job.Stage=5; Job.ReturnSTS=Job.STS;
-        if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 AGV 안벽 복귀 경로 오류"));
+        if(!StartRoadRoute(Lane)) Stop(TEXT("적하 AGV 안벽 복귀 경로 오류"));
         break;
     case 5:
         if(!Drive(Lane,Dt)) return;
         RMGBusy[Job.RMG]=false;
         YardApproachOwners[YardApproachKey(Yard[Job.Slot])]=INDEX_NONE;
         Job.ReturnSTS=INDEX_NONE; Job.Stage=6;
-        if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 STS 최종 접근 경로 오류"));
+        if(!StartRoadRoute(Lane)) Stop(TEXT("적하 STS 최종 접근 경로 오류"));
         break;
     case 1:
     {
@@ -135,7 +141,7 @@ void APortSiteLogistics::AdvanceExport(int32 Lane,float Dt)
         Job.Actor=nullptr; Job.Stage=FSiteTransfer::ReturnToStandby;
         PORTSIM_SIM_LOG(LogTemp,Display,TEXT("SITE_LOADED: %s vessel=%d bay=%d row=%d tier=%d"),
             *Booking.ContainerName.ToString(),Booking.STS/3+1,Booking.ShipSlot.Bay,Booking.ShipSlot.Row,Booking.ShipSlot.Tier);
-        if(!PlanRoadRoute(Lane,false)) Stop(TEXT("적하 완료 AGV 대기소 복귀 경로 오류"));
+        if(!StartRoadRoute(Lane)) Stop(TEXT("적하 완료 AGV 대기소 복귀 경로 오류"));
         break;
     }
     case FSiteTransfer::ReturnToStandby:

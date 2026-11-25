@@ -42,10 +42,53 @@ bool APortSiteLogistics::ApplyDashboardCommand(const FJsonObject& C,FString& Err
     if(!C.TryGetStringField(TEXT("created_at"),Created) || !FDateTime::ParseIso8601(*Created,Sent) ||
         (FDateTime::UtcNow()-Sent).GetTotalSeconds()>10 || (Sent-FDateTime::UtcNow()).GetTotalSeconds()>2)
     { Error=TEXT("명령 유효 시간이 지났습니다."); return false; }
+    if(!Fault.IsEmpty()) { Error=TEXT("전체 안전 정지 원인을 먼저 해결하세요."); return false; }
+    if(C.TryGetStringField(TEXT("action"),Action))
+    {
+        C.TryGetStringField(TEXT("actor_id"),ActorID);
+        if(Action==TEXT("fail")&&Equipment.ContainsByPredicate([&](const auto& K){return K->GetName()==ActorID;}))
+            Action=TEXT("fail_sensor_repair");
+        if(PortIncident::RecoverySeconds(Action)>0)
+        {
+            auto Step=MakeShared<FJsonObject>();
+            Step->SetStringField(TEXT("actor_id"),ActorID);
+            Step->SetStringField(TEXT("action"),Action);
+            if(Action==TEXT("fail")&&C.HasField(TEXT("control_radius_m")))
+                Step->SetField(TEXT("control_radius_m"),C.Values.FindChecked(TEXT("control_radius_m")));
+            FJsonObject Scenario;
+            FString CommandID;
+            if(C.TryGetStringField(TEXT("id"),CommandID)) Scenario.SetStringField(TEXT("id"),CommandID);
+            Scenario.SetStringField(TEXT("action"),TEXT("scenario_start"));
+            Scenario.SetStringField(TEXT("name"),TEXT("장비 오류 · 자동 복구"));
+            Scenario.SetArrayField(TEXT("steps"),{MakeShared<FJsonValueObject>(Step)});
+            return ApplyIncidentCommand(Scenario,Error);
+        }
+        if(Action==TEXT("incident_clear"))
+        {
+            FString Kind;
+            C.TryGetStringField(TEXT("fault_action"),Kind);
+            if(PortIncident::RecoverySeconds(Kind)>0)
+            { Error=TEXT("이 고장은 자동 복구 일정에 따라 처리됩니다."); return false; }
+        }
+        if(Action==TEXT("repair"))
+        {
+            for(const auto& R:IncidentRuns) for(const auto& S:R.Steps)
+                if(S.Duration>0&&S.AppliedAt>=0&&S.RecoveredAt<0&&
+                    S.Command->GetStringField(TEXT("actor_id"))==ActorID)
+                { Error=TEXT("이 고장은 자동 복구 일정에 따라 처리됩니다."); return false; }
+        }
+    }
+    return ApplyDashboardAction(C,Error);
+}
+
+bool APortSiteLogistics::ApplyDashboardAction(const FJsonObject& C,FString& Error)
+{
+    FString ActorID,Action;
+    if(!Fault.IsEmpty()) { Error=TEXT("전체 안전 정지 원인을 먼저 해결하세요."); return false; }
     if(C.TryGetStringField(TEXT("action"),Action)&&
         (PortIncident::Extension(Action)||Action==TEXT("scenario_start")||Action==TEXT("scenario_cancel")||Action==TEXT("set_environment")||Action==TEXT("incident_clear")||
          Action==TEXT("fail_pickup")||Action==TEXT("fail_placement")||Action==TEXT("misdelivery")||
-         (Action==TEXT("fail_reboot")&&C.TryGetStringField(TEXT("actor_id"),ActorID)&&Vehicles.ContainsByPredicate([&](const auto& V){return V->GetName()==ActorID;}))))
+         (PortIncident::SensorFailure(Action)&&C.TryGetStringField(TEXT("actor_id"),ActorID)&&Vehicles.ContainsByPredicate([&](const auto& V){return V->GetName()==ActorID;}))))
     {
         if(!Fault.IsEmpty()){Error=TEXT("전체 안전 정지 원인을 먼저 해결하세요.");return false;}
         return ApplyIncidentCommand(C,Error);
@@ -66,14 +109,15 @@ bool APortSiteLogistics::ApplyDashboardCommand(const FJsonObject& C,FString& Err
         {
             if(Action==TEXT("fail_reboot") || Action==TEXT("fail_sensor_repair"))
             {
-                Crane->bAutoSensorRecovery=Action!=TEXT("fail_reboot");
+                Crane->bAutoSensorRecovery=true;
                 Crane->SensorRepairMethod=Action==TEXT("fail_reboot")?EPortSensorRepairMethod::Reboot:EPortSensorRepairMethod::Technician;
                 // Only the selected automation-camera fault leaves independent
                 // travel safety available. Generic required-sensor failure does not.
                 Crane->bAllowSensorFaultEvacuation=Action==TEXT("fail_reboot");
             }
             Crane->SetSensorFailure(true);
-            if(Action==TEXT("fail_reboot"))Crane->SensorRepairPhase=TEXT("failed");
+            if(PortIncident::SensorFailure(Action))
+                Crane->SensorRepairPhase=Action==TEXT("fail_reboot")?TEXT("rebooting"):TEXT("technician_repair");
         }
         // Also coordinate while paused, so the acknowledged assignment state
         // is visible without starting physical motion during a pause.
@@ -119,7 +163,11 @@ bool APortSiteLogistics::ApplyDashboardCommand(const FJsonObject& C,FString& Err
         if(Action!=TEXT("fail") && Action!=TEXT("repair")) { Error=TEXT("AGV에는 해당 크레인 고장을 적용할 수 없습니다."); return false; }
         if(Action==TEXT("repair")){V->bIncidentSensorFault=V->bIncidentDestinationMismatch=false;V->IncidentRebootRemaining=0;V->IncidentSensorPhase=TEXT("healthy");}
         const bool Failed=Action==TEXT("fail"),Changed=V->bDriveFault!=Failed;
-        V->SetDriveFailure(Failed);
+        double Clearance=1.;
+        if(Failed&&C.HasField(TEXT("control_radius_m"))&&
+            (!C.TryGetNumberField(TEXT("control_radius_m"),Clearance)||!FMath::IsFinite(Clearance)||Clearance<.5||Clearance>20))
+        {Error=TEXT("현장 통제 반경은 차량 외곽에서 0.5~20m입니다.");return false;}
+        SetAGVIncidentDriveFailure(Vehicles.IndexOfByKey(V),Failed,Clearance,Failed?PortIncident::RecoverySeconds(Action):0.);
         if(Changed) { if(Failed) ++EquipmentFaultEvents; RecordRecoveryEvent(Failed?TEXT("fault"):TEXT("repair"),V,V,V); }
         return true;
     }

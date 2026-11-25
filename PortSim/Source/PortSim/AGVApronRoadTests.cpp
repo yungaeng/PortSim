@@ -106,6 +106,61 @@ bool FApronManifestRoutesTest::RunTest(const FString& Parameters)
             FMath::Abs(Job.Route[0].X-Start.X)<1.f && FMath::Abs(Job.Route[0].Y-Start.Y)>100.f);
         TestTrue(TEXT("Operational route ends at the actual RMG handover"),Job.Route.Last().Equals(Slot.Handover,.1f));
     }
+    auto* Failed=World->SpawnActor<APortAGVActor>();
+    Failed->InitializeVehicle(109);
+    Failed->ResetVehicle(FVector(8169.389,-17596.286,0));
+    Site->Vehicles.Add(Failed);
+    Site->TrafficVehicles.Add(Failed);
+    Site->Jobs.AddDefaulted();
+    Site->STSOwners.Init(INDEX_NONE,9);
+    Site->SetAGVIncidentDriveFailure(1,true,2.,600.);
+    Site->BeginTrafficFrame();
+    for(int32 STS:{0,1,2,4})
+    {
+        const float QuayY=STS==4?-15200.f:-45200.f+STS*7000.f;
+        auto& Cargo=Site->Manifest[0];
+        Cargo.STS=STS;
+        Cargo.Transform=FTransform(FVector(-4900,QuayY,400));
+        auto& Slot=Site->Yard[0];
+        Slot.Block=STS==0?12:STS==1?18:STS==2?21:9;
+        Slot.Half=STS==1||STS==4?1:0;
+        Slot.Handover=FVector(RMGHandoverX(Slot.Half)*100.f,RMGHandoverY(Slot.Block)*100.f,0);
+        auto& Job=Site->Jobs[0];
+        Job=FSiteTransfer();
+        Job.Stage=3;Job.STS=STS;Job.Cargo=Job.Slot=0;
+        const FVector Start=Site->TransferQuay(Job)+FVector(.8,4.8,0);
+        Vehicle->ResetVehicle(Start);
+        Vehicle->SetActorRotation(FRotator(0,STS<2?-179.82:.18,0));
+        Site->BeginTrafficFrame();
+        const FString Label=FString::Printf(TEXT("STS-%02d"),STS+1);
+        TestTrue(*FString::Printf(TEXT("%s leaves the quay with AGV-109 still isolated"),*Label),
+            Site->StartRoadRoute(0)&&!Site->IncidentRouteWaiting.Contains(0)&&!Job.Route.IsEmpty());
+        if(Job.Route.IsEmpty()) continue;
+        TestTrue(*FString::Printf(TEXT("%s reaches the same booked RMG dock"),*Label),
+            Job.Route.Last().Equals(Slot.Handover,.1f));
+        TestEqual(*FString::Printf(TEXT("%s detour is attributed to AGV-109"),*Label),
+            Job.IncidentRoadCause,Failed->GetName());
+        FVector Previous=Start;
+        for(const FVector Point:Job.Route)
+        {
+            TestFalse(TEXT("The detour never crosses the stopped AGV-109 footprint"),Site->IncidentRoadBlocked(Previous,Point));
+            Previous=Point;
+        }
+        if(STS==0)
+        {
+            for(int32 Tick=0;Tick<2000&&Vehicle->GetActorLocation().X<SiteCmX(12500.f);++Tick)
+            {
+                Site->TrafficClock+=.05;
+                Site->IncidentClock+=.05;
+                Site->BeginTrafficFrame();
+                Site->Drive(0,.05f);
+            }
+            TestTrue(TEXT("STS-01 loaded AGV physically drives onto the parallel service road"),
+                Vehicle->GetActorLocation().X>=SiteCmX(12500.f));
+            TestTrue(TEXT("The failed AGV did not move during the detour"),Failed->bDriveFault&&
+                Failed->GetActorLocation().Equals(FVector(8169.389,-17596.286,0),.1f));
+        }
+    }
     World->DestroyWorld(false);
     return true;
 }

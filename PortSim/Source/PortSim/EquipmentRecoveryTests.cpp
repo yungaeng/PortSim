@@ -116,18 +116,52 @@ bool FEquipmentRecoveryTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Active supported pickup retains its AGV and trip identity"),Site->Jobs[0].STS==0 && Site->Jobs[0].TripID==17 && Site->Jobs[0].Actor.Get()==Box && Site->STSOwners[0]==0);
     TestTrue(TEXT("Old STS releases the job without lifting or teleporting its cargo"),!Failed->IsBusy() && Box->LocationOwner==ECargoOwner::Ship && Box->GetActorLocation().Equals(Before));
     TestTrue(TEXT("Approaching AGV keeps its assigned handover, not its current position"),Site->Equipment[2]->AssignedDestination().Equals(AssignedPad));
+    TestTrue(TEXT("Route replanning preserves the original fixed docking point"),
+        Site->TransferQuay(Site->Jobs[0]).Equals(Site->QuayPark(1)));
     TestTrue(TEXT("Fault releases the distant approach without losing the cargo slot"),Site->YardApproachOwners[0]==INDEX_NONE && Site->SlotAssigned[0] && Site->Jobs[0].bYardAdmissionSuspended);
     Site->YardApproachOwners[0]=1; Site->SimulationTime=8.5; Site->ManageEquipmentFailures();
     TestTrue(TEXT("Recovered pickup cannot steal an approach now owned by another AGV"),Site->Jobs[0].bYardAdmissionSuspended && Site->YardApproachOwners[0]==1);
     Site->YardApproachOwners[0]=INDEX_NONE; Site->SimulationTime=8.75; Site->ManageEquipmentFailures();
     TestTrue(TEXT("Recovered pickup restores its service booking without occupying the distant approach"),
         !Site->Jobs[0].bYardAdmissionSuspended && Site->Jobs[0].bYardAdvanceBooking && Site->YardApproachOwners[0]==INDEX_NONE);
+    Failed->RepairSensors(); Site->ManageEquipmentFailures();
     Site->Equipment[2]->CancelUnliftedJob(); Site->STSOwners[0]=INDEX_NONE; Site->STSOwners[1]=0;
-    Site->Jobs[0].STS=1; Site->Jobs[0].Stage=1; Site->Manifest[0].STS=1; Failed->RepairSensors();
+    Site->Jobs[0].STS=1; Site->Jobs[0].Stage=1; Site->Manifest[0].STS=1;
+    // A box under the failed gantry is unreachable from either adjacent crane.
+    // The same AGV may be approaching or already docked when the crane cancels.
+    const FVector BlockedSource(-1600,7000,569.5);
+    Box->SetActorLocation(BlockedSource);
+    Site->Manifest[0].Transform.SetLocation(BlockedSource);
+    V->SetActorLocation(FVector(2800,7000,0));
+    for(const int32 Stage:{1,6})
+    {
+        Site->Jobs[0].Stage=Stage;
+        TestTrue(TEXT("Pickup can be booked before the gantry fault"),
+            Failed->AssignCargo(Box,BlockedSource,V->CargoPosition(),false,false,V));
+        Failed->SetDestinationReady(Stage==1);
+        Failed->SetGantryFailure(true);
+        Site->ManageEquipmentFailures();
+        TestTrue(TEXT("Unreachable pickup waits without moving ship cargo"),
+            Site->NeedsSTSPickupRebind(0) && Site->Jobs[0].bEquipmentWaiting &&
+            Box->LocationOwner==ECargoOwner::Ship && Box->GetActorLocation().Equals(BlockedSource));
+        Failed->RepairEquipment();
+        TestEqual(TEXT("A repaired but idle crane cannot signal completed handover"),Site->JobHeldByFailure(0),Stage==1);
+        Site->ManageEquipmentFailures();
+        TestTrue(TEXT("Repaired crane resumes the same pickup and AGV"),
+            Site->Fault.IsEmpty() && !Site->NeedsSTSPickupRebind(0) && Site->Jobs[0].Stage==Stage &&
+            Site->Jobs[0].TripID==17 && Site->STSOwners[1]==0 &&
+            Failed->CargoActor.Get()==Box && Failed->GetHandoverVehicle()==V);
+        if(Stage==6)
+            TestTrue(TEXT("Approaching AGV can still perform the deck handshake"),Failed->SetAGVLandingTarget(V->CargoPosition()));
+        Failed->CancelUnliftedJob();
+        Site->SimulationTime+=1;
+    }
+    Site->Manifest[0].Transform.SetLocation(Before); Box->SetActorLocation(Before);
+    Site->Jobs[0].Stage=1;
     Failed->AssignCargo(Box,Before,V->CargoPosition(),false,false,V);
     Failed->bCarrying=true; for(bool& Lock:Failed->CornerLocked) Lock=true;
     Box->AttachToComponent(Failed->Spreader,FAttachmentTransformRules::KeepWorldTransform); Box->LocationOwner=ECargoOwner::STS;
-    const FTransform Held=Box->GetActorTransform(); Failed->SetSensorFailure(true); Site->SimulationTime=10; Site->ManageEquipmentFailures();
+    const FTransform Held=Box->GetActorTransform(); Failed->SetSensorFailure(true); Site->ManageEquipmentFailures();
     TestTrue(TEXT("Suspended cargo stays attached, and only its job is held"),Site->Fault.IsEmpty() && Site->JobHeldByFailure(0) && Box->GetAttachParentActor()==Failed && Box->GetActorTransform().Equals(Held));
     Site->Jobs[0].Stage=3;
     TestFalse(TEXT("Previous loaded trips from the same STS are not held by its later fault"),Site->JobHeldByFailure(0));
@@ -205,13 +239,17 @@ bool FEquipmentRecoveryTest::RunTest(const FString& Parameters)
     FString Error;
     Box->AttachToComponent(V->GetRootComponent(),FAttachmentTransformRules::KeepWorldTransform);
     const FTransform CargoPose=Box->GetActorTransform(),VehicleBefore=V->GetActorTransform(); V->SetPayload(12000);
-    TestTrue(TEXT("Web command applies AGV equipment isolation"),Site->ApplyDashboardCommand(*Command,Error) && V->bDriveFault && Site->Fault.IsEmpty());
+    TestTrue(TEXT("Web command schedules AGV equipment isolation"),Site->ApplyDashboardCommand(*Command,Error));
+    Site->AdvanceIncidentScenarios(.05f);
+    TestTrue(TEXT("The scheduled incident isolates the AGV"),V->bDriveFault && Site->Fault.IsEmpty());
     TestFalse(TEXT("Failed AGV cannot accept a new dispatch"),V->CanAcceptWork());
     V->SetFMSHold(false);
     TestFalse(TEXT("A controller cannot accidentally drive a failed vehicle"),V->MoveToPosition(V->GetActorLocation()+FVector(0,1000,0),1));
     TestTrue(TEXT("Failed AGV preserves vehicle and loaded cargo poses"),V->GetActorTransform().Equals(VehicleBefore) && Box->GetActorTransform().Equals(CargoPose) && Box->GetAttachParentActor()==V);
     Command->SetStringField(TEXT("action"),TEXT("repair"));
-    TestTrue(TEXT("Web repair resumes the same vehicle and attached load"),Site->ApplyDashboardCommand(*Command,Error) && !V->bDriveFault && Box->GetAttachParentActor()==V);
+    TestFalse(TEXT("Web repair cannot bypass the automatic schedule"),Site->ApplyDashboardCommand(*Command,Error));
+    Site->AdvanceIncidentScenarios(1800.1f);
+    TestTrue(TEXT("Scheduled repair preserves the attached load"),!V->bDriveFault && Box->GetAttachParentActor()==V);
     Command->SetStringField(TEXT("control_session"),TEXT("previous-session"));
     TestFalse(TEXT("Old browser sessions cannot mutate a reset engine"),Site->ApplyDashboardCommand(*Command,Error));
     Command->SetStringField(TEXT("control_session"),Site->DashboardControlSession);

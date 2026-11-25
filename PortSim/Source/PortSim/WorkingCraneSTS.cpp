@@ -33,6 +33,21 @@ void APortWorkingCrane::SetDestinationReady(bool Ready)
 
 APortAGVActor* APortWorkingCrane::GetHandoverVehicle() const { return HandoverAGV.Get(); }
 
+bool APortWorkingCrane::IsProductivelyWorking() const
+{
+    if(!bConfigured||!bJobActive||bPaused||!bEnabled||!Fault.IsEmpty()||bRailSafetyHold||bFaultEvacuating||IsWaitingForAGV())return false;
+    if(IncidentFaults.Contains(TEXT("fail_hoist"))||
+        (IncidentFaults.Contains(TEXT("agv_unavailable"))&&IncidentHandoverWindow()))return false;
+    if(Stage==2&&(bIncidentPickupFailure||!Observation.bTargetVisible))return false;
+    if(Stage==4&&!Observation.bCraneClear)return false;
+    if(Stage==5&&(!bDestinationReady||bIncidentPlacementFailure||(IncidentFaults.Contains(TEXT("fail_release"))&&IncidentReleaseWindow())||
+        IncidentFaults.Contains(TEXT("slot_occupied"))||IncidentFaults.Contains(TEXT("height_mismatch"))))return false;
+    if((AGVAtDestination()&&Stage>=5&&Stage<=7&&!bAGVHandoverComplete) ||
+        (!AGVAtDestination()&&Stage<=2&&IsValid(HandoverAGV)))
+        if(!Observation.bAGVAligned)return false;
+    return bSTS||Observation.bCraneClear;
+}
+
 void APortWorkingCrane::SetWindVelocity(FVector WorldVelocityMetersPerSecond)
 {
     WindVelocityMetersPerSecond=WorldVelocityMetersPerSecond.ContainsNaN()?FVector::ZeroVector:
@@ -160,6 +175,7 @@ bool APortWorkingCrane::AGVAligned() const
 {
     if(!bExternalJobs) return true;
     if(!IsValid(HandoverAGV)) return false;
+    if(HandoverAGV->bDriveFault||HandoverAGV->bIncidentSensorFault||HandoverAGV->bIncidentHandoverHold) return false;
     // Fog and heavy rain may hide the gantry-mounted long-range LiDAR even
     // after the AGV has completed its final docking move.  The docking node's
     // buried transponder/FMS fix is independent of optical visibility and is a

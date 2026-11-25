@@ -9,6 +9,7 @@ bool APortSupportVehicle::AdvanceRecoveryDrive(FVector Target,float Dt,bool Clea
     const FPortSurfaceState& Surface,const FPortFrictionSettings& Friction)
 {
     if(bFreePhysics || bPhysicsPaused || Dt<=0 || Dt>1.f/60.f+1.e-6f) return false;
+    TireSettings.AxleCount=3; // Preserve this vehicle's existing six contacts.
     TireSettings.Sanitize();
     const FVector P=GetActorLocation(),Forward=GetActorForwardVector(),Left=GetActorRightVector();
     const FVector Delta=Target-P;const double Distance=Delta.Size2D()*.01;

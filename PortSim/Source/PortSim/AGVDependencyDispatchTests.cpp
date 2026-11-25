@@ -30,6 +30,14 @@ bool FAGVDependencyDispatchTest::RunTest(const FString& Parameters)
     Requests[1].SourceReady=true; Requests[1].EligibleAt=2000; Requests[1].CriticalPath=8;
     TestEqual(TEXT("Capped priority lets older work beat a newly eligible long chain"),AGVDispatchPolicy::SelectExecutable(Requests),10);
     TestEqual(TEXT("Urgency is capped, not multiplied without bound"),AGVDispatchPolicy::ReadyPriority(0,100),960.);
+    Requests[1].CriticalPath=0;
+    Requests[1].DedicatedHazardYard=true;
+    TestEqual(TEXT("Dedicated yard work starts while general cargo can use other blocks"),AGVDispatchPolicy::SelectExecutable(Requests),11);
+    Requests[1].YardReady=false;
+    TestEqual(TEXT("Dedicated yard priority never bypasses admission"),AGVDispatchPolicy::SelectExecutable(Requests),10);
+    Requests[1].YardReady=true;
+    Requests[1].EligibleAt=4000;
+    TestEqual(TEXT("General cargo can age past the dedicated yard lead"),AGVDispatchPolicy::SelectExecutable(Requests),10);
     return true;
 }
 #endif

@@ -83,6 +83,9 @@ void APortSiteLogistics::AdvanceIncidentMeasurement(float Dt,bool Paused)
     if(Controller&&Controller->GetEnvironment()->InputRevision!=IncidentEnvironmentRevision)bIncidentReferenceClean=false;
     for(const auto& V:Vehicles)if(V->bDriveFault||V->bIncidentSensorFault||V->Emergency.Active||!V->IncidentFaults.IsEmpty())bIncidentReferenceClean=false;
     for(const auto& K:Equipment)if(!K->Fault.IsEmpty()||K->bSensorFault||K->bGantryFault||K->bIncidentPickupFailure||K->bIncidentPlacementFailure||!K->IncidentFaults.IsEmpty())bIncidentReferenceClean=false;
+    TMap<int32,const APortAGVActor*> VehicleByID;
+    if(!IncidentRuns.IsEmpty()&&!RoadBlockers.IsEmpty())
+        for(const auto& Vehicle:Vehicles) VehicleByID.Add(Vehicle->VehicleID,Vehicle.Get());
     for(auto& Run:IncidentRuns)for(auto& S:Run.Steps)
     {
         if(S.MeasureAppliedAt<0||(S.MeasureCompletedAt>=0&&S.MeasureClearedAt>=0)||Text(*S.Command,TEXT("action"))==TEXT("set_environment"))continue;
@@ -94,14 +97,14 @@ void APortSiteLogistics::AdvanceIncidentMeasurement(float Dt,bool Paused)
         if(V)
         {
             if(Action==TEXT("fail"))Active=V->bDriveFault;
-            if(Action==TEXT("fail_reboot"))Active=V->bIncidentSensorFault||V->IncidentSensorPhase!=TEXT("healthy");
+            if(PortIncident::SensorFailure(Action))Active=V->bIncidentSensorFault||V->IncidentSensorPhase!=TEXT("healthy");
             if(Action==TEXT("worker_enter"))Active=V->Emergency.Active;
             if(Action==TEXT("misdelivery"))Active=V->bIncidentDestinationMismatch;
         }
         if(K)
         {
             if(Action==TEXT("fail_gantry"))Active=K->bGantryFault;
-            if(Action==TEXT("fail_reboot"))Active=K->bSensorFault||K->IsSensorUnavailable();
+            if(PortIncident::SensorFailure(Action))Active=K->bSensorFault||K->IsSensorUnavailable();
             if(Action==TEXT("fail_pickup"))Active=K->bIncidentPickupFailure;
             if(Action==TEXT("fail_placement"))Active=K->bIncidentPlacementFailure;
         }
@@ -154,9 +157,13 @@ void APortSiteLogistics::AdvanceIncidentMeasurement(float Dt,bool Paused)
         for(int32 Pass=0;Pass<Vehicles.Num();++Pass)
         {
             const int32 Before=S.AffectedActors.Num();
-            for(const auto& B:RoadBlockers)if(Vehicles.IsValidIndex(B.Key)&&Vehicles.IsValidIndex(B.Value)&&
-                Vehicles[B.Key]->Sensors.bFMSHold&&S.AffectedActors.Contains(Vehicles[B.Value]->GetName()))
-                S.AffectedActors.Add(Vehicles[B.Key]->GetName());
+            for(const auto& B:RoadBlockers)
+            {
+                const auto* Waiting=VehicleByID.FindRef(B.Key);
+                const auto* Blocking=VehicleByID.FindRef(B.Value);
+                if(Waiting&&Blocking&&Waiting->Sensors.bFMSHold&&S.AffectedActors.Contains(Blocking->GetName()))
+                    S.AffectedActors.Add(Waiting->GetName());
+            }
             if(Before==S.AffectedActors.Num())break;
         }
         for(int32 I=0;I<Jobs.Num();++I)

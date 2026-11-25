@@ -15,7 +15,7 @@ while(Date.now()<deadline){
   reference=createIncidentBaseline(s);run=s.run_id;
   assert.equal(compareIncidentTiming(s,reference).status,'same_run');
   initialPositions=new Map(s.actors.filter(a=>a.type==='agv'&&a.id!==vehicle.id).map(a=>[a.id,JSON.stringify(a.position_m)]));
-  const response=await fetch(base+'/api/equipment-command',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({run_id:run,control_session:s.control_session,actor_id:'scenario',action:'scenario_start',name:'시간 측정: 적재 AGV FMS 단절과 복구',steps:[{actor_id:vehicle.id,action:'fms_disconnect',trigger:'loaded',duration:8,timeout:1800}]})});
+  const response=await fetch(base+'/api/equipment-command',{method:'POST',headers:{Origin:base,'Content-Type':'application/json'},body:JSON.stringify({run_id:run,control_session:s.control_session,actor_id:'scenario',action:'scenario_start',name:'시간 측정: 적재 AGV FMS 단절과 복구',steps:[{actor_id:vehicle.id,action:'fms_disconnect',trigger:'loaded'}]})});
   const result=await response.json();if(!response.ok)throw Error(result.message);scenario=result.id;console.log('QUEUED',scenario,vehicle.id);
  }
  if(s.run_id!==run)throw Error('Live run changed');
@@ -24,7 +24,8 @@ while(Date.now()<deadline){
  if(step&&['rejected','timeout','not_exercised'].includes(step.state))throw Error(JSON.stringify(step));
  if(step?.state==='verified'&&step.work_completed_at>=0){
   assert.equal(step.response_observed,true);assert.equal(otherMovement,true);
-  assert(step.measurement_applied_at>=0&&step.fault_cleared_at>=step.measurement_applied_at+7.9);
+  assert.equal(step.recovery_seconds,60);
+  assert(step.measurement_applied_at>=0&&step.fault_cleared_at>=step.measurement_applied_at+59.9);
   assert(step.work_resumed_at>=step.measurement_applied_at&&step.work_completed_at>=step.work_resumed_at);
   assert(step.affected_actors.length>=1&&step.affected_cargo.length>=1);
   assert.equal(s.incident_timing.comparison_key,reference.comparison_key);

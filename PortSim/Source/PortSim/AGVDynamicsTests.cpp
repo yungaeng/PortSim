@@ -18,10 +18,17 @@ bool FAGVDynamicsTest::RunTest(const FString& Parameters)
 {
     FAGVDynamicsSettings C; FAGVDynamicsInput I; I.PayloadKg=30000;
     FAGVDynamicsState D; D.RefreshLoads(C,I);
-    TestTrue(TEXT("Six wheel normal loads conserve total weight"),FMath::IsNearlyEqual(D.LeftLoadN+D.RightLoadN,70000*PortFriction::Gravity,.001));
+    TestEqual(TEXT("AGV has exactly four active contacts"),D.WheelCount,4);
+    const double Weight=70000*PortFriction::Gravity;
+    TestTrue(TEXT("Four wheel normal loads conserve total weight"),FMath::IsNearlyEqual(D.LeftLoadN+D.RightLoadN,Weight,.001));
+    TestTrue(TEXT("Both axles carry half of a centred load"),FMath::IsNearlyEqual(D.FrontLoadN,Weight*.5,.001) && FMath::IsNearlyEqual(D.RearLoadN,Weight*.5,.001));
+    TestTrue(TEXT("Each centred wheel carries a quarter; no phantom contact load"),FMath::IsNearlyEqual(D.Wheels[0].NormalN,Weight*.25,.001) && D.Wheels[4].NormalN==0 && D.Wheels[5].NormalN==0);
     TestTrue(TEXT("Combined CoG includes empty chassis and cargo height above road"),FMath::IsNearlyEqual(D.CombinedCoGM.Z,(40000+30000*3.495)/70000.,1.e-6));
     I.CargoCoGM=FVector(1,.8,4.5); D.RefreshLoads(C,I);
     TestTrue(TEXT("Forward and left CoG raise corresponding loads"),D.LeftLoadN>D.RightLoadN && D.FrontLoadN>D.RearLoadN);
+    TestTrue(TEXT("Two axle reactions balance the longitudinal CoG moment"),FMath::IsNearlyEqual((D.FrontLoadN-D.RearLoadN)*C.WheelbaseM*.5,Weight*D.CombinedCoGM.X,.001));
+    auto RSSettings=C; RSSettings.AxleCount=3; FAGVDynamicsState RS; RS.RefreshLoads(RSSettings,I);
+    TestTrue(TEXT("Shared reach-stacker solver retains six contacts"),RS.WheelCount==6 && RS.Wheels[2].NormalN>0 && RS.Wheels[5].NormalN>0);
     I.CurvaturePerM=.125;
     D.RefreshLoads(C,I); const double High=D.StabilityLimitMps; I.CargoCoGM=FVector(0,0,3.495); D.RefreshLoads(C,I);
     TestTrue(TEXT("High eccentric CoG lowers allowable corner speed"),High<D.StabilityLimitMps);
@@ -64,7 +71,22 @@ bool FAGVDynamicsTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("The live actor actually moves from tire forces"),A->GetActorLocation().Y>10 && FMath::Abs(A->GetActorLocation().X)<.01);
     A->AdvanceDynamics(3,.1,.1);
     TestTrue(TEXT("Steering observation comes from actual front contacts, not a bicycle command"),
-        FMath::IsNearlyEqual(double(A->Sensors.SteeringAngleDegrees),FMath::RadiansToDegrees((A->Dynamics.Wheels[4].Steer+A->Dynamics.Wheels[5].Steer)*.5),1.e-4));
+        FMath::IsNearlyEqual(double(A->Sensors.SteeringAngleDegrees),FMath::RadiansToDegrees((A->Dynamics.Wheels[2].Steer+A->Dynamics.Wheels[3].Steer)*.5),1.e-4));
+    const auto Snapshot=A->DynamicsSnapshot();
+    TestEqual(TEXT("Telemetry exposes four contacts"),Snapshot->GetArrayField(TEXT("wheels")).Num(),4);
+    TestEqual(TEXT("Third telemetry entry is front left, not a middle axle"),Snapshot->GetArrayField(TEXT("wheels"))[2]->AsObject()->GetStringField(TEXT("name")),FString(TEXT("front_left")));
+    TArray<UStaticMeshComponent*> WheelParts; A->GetComponents<UStaticMeshComponent>(WheelParts);
+    int32 VisibleWheelParts=0;
+    for(auto* Part:WheelParts) if(Part->GetName().StartsWith(TEXT("Bogie_AGV")) || Part->GetName().StartsWith(TEXT("WheelHub_AGV")))
+    {
+        ++VisibleWheelParts;
+        TestTrue(TEXT("Only front/rear wheel pivots exist"),FMath::IsNearlyEqual(FMath::Abs(Part->GetRelativeLocation().Y),480.,.001));
+        const int32 Side=Part->GetRelativeLocation().X<0?0:1,Axle=Part->GetRelativeLocation().Y<0?0:1;
+        const auto& W=A->Dynamics.Wheels[Axle*2+Side];
+        const FQuat Expected=FQuat(FVector::UpVector,W.Steer)*FQuat(FVector::ForwardVector,W.Angle)*FRotator(90,0,0).Quaternion();
+        TestTrue(TEXT("Each tire/hub follows its own contact steering and spin"),Part->GetRelativeRotation().Quaternion().Equals(Expected,1.e-5));
+    }
+    TestEqual(TEXT("Four tires and four matching hubs"),VisibleWheelParts,8);
     auto* Cargo=World->SpawnActor<APortContainerActor>(); Cargo->GetBody()->SetSimulatePhysics(false);
     Cargo->AttachToActor(A,FAttachmentTransformRules::KeepRelativeTransform); Cargo->SetActorRelativeLocation(FVector(0,400,349.5));
     A->SetActorLocationAndRotation(FVector::ZeroVector,FRotator::ZeroRotator);
@@ -145,7 +167,7 @@ bool FAGVBenchTest::RunTest(const FString& Parameters)
             BrakeDistances[TEXT("dry_brake")]<BrakeDistances[TEXT("wet_brake")] && BrakeDistances[TEXT("wet_brake")]<BrakeDistances[TEXT("ice_brake")]);
     auto Report=MakeShared<FJsonObject>(); Report->SetNumberField(TEXT("schema_version"),1);
     Report->SetStringField(TEXT("generated_at"),FDateTime::UtcNow().ToIso8601()); Report->SetBoolField(TEXT("valid"),AllValid && !HasAnyErrors());
-    Report->SetStringField(TEXT("model"),TEXT("six_contact_planar_tire_roll_pitch")); Report->SetArrayField(TEXT("cases"),Results);
+    Report->SetStringField(TEXT("model"),TEXT("four_contact_planar_tire_roll_pitch")); Report->SetArrayField(TEXT("cases"),Results);
     FString Json; FJsonSerializer::Serialize(Report,TJsonWriterFactory<>::Create(&Json));
     const FString Directory=FPaths::ProjectSavedDir()/TEXT("Tests"); IFileManager::Get().MakeDirectory(*Directory,true);
     TestTrue(TEXT("Bench report saved"),FFileHelper::SaveStringToFile(Json,*(Directory/TEXT("AGVDynamics_Report.json")),FFileHelper::EEncodingOptions::ForceUTF8WithoutBOM));

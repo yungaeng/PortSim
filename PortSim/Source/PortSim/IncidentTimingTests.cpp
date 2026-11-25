@@ -38,7 +38,7 @@ bool FIncidentTimingTest::RunTest(const FString& Parameters)
     Start.SetArrayField(TEXT("steps"),{MakeShared<FJsonValueObject>(Step)});FString Error;
     TestTrue(TEXT("Apply live incident"),Site->ApplyIncidentCommand(Start,Error));Site->AdvanceIncidentScenarios(.05);
     auto& S=Site->IncidentRuns[0].Steps[0];TestEqual(TEXT("Actual injection, not requested delay, starts measurement"),S.MeasureAppliedAt,0.);
-    Follower->SetFMSHold(true);Site->RoadBlockers.Add(1,0);Site->Jobs[1].Stage=3;
+    Follower->SetFMSHold(true);Site->RoadBlockers.Add(Follower->VehicleID,V->VehicleID);Site->Jobs[1].Stage=3;
     Site->AdvanceIncidentMeasurement(5,false);
     TestTrue(TEXT("Observed follower dependency is included"),S.AffectedActors.Contains(Follower->GetName()));
     TestFalse(TEXT("Faulted run cannot become normal reference"),Site->CaptureIncidentTiming()->GetBoolField(TEXT("reference_eligible")));

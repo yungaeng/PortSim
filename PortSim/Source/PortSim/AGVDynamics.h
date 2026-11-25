@@ -9,6 +9,8 @@ USTRUCT(BlueprintType)
 struct PORTSIM_API FAGVDynamicsSettings
 {
     GENERATED_BODY()
+    // AGV: two axles. The shared reach-stacker solver explicitly selects three.
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Assumptions",meta=(ClampMin="2",ClampMax="3")) int32 AxleCount=2;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Assumptions") float WheelRadiusM=.7f;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Assumptions") float WheelInertiaKgM2=400;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Assumptions") float TrackM=3.4f;
@@ -53,7 +55,10 @@ struct PORTSIM_API FAGVDynamicsState
     double Heading=0,U=0,V=0,YawRate=0,Ax=0,Ay=0;
     double Roll=0,RollRate=0,Pitch=0,PitchRate=0,TotalMassKg=40000;
     FVector CombinedCoGM=FVector(0,0,1),IMUSpecificForceMps2=FVector(0,0,9.80665);
-    FAGVWheelDynamics Wheels[6]; // rear / middle / front, left then right
+    // Fixed capacity avoids allocation in the 240 Hz solver. Only WheelCount
+    // entries are contacts; unused entries carry no load, force or torque.
+    FAGVWheelDynamics Wheels[6]; // rear -> front, left then right
+    int32 WheelCount=4;
     double LeftLoadN=0,RightLoadN=0,FrontLoadN=0,RearLoadN=0,LoadTransferRatio=0,MinimumRawLoadN=0;
     double EffectiveRadiusM=0,WheelDistanceM=0,GroundDistanceM=0,SideSlipDistanceM=0;
     double BrakingElapsed=0,BrakingDistanceM=0,LastBrakingSeconds=0,LastBrakingDistanceM=0;

@@ -16,6 +16,7 @@ const files = new Map([
   ['/style.css', ['style.css', 'text/css']],
   ['/app.mjs', ['app.mjs', 'text/javascript']],
   ['/metrics.mjs', ['metrics.mjs', 'text/javascript']],
+  ['/equipment-performance.mjs', ['equipment-performance.mjs', 'text/javascript']],
   ['/friction-view.mjs', ['friction-view.mjs', 'text/javascript']],
   ['/rs-physics-view.mjs', ['rs-physics-view.mjs', 'text/javascript']],
   ['/agv-physics-view.mjs', ['agv-physics-view.mjs', 'text/javascript']],

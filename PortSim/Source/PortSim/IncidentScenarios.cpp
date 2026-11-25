@@ -6,7 +6,6 @@
 #include "QuayCrane.h"
 #include "Dom/JsonObject.h"
 #include "Components/StaticMeshComponent.h"
-#include "Misc/Paths.h"
 
 namespace
 {
@@ -27,19 +26,20 @@ bool APortSiteLogistics::ValidateIncidentStep(const FJsonObject& C,FString& Erro
     for(const auto& V:Vehicles)if(V->GetName()==ID)AGV=true;
     for(const auto& V:Equipment)if(V->GetName()==ID){Crane=true;RMG=!V->bSTS;}
     const bool Weather=ID==TEXT("environment")&&Action==TEXT("set_environment");
-    const bool Allowed=Weather || (AGV&&(PortIncident::AGVExtension(Action)||Action==TEXT("fail")||Action==TEXT("fail_reboot")||Action==TEXT("misdelivery")||Action==TEXT("worker_enter"))) ||
-        (Crane&&(PortIncident::CraneExtension(Action,RMG)||Action==TEXT("fail_gantry")||Action==TEXT("fail_pickup")||Action==TEXT("fail_reboot")||(RMG&&Action==TEXT("fail_placement"))));
+    const bool Allowed=Weather || (AGV&&(PortIncident::AGVExtension(Action)||Action==TEXT("fail")||PortIncident::SensorFailure(Action)||Action==TEXT("misdelivery")||Action==TEXT("worker_enter"))) ||
+        (Crane&&(PortIncident::CraneExtension(Action,RMG)||Action==TEXT("fail_gantry")||Action==TEXT("fail_pickup")||PortIncident::SensorFailure(Action)||(RMG&&Action==TEXT("fail_placement"))));
     const bool TriggerOK=Trigger==TEXT("immediate") || (AGV&&(Trigger==TEXT("moving")||Trigger==TEXT("loaded"))) ||
         (Crane&&(Trigger==TEXT("pickup")||Trigger==TEXT("placing")||Trigger==TEXT("release")||Trigger==TEXT("handover")));
-    if(!Allowed||!TriggerOK||!InRange(C,TEXT("delay"),0,0,3600)||!InRange(C,TEXT("duration"),0,0,3600)||
-        !InRange(C,TEXT("timeout"),1800,30,14400))
+    if(!Allowed||!TriggerOK||!InRange(C,TEXT("delay"),0,0,3600))
     {Error=TEXT("장비·발생 조건·시간 범위를 확인하세요.");return false;}
     if(Action==TEXT("worker_enter")&&!InRange(C,TEXT("worker_distance_m"),20,5,80))
     {Error=TEXT("작업자 거리는 5~80m입니다.");return false;}
+    if(AGV&&Action==TEXT("fail")&&!InRange(C,TEXT("control_radius_m"),1,.5,20))
+    {Error=TEXT("현장 통제 반경은 0.5~20m입니다.");return false;}
     if(Weather)
     {
         const TSharedPtr<FJsonObject>* W=nullptr;
-        if(!C.TryGetObjectField(TEXT("weather"),W)||(*W)->Values.IsEmpty()||Number(C,TEXT("duration"))!=0)
+        if(!C.TryGetObjectField(TEXT("weather"),W)||(*W)->Values.IsEmpty())
         {Error=TEXT("날씨 입력과 별도 해제 단계를 지정하세요.");return false;}
         for(const auto& P:(*W)->Values)
         {
@@ -60,11 +60,11 @@ bool APortSiteLogistics::ApplyIncidentCommand(const FJsonObject& C,FString& Erro
         if(PortIncident::Extension(Kind))return ApplyExtendedIncident(C,Error,true);
         for(const auto& V:Vehicles)if(V->GetName()==ID)
         {
-            if(Kind==TEXT("fail"))V->SetDriveFailure(false);
-            else if(Kind==TEXT("fail_reboot"))
+            if(Kind==TEXT("fail"))SetAGVIncidentDriveFailure(Vehicles.IndexOfByKey(V),false,1,0);
+            else if(PortIncident::SensorFailure(Kind))
             {
-                if(!V->bIncidentSensorFault||V->IncidentSensorPhase==TEXT("rebooting"))return true;
-                V->IncidentSensorPhase=TEXT("rebooting");V->IncidentRebootRemaining=60;
+                if(!V->bIncidentSensorFault||V->IncidentRebootRemaining>=0)return true;
+                V->IncidentSensorPhase=TEXT("rebooting");V->IncidentRebootRemaining=PortIncident::SensorRestartSeconds;
                 RecordRecoveryEvent(TEXT("sensor_reboot_started"),V,V,V);return true;
             }
             else if(Kind==TEXT("misdelivery"))V->bIncidentDestinationMismatch=false;
@@ -76,14 +76,20 @@ bool APortSiteLogistics::ApplyIncidentCommand(const FJsonObject& C,FString& Erro
         for(const auto& K:Equipment)if(K->GetName()==ID)
         {
             if(!K->Fault.IsEmpty()&&!K->IsEquipmentUnavailable()){Error=TEXT("안전 오류는 상황 해제로 지울 수 없습니다.");return false;}
-            if(Kind==TEXT("fail_pickup")){K->bIncidentPickupFailure=false;if(K->IsPickupUnavailable())K->RepairEquipment();}
+            if(Kind==TEXT("fail_pickup"))
+            {
+                K->bIncidentPickupFailure=false;
+                K->RepairPickupFailure();
+                if(K->IsPickupUnavailable()){Error=TEXT("스프레더가 안전한 상태가 될 때까지 기다립니다.");return false;}
+            }
             else if(Kind==TEXT("fail_placement"))K->bIncidentPlacementFailure=false;
             else if(Kind==TEXT("fail_gantry"))K->SetGantryFailure(false);
-            else if(Kind==TEXT("fail_reboot"))
+            else if(PortIncident::SensorFailure(Kind))
             {
                 if(!K->bSensorFault||K->bAutoSensorRecovery)return true;
-                K->SensorRepairMethod=EPortSensorRepairMethod::Reboot;K->SensorRepairElapsed=0;
-                K->SensorRepairPhase=TEXT("rebooting");K->bAutoSensorRecovery=true;
+                K->SensorRepairMethod=Kind==TEXT("fail_reboot")?EPortSensorRepairMethod::Reboot:EPortSensorRepairMethod::Technician;
+                K->SensorRepairElapsed=0;K->SensorRepairPhase=Kind==TEXT("fail_reboot")?TEXT("rebooting"):TEXT("technician_repair");
+                K->bAutoSensorRecovery=true;
                 RecordRecoveryEvent(TEXT("sensor_reboot_started"),K,K,K);return true;
             }
             else {Error=TEXT("지원하지 않는 복구 대상입니다.");return false;}
@@ -103,17 +109,30 @@ bool APortSiteLogistics::ApplyIncidentCommand(const FJsonObject& C,FString& Erro
         {
             const TSharedPtr<FJsonObject>* Step=nullptr;
             if(!Value->TryGetObject(Step)||!ValidateIncidentStep(**Step,Error))return false;
-            const FString Key=String(**Step,TEXT("actor_id"))+TEXT("|")+String(**Step,TEXT("action"));
-            if(String(**Step,TEXT("action"))!=TEXT("set_environment"))
+            const FString TargetID=String(**Step,TEXT("actor_id")),Kind=String(**Step,TEXT("action"));
+            const FString Key=TargetID+TEXT("|")+(PortIncident::SensorFailure(Kind)?TEXT("sensor"):PortIncident::ControllerFailure(Kind)?TEXT("controller"):Kind);
+            if(Kind!=TEXT("set_environment"))
             {
                 if(Keys.Contains(Key)){Error=TEXT("동일 장비의 같은 오류가 중복됩니다.");return false;}
                 for(const auto& Existing:IncidentRuns)for(const auto& S:Existing.Steps)
-                    if(!Terminal(S.State)&&String(*S.Command,TEXT("actor_id"))+TEXT("|")+String(*S.Command,TEXT("action"))==Key)
+                {
+                    const FString Other=String(*S.Command,TEXT("action"));
+                    const bool Same=Other==Kind||(PortIncident::SensorFailure(Kind)&&PortIncident::SensorFailure(Other))||
+                        (PortIncident::ControllerFailure(Kind)&&PortIncident::ControllerFailure(Other));
+                    if(!Terminal(S.State)&&Same&&String(*S.Command,TEXT("actor_id"))==TargetID)
                     {Error=TEXT("해당 장비의 같은 상황이 이미 실행 중입니다.");return false;}
+                }
                 Keys.Add(Key);
             }
             FPortIncidentStep S;S.Command=MakeShared<FJsonObject>(**Step);S.Delay=Number(**Step,TEXT("delay"));
-            S.Duration=Number(**Step,TEXT("duration"));S.Timeout=Number(**Step,TEXT("timeout"),1800);Run.Steps.Add(MoveTemp(S));
+            S.Duration=PortIncident::RecoverySeconds(Kind);
+            if(PortIncident::SensorFailure(Kind))
+                for(const auto& K:Equipment)if(K->GetName()==TargetID)
+                    S.Duration=FMath::Max(0.,Kind==TEXT("fail_reboot")?K->SensorRebootSeconds:K->SensorTechnicianRepairSeconds)+
+                        FMath::Max(0.,K->SensorSelfCheckSeconds);
+            S.Command->RemoveField(TEXT("duration"));
+            S.Command->RemoveField(TEXT("timeout"));
+            Run.Steps.Add(MoveTemp(S));
         }
         IncidentRuns.Add(MoveTemp(Run));bIncidentInputUsed=true;return true;
     }
@@ -143,8 +162,15 @@ bool APortSiteLogistics::ApplyIncidentCommand(const FJsonObject& C,FString& Erro
     }
     for(const auto& V:Vehicles)if(V->GetName()==ID)
     {
-        if(Action==TEXT("fail_reboot"))
-        {if(V->bIncidentSensorFault){Error=TEXT("이미 센서 오류가 발생했습니다.");return false;}V->bIncidentSensorFault=true;V->IncidentRebootRemaining=-1;V->IncidentSensorPhase=TEXT("failed");V->Sensors.bTransponderLocked=false;V->SetFMSHold(true);}
+        if(PortIncident::SensorFailure(Action))
+        {
+            if(V->bIncidentSensorFault){Error=TEXT("이미 센서 오류가 발생했습니다.");return false;}
+            V->bIncidentSensorFault=true;
+            V->IncidentRebootRemaining=PortIncident::RecoverySeconds(Action);
+            V->IncidentSensorPhase=Action==TEXT("fail_reboot")?TEXT("rebooting"):TEXT("technician_repair");
+            V->Sensors.bTransponderLocked=false;
+            V->SetFMSHold(true);
+        }
         else if(Action==TEXT("misdelivery"))
         {
             const int32 Lane=Vehicles.IndexOfByKey(V);
@@ -174,7 +200,7 @@ void APortSiteLogistics::AdvanceIncidentScenarios(float Dt)
     if(!Fault.IsEmpty()||Dt<=0)return;
     IncidentClock+=Dt; // Weather hold freezes machines, not weather/recovery scheduling.
     for(const auto& V:Vehicles)V->AdvanceNavigationIncidents(Dt);
-    for(const auto& V:Vehicles)if(V->bIncidentSensorFault&&V->IncidentSensorPhase==TEXT("rebooting"))
+    for(const auto& V:Vehicles)if(V->bIncidentSensorFault&&V->IncidentRebootRemaining>=0)
     {
         V->IncidentRebootRemaining=FMath::Max(0.,V->IncidentRebootRemaining-Dt);
         if(V->IncidentRebootRemaining==0)
@@ -193,8 +219,9 @@ void APortSiteLogistics::AdvanceIncidentScenarios(float Dt)
         APortAGVActor* V=nullptr;APortWorkingCrane* K=nullptr;
         for(const auto& A:Vehicles)if(A->GetName()==ID)V=A;
         for(const auto& A:Equipment)if(A->GetName()==ID)K=A;
-        if(IncidentClock-R.StartedAt>S.Delay+S.Timeout)
-        {S.State=TEXT("timeout");S.Message=TEXT("발생·복구·작업 완료 확인 시간 초과. 현재 고장·하중은 유지합니다.");continue;}
+        if((S.State==TEXT("pending")&&IncidentClock-R.StartedAt>S.Delay+S.Timeout)||
+            (S.State==TEXT("awaiting_completion")&&IncidentClock-S.RecoveredAt>S.Timeout))
+        {S.State=TEXT("timeout");S.Message=TEXT("발생 조건 또는 복구 후 작업 완료 확인 시간 초과");continue;}
         if(S.State==TEXT("pending"))
         {
             if(IncidentClock-R.StartedAt<S.Delay)continue;
@@ -206,27 +233,33 @@ void APortSiteLogistics::AdvanceIncidentScenarios(float Dt)
                 (T==TEXT("release")&&K&&K->IncidentReleaseWindow())||
                 (T==TEXT("handover")&&K&&K->IncidentHandoverWindow());
             if(!Ready)continue;
-            const bool Existing=(V&&((Action==TEXT("fail")&&V->bDriveFault)||(Action==TEXT("fail_reboot")&&V->bIncidentSensorFault)||
+            const bool Existing=(V&&((Action==TEXT("fail")&&V->bDriveFault)||(PortIncident::SensorFailure(Action)&&V->bIncidentSensorFault)||
                 (Action==TEXT("misdelivery")&&V->bIncidentDestinationMismatch)||(Action==TEXT("worker_enter")&&V->Emergency.Active)))||
-                (K&&((Action==TEXT("fail_gantry")&&K->bGantryFault)||(Action==TEXT("fail_reboot")&&K->bSensorFault)||
+                (K&&((Action==TEXT("fail_gantry")&&K->bGantryFault)||(PortIncident::SensorFailure(Action)&&K->bSensorFault)||
                 (Action==TEXT("fail_pickup")&&K->bIncidentPickupFailure)||(Action==TEXT("fail_placement")&&K->bIncidentPlacementFailure)))||
                 (V&&V->IncidentFaults.Contains(Action))||(K&&K->IncidentFaults.Contains(Action));
             if(Existing){S.State=TEXT("rejected");S.Message=TEXT("이미 존재하던 같은 고장은 이 시나리오의 복구 대상으로 인계하지 않습니다.");continue;}
             // Keep the affected cargo even if isolation immediately reassigns its job.
             S.CompletedBefore=V?V->CompletedJobs:K?K->CompletedJobs:0;
             if(K)S.Cargo=K->CargoActor;
-            if(V){const auto& J=Jobs[Vehicles.IndexOfByKey(V)];S.Cargo=J.Actor;}
+            if(V)
+            {
+                const auto& J=Jobs[Vehicles.IndexOfByKey(V)];
+                S.Cargo=J.Actor;
+                if(!S.Cargo.IsValid() && (J.Stage==7 || J.Stage==8) && PreparedCargo.IsValidIndex(J.STS) &&
+                    Manifest.IsValidIndex(PreparedCargo[J.STS]))
+                    S.Cargo=Manifest[PreparedCargo[J.STS]].Actor;
+            }
             S.ExpectShip=S.Cargo.IsValid()&&S.Cargo->LocationOwner==ECargoOwner::Yard;
             if(V&&Jobs[Vehicles.IndexOfByKey(V)].ExportIndex!=INDEX_NONE)S.ExpectShip=true;
-            FJsonObject Command=*S.Command;Command.SetStringField(TEXT("run_id"),FPaths::GetCleanFilename(ReportBase));
-            Command.SetStringField(TEXT("control_session"),DashboardControlSession);Command.SetStringField(TEXT("created_at"),FDateTime::UtcNow().ToIso8601());
+            FJsonObject Command=*S.Command;
             // Isolation may reassign work inside ApplyDashboardCommand itself.
             // Register provenance before it runs, and discard it on rejection.
             S.MeasureAppliedAt=IncidentMeasureClock;
             if(ID!=TEXT("environment"))S.AffectedActors.Add(ID);
             if(S.Cargo.IsValid())S.AffectedCargo.Add(S.Cargo->GetName());
             FString Error;
-            if(!ApplyDashboardCommand(Command,Error))
+            if(!ApplyDashboardAction(Command,Error))
             {
                 S.MeasureAppliedAt=-1;S.AffectedActors.Reset();S.AffectedCargo.Reset();
                 // A conditional worker event waits for a safely reserved straight,
@@ -243,32 +276,37 @@ void APortSiteLogistics::AdvanceIncidentScenarios(float Dt)
         if(PortIncident::Extension(Action)){Active=ExtendedIncidentActive(Action,V,K);Observed=ExtendedIncidentObserved(Action,V,K);}
         if(V)
         {
-            if(Action==TEXT("fail")){Active=V->bDriveFault;Observed=Active&&V->Speed<=.1f;}
-            if(Action==TEXT("fail_reboot")){Active=V->bIncidentSensorFault||V->IncidentSensorPhase!=TEXT("healthy");Observed=V->bIncidentSensorFault&&!V->Sensors.bTransponderLocked;}
+            if(Action==TEXT("fail"))
+            {
+                Active=V->bDriveFault||IncidentRoadClosures.Contains(TEXT("drive:")+V->GetName());
+                Observed=Active&&V->Speed<=.1f;
+            }
+            if(PortIncident::SensorFailure(Action)){Active=V->bIncidentSensorFault||V->IncidentSensorPhase!=TEXT("healthy");Observed=V->bIncidentSensorFault&&!V->Sensors.bTransponderLocked;}
             if(Action==TEXT("worker_enter")){Active=V->Emergency.Active;Observed=Active&&V->Emergency.Stopped;}
             if(Action==TEXT("misdelivery")){Active=V->bIncidentDestinationMismatch;Observed=Active&&V->Sensors.bFMSHold&&V->Speed<=.1f&&Jobs[Vehicles.IndexOfByKey(V)].Stage==3;}
         }
         if(K)
         {
-            if(Action==TEXT("fail_pickup")){Active=K->bIncidentPickupFailure;Observed=Active&&K->Stage==2&&K->IsBusy();}
+            if(Action==TEXT("fail_pickup")){Active=K->bIncidentPickupFailure||K->IsPickupUnavailable();Observed=Active&&K->Stage==2&&K->IsBusy();}
             if(Action==TEXT("fail_placement")){Active=K->bIncidentPlacementFailure;Observed=Active&&K->Stage==5&&K->RetainsLoad();}
             if(Action==TEXT("fail_gantry")){Active=K->bGantryFault;Observed=Active&&K->IsEquipmentUnavailable();}
-            if(Action==TEXT("fail_reboot")){Active=K->bSensorFault;Observed=Active&&K->IsSensorUnavailable();}
+            if(PortIncident::SensorFailure(Action)){Active=K->bSensorFault;Observed=Active&&!K->Observation.bValid;}
         }
         S.Observed|=Observed;
+        if(Active&&S.State!=TEXT("recovering")&&PortIncident::SensorFailure(Action))
+            S.State=TEXT("recovering");
         if(Active&&S.State!=TEXT("recovering")&&S.Duration>0&&IncidentClock-S.AppliedAt>=S.Duration)
         {
-            FJsonObject Recovery;Recovery.SetStringField(TEXT("run_id"),FPaths::GetCleanFilename(ReportBase));
-            Recovery.SetStringField(TEXT("control_session"),DashboardControlSession);Recovery.SetStringField(TEXT("created_at"),FDateTime::UtcNow().ToIso8601());
+            FJsonObject Recovery;
             Recovery.SetStringField(TEXT("actor_id"),ID);Recovery.SetStringField(TEXT("action"),TEXT("incident_clear"));Recovery.SetStringField(TEXT("fault_action"),Action);
-            FString Error;if(!ApplyDashboardCommand(Recovery,Error))S.Message=Error;
+            FString Error;if(!ApplyDashboardAction(Recovery,Error))S.Message=Error;
             else {S.State=TEXT("recovering");S.Message=TEXT("복구 요청 접수 · 재부팅·재인식·실제 복구 확인 중");}
             continue; // Verify resulting state at the next real scene boundary.
         }
         if(!Active)
         {
-            if(!S.Observed){S.State=TEXT("not_exercised");S.Message=TEXT("복구됐지만 실제 오류 대응을 관측하지 못함 · 검증 미통과");continue;}
             if(S.RecoveredAt<0)S.RecoveredAt=IncidentClock;
+            if(!S.Observed){S.State=TEXT("not_exercised");S.Message=TEXT("복구됐지만 실제 오류 대응을 관측하지 못함 · 검증 미통과");continue;}
             S.State=TEXT("awaiting_completion");S.Message=TEXT("오류 해제 · 실제 후속 작업 완료 대기");
             const bool DeliveredCargo=S.Cargo.IsValid()&&S.Cargo->LocationOwner==(S.ExpectShip?ECargoOwner::Ship:ECargoOwner::Yard)&&!S.Cargo->GetBody()->IsSimulatingPhysics();
             const bool Completed=V?V->CompletedJobs>S.CompletedBefore:K?K->CompletedJobs>S.CompletedBefore:false;
@@ -292,6 +330,15 @@ TSharedPtr<FJsonObject> APortSiteLogistics::CaptureIncidentScenarios() const
         {
             auto Step=MakeShared<FJsonObject>(*S.Command);Step->SetStringField(TEXT("state"),S.State);Step->SetStringField(TEXT("message"),S.Message);
             Step->SetNumberField(TEXT("applied_at"),S.AppliedAt);Step->SetNumberField(TEXT("recovered_at"),S.RecoveredAt);
+            Step->SetNumberField(TEXT("recovery_seconds"),S.Duration);
+            if(S.Duration>0&&S.AppliedAt>=0&&S.RecoveredAt<0)
+            {
+                double Remaining=FMath::Max(0.,S.Duration-(IncidentClock-S.AppliedAt));
+                if(PortIncident::SensorFailure(String(*S.Command,TEXT("action"))))
+                    for(const auto& K:Equipment)if(K->GetName()==String(*S.Command,TEXT("actor_id"))&&K->bSensorFault)
+                        Remaining=FMath::Max(0.,K->SensorRepairRemaining());
+                Step->SetNumberField(TEXT("recovery_remaining_seconds"),Remaining);
+            }
             Step->SetNumberField(TEXT("measurement_applied_at"),S.MeasureAppliedAt);
             Step->SetNumberField(TEXT("fault_cleared_at"),S.MeasureClearedAt);
             Step->SetNumberField(TEXT("work_resumed_at"),S.MeasureResumedAt);

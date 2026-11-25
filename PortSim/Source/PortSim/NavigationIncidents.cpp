@@ -18,7 +18,21 @@ void APortAGVActor::AdvanceNavigationIncidents(double Dt)
         IncidentResponses.Add(TEXT("localization_loss"));
     }
     if(IncidentFaults.Contains(TEXT("fms_disconnect")))
-    {Sensors.bFMSConnected=false;IncidentResponses.Add(TEXT("fms_disconnect"));}
+    {
+        Sensors.bFMSConnected=false;
+        IncidentResponses.Add(TEXT("fms_disconnect"));
+        return;
+    }
+    if((Sensors.bFMSConnected && !bIncidentNeedsPositionFix) || bDriveFault || bIncidentSensorFault ||
+        !Sensors.bDockingNode || Sensors.FMSNodeIndex<0 || Sensors.FMSNodeIndex>=Sensors.FMSNodeCount ||
+        Speed>.1f || !GetActorLocation().Equals(Sensors.FMSNextNode,AGVReference::DockingAccuracyCm)) return;
+
+    // A docked AGV can be waiting for a crane or a yard lease with no new
+    // waypoint. Confirm the existing dock command without changing its hold.
+    if(!Sensors.bFMSConnected)
+        SetFMSCommand(Sensors.FMSNextNode,Sensors.FMSNodeIndex,Sensors.FMSNodeCount,true,FMSAcceptanceCm);
+    if(Sensors.bFMSConnected && bIncidentNeedsPositionFix)
+        ReacquirePositionAtNode(Sensors.FMSNextNode);
 }
 
 bool APortAGVActor::ReacquirePositionAtNode(FVector Node)

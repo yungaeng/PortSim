@@ -48,7 +48,7 @@ test('controls require live engine, distinguish queue acknowledgement from appli
  const actor={id:'sts',type:'sts',name:'<STS>'},state={control_session:'a'.repeat(32)};
  assert.match(controlPanel(actor,state,false,null),/data-command="fail" disabled/);
  assert.match(controlPanel(actor,state,true,{id:'pending'},'엔진 응답 대기'),/data-command="fail" disabled/);
- assert.match(controlPanel({...actor,fault_scope:'equipment'},state,true,null),/data-command="repair" >/);
+ assert.doesNotMatch(controlPanel({...actor,fault_scope:'equipment'},state,true,null),/data-command="repair"/);
  assert.match(controlPanel(actor,state,true,null),/&lt;STS&gt;/);
  assert.match(controlPanel(actor,{...state,fault:'safety'},true,null),/전체 안전 정지/);
 });

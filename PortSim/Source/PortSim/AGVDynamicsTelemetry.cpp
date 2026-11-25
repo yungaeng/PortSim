@@ -6,7 +6,8 @@ TSharedRef<FJsonObject> APortAGVActor::DynamicsSnapshot() const
     auto O=MakeShared<FJsonObject>(); const auto& D=Dynamics; const auto& C=DynamicsSettings;
     auto Vector=[&](const TCHAR* Key,FVector V)
     { TArray<TSharedPtr<FJsonValue>> A; for(double N:{V.X,V.Y,V.Z}) A.Add(MakeShared<FJsonValueNumber>(N)); O->SetArrayField(Key,A); };
-    O->SetStringField(TEXT("model"),TEXT("six_contact_planar_tire_roll_pitch"));
+    O->SetStringField(TEXT("model"),TEXT("four_contact_planar_tire_roll_pitch"));
+    O->SetNumberField(TEXT("axle_count"),2); O->SetNumberField(TEXT("wheel_count"),D.WheelCount);
     O->SetStringField(TEXT("provenance"),TEXT("unvalidated_simulation_assumptions"));
     O->SetStringField(TEXT("axes"),TEXT("X forward, Y left, Z up; CoG is above road"));
     O->SetNumberField(TEXT("mass_kg"),D.TotalMassKg); Vector(TEXT("combined_cog_m"),D.CombinedCoGM);
@@ -53,10 +54,10 @@ TSharedRef<FJsonObject> APortAGVActor::DynamicsSnapshot() const
     Settings->SetBoolField(TEXT("stability_control"),C.bStabilitySpeedControl); Settings->SetBoolField(TEXT("traction_control"),C.bTractionControl); Settings->SetBoolField(TEXT("abs"),C.bABS);
     O->SetObjectField(TEXT("settings"),Settings);
     TArray<TSharedPtr<FJsonValue>> Wheels;
-    for(int J=0;J<6;++J)
+    for(int J=0;J<D.WheelCount;++J)
     {
         const auto& W=D.Wheels[J]; auto P=MakeShared<FJsonObject>();
-        P->SetStringField(TEXT("name"),FString::Printf(TEXT("%s_%s"),J/2==0?TEXT("rear"):J/2==1?TEXT("middle"):TEXT("front"),J%2==0?TEXT("left"):TEXT("right")));
+        P->SetStringField(TEXT("name"),FString::Printf(TEXT("%s_%s"),J/2==0?TEXT("rear"):TEXT("front"),J%2==0?TEXT("left"):TEXT("right")));
         P->SetNumberField(TEXT("rpm"),W.Omega*60/(2*PI)); P->SetNumberField(TEXT("normal_n"),W.NormalN);
         P->SetNumberField(TEXT("longitudinal_n"),W.FxN); P->SetNumberField(TEXT("lateral_n"),W.FyN);
         P->SetNumberField(TEXT("applied_torque_nm"),W.TorqueNm); P->SetNumberField(TEXT("slip_ratio"),W.SlipRatio);

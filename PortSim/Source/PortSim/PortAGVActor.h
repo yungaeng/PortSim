@@ -72,6 +72,7 @@ public:
     double IncidentNavigationClock=0,IncidentPacketReadyAt=0;
     double IncidentPositionUncertaintyCm=0,IncidentWheelMarkCm=0;
     bool bIncidentNeedsPositionFix=false,bIncidentFMSPending=false,bIncidentRoadHold=false;
+    bool bIncidentHandoverHold=false;
     FVector IncidentPendingFMSTarget=FVector::ZeroVector;
     int32 IncidentPendingFMSNode=INDEX_NONE;
     bool IncidentNavigationStop() const;
@@ -116,7 +117,7 @@ public:
     static constexpr double LowBatteryPercent=20.;
     static constexpr double ChargeLimitPercent=80.;
     void AdvanceBattery(double Seconds,bool Operating,bool Charging);
-    bool CanAcceptWork() const { return !Emergency.Active && !bDriveFault && !bIncidentSensorFault && !bIncidentDestinationMismatch && !IncidentFaults.Contains(TEXT("localization_loss")) && !IncidentFaults.Contains(TEXT("fms_delay")) && !IncidentFaults.Contains(TEXT("fms_disconnect")) && !bIncidentNeedsPositionFix && BatteryPercent>LowBatteryPercent && !bNeedsCharge && !bCharging; }
+    bool CanAcceptWork() const { return !Emergency.Active && !bDriveFault && !bIncidentHandoverHold && !bIncidentSensorFault && !bIncidentDestinationMismatch && !IncidentFaults.Contains(TEXT("localization_loss")) && !IncidentFaults.Contains(TEXT("fms_delay")) && !IncidentFaults.Contains(TEXT("fms_disconnect")) && !bIncidentNeedsPositionFix && BatteryPercent>LowBatteryPercent && !bNeedsCharge && !bCharging; }
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") double BatteryPercent=80.;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") bool bNeedsCharge=false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") bool bCharging=false;

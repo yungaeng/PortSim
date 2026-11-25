@@ -56,6 +56,38 @@ namespace AGVApronRoads
         return X;
     }
 
+    inline void AddIncidentBypasses(FAGVRoadNetwork& Network,FVector Handover,float Departure,float ArrivalSpine)
+    {
+        using namespace TerminalLayout;
+        // Use the paved eastbound crossing aisles to reach the parallel
+        // northbound service lanes before the closed section of the apron.
+        // These links stop at the service road, west of the yard cranes.
+        auto AddEastbound=[&](float Y)
+        {
+            if(Y<AGVSouthLoadedY||Y>AGVNorthInboundY) return;
+            Network.Add(P(AGVApronNorthX,Y),P(ArrivalSpine,Y));
+        };
+        AddEastbound(Departure);
+        for(int32 Gap=0;Gap<AGVParkBays-1;++Gap)
+        {
+            if(!AGVParkCrossingToYard(Gap)) continue;
+            const float Y=AGVParkCrossingY(Gap);
+            AddEastbound(Y);
+            const float FromHandover=Y-Handover.Y;
+            // A closure can cover the entrance to the preferred spur itself.
+            // An existing cross aisle on the other side of the berth's pad
+            // gives a second exit without passing the next transfer pad.
+            if(FromHandover*(Departure-Handover.Y)<0&&
+                FMath::Abs(FromHandover)>=2*AGVReference::MinimumInnerTurnRadiusCm+100.f&&
+                FMath::Abs(FromHandover)<=4500.f)
+            {
+                const FVector Turn(Handover.X,Y,0);
+                Network.Add(Handover,Turn);
+                Network.Add(Turn,P(AGVApronNorthX,Y));
+            }
+        }
+    }
+
     inline float QueueAccessY(float QueueY,float DockY)
     {
         // Two real 90-degree turns need separate tangents; no quantization to

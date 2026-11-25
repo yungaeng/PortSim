@@ -129,6 +129,7 @@ void AQuayCrane::BuildNightAmbientLight()
     AddInstanceComponent(NightAmbientLight);
     NightAmbientLight->SetMobility(EComponentMobility::Movable);
     NightAmbientLight->SetAtmosphereSunLight(false);
+    NightAmbientLight->SetForwardShadingPriority(0);
     NightAmbientLight->SetWorldRotation(FRotator(-57., 145., 0.));
     NightAmbientLight->SetLightColor(FLinearColor(.43f, .61f, 1.f));
     NightAmbientLight->SetCastShadows(false);

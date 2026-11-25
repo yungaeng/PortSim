@@ -26,16 +26,20 @@ namespace AGVDispatchPolicy
         double EligibleAt=0;
         bool SourceReady=false, YardReady=false;
         int32 CriticalPath=0, Unlocks=0;
+        bool DedicatedHazardYard=false;
     };
-    inline double ReadyPriority(double EligibleAt,int32 CriticalPath)
+    inline double ReadyPriority(double EligibleAt,int32 CriticalPath,bool DedicatedHazardYard=false)
     {
-        // A fixed, capped urgency advantage preserves a transitive sort and
-        // lets sufficiently older work beat a newly arrived critical request.
-        return FMath::Clamp(CriticalPath,0,8)*120.-EligibleAt;
+        // Each hazard group has only one compatible yard block. Feed its
+        // approach lanes while general cargo can still use the other blocks.
+        // The fixed lead keeps the sort transitive and lets older work catch up.
+        constexpr double DedicatedYardLeadSeconds=2400.;
+        return FMath::Clamp(CriticalPath,0,8)*120.+(DedicatedHazardYard?DedicatedYardLeadSeconds:0.)-EligibleAt;
     }
     inline bool ReadyBefore(const FRequest& A,const FRequest& B)
     {
-        const double PA=ReadyPriority(A.EligibleAt,A.CriticalPath),PB=ReadyPriority(B.EligibleAt,B.CriticalPath);
+        const double PA=ReadyPriority(A.EligibleAt,A.CriticalPath,A.DedicatedHazardYard);
+        const double PB=ReadyPriority(B.EligibleAt,B.CriticalPath,B.DedicatedHazardYard);
         if(PA!=PB) return PA>PB;
         if(A.Unlocks!=B.Unlocks) return A.Unlocks>B.Unlocks;
         return RequestBefore(A.EligibleAt,A.Order,B.EligibleAt,B.Order);

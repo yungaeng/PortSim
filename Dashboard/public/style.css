@@ -29,3 +29,6 @@
 
 .stowage-legend .load-pending,.stowage-slot.load-pending{background:#eee6ff;color:#67409a;border:1px dashed #906abb}.stowage-legend .load-transfer,.stowage-slot.load-transfer{background:#e3d1ff;color:#5b298d}.stowage-legend .load-complete,.stowage-slot.load-complete{background:#cce8ff;color:#174e80}
 @media(min-width:1101px){.kpis{grid-template-columns:repeat(5,minmax(0,1fr))}}
+
+.performance-table{min-width:860px}.performance-table th,.performance-table td{padding-left:12px;padding-right:12px}.performance-table .performance-column{min-width:82px;text-align:right;line-height:1.6;letter-spacing:0}.performance-cell{text-align:right;font-variant-numeric:tabular-nums;color:#285e50}.performance-cell.muted{color:var(--muted)}.performance-note{padding:10px 16px;margin:0;font-size:10px;line-height:1.7;color:#71877e;border-bottom:1px solid #edf0ef;background:#fafcfb}
+@media(max-width:1550px){.full-equipment .monitor-grid{grid-template-columns:minmax(0,1fr)}.full-equipment .inspector{position:static}}

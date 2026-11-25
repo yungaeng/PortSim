@@ -66,6 +66,7 @@ public:
     void SetHandoverVehicle(APortAGVActor* Vehicle);
     bool SetAGVLandingTarget(FVector Target);
     bool IsWaitingForAGV() const;
+    bool IsProductivelyWorking() const;
     APortAGVActor* GetHandoverVehicle() const;
     bool IsBusy() const { return bJobActive; }
     bool IsAGVHandoverComplete() const { return bAGVHandoverComplete; }
@@ -78,6 +79,7 @@ public:
     bool IncidentReleaseWindow() const;
     bool IncidentHandoverWindow() const;
     void SetEquipmentFailure(bool Failed);
+    void RepairPickupFailure();
     UFUNCTION(BlueprintCallable,CallInEditor,Category="Failures") void RepairEquipment();
     bool IsSensorUnavailable() const { return FaultType==EPortCraneFault::SensorUnavailable && !Fault.IsEmpty(); }
     bool IsPickupUnavailable() const { return FaultType==EPortCraneFault::PickupUnavailable && !Fault.IsEmpty(); }
@@ -115,7 +117,7 @@ public:
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair") bool bAutoSensorRecovery=true;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair") EPortSensorRepairMethod SensorRepairMethod=EPortSensorRepairMethod::Reboot;
     // Simulation assumptions, not manufacturer maintenance-time specifications.
-    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair",meta=(ClampMin="0",ClampMax="86400")) double SensorRebootSeconds=60;
+    UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair",meta=(ClampMin="0",ClampMax="86400")) double SensorRebootSeconds=30;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair",meta=(ClampMin="0",ClampMax="86400")) double SensorTechnicianRepairSeconds=900;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Repair",meta=(ClampMin="0",ClampMax="60")) double SensorSelfCheckSeconds=2;
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Failures|Recovery",meta=(ToolTip="Only automation/perception faults independent of the travel encoder, emergency stop and anti-collision system may permit evacuation.")) bool bAllowSensorFaultEvacuation=false;
@@ -135,6 +137,7 @@ private:
     friend class FRMGAGVHandoverTest;
     friend class FSTSDepartureClearanceTest;
     friend class FSTSCoordinatedTravelTest;
+    friend class FEquipmentPerformanceTest;
     friend class FCameraNightLightingTest;
     bool HasCameraTargetLight(FVector Target) const;
     float CameraWorkLightIntensity(float AmbientLux) const;

@@ -6,20 +6,31 @@
 #include "Components/StaticMeshComponent.h"
 #include "Components/TextRenderComponent.h"
 #include "Engine/StaticMesh.h"
-#include "Materials/MaterialInterface.h"
 #include "UObject/ConstructorHelpers.h"
 
 APortAGVActor::APortAGVActor()
 {
-    Box(TEXT("AGV_Deck"),RootComponent,FVector(0,0,170),FVector(300,1380,100),true);
+    // Keep the original load-bearing collision and handover plane. The authored
+    // body is visual-only and must never participate in cargo/sensor queries.
+    auto* Deck=Box(TEXT("AGV_Deck"),RootComponent,FVector(0,0,170),FVector(300,1380,100),true);
+    Deck->SetVisibility(false);
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> BodyAsset(TEXT("/Game/PortSim/Assets/Models/RotemAGV/SM_RotemAGV_Body.SM_RotemAGV_Body"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> TireAsset(TEXT("/Game/PortSim/Assets/Models/RotemAGV/SM_RotemAGV_Tire.SM_RotemAGV_Tire"));
+    static ConstructorHelpers::FObjectFinder<UStaticMesh> HubAsset(TEXT("/Game/PortSim/Assets/Models/RotemAGV/SM_RotemAGV_Hub.SM_RotemAGV_Hub"));
+    auto* Exterior=CreateDefaultSubobject<UStaticMeshComponent>(TEXT("RotemExterior"));
+    Exterior->SetupAttachment(RootComponent);
+    Exterior->SetStaticMesh(BodyAsset.Object);
+    Exterior->SetMobility(EComponentMobility::Movable);
+    Exterior->SetCollisionProfileName(TEXT("NoCollision"));
+    Exterior->SetGenerateOverlapEvents(false);
+    Exterior->ComponentTags.Add(TEXT("PortSim.AuthoredExterior"));
     static ConstructorHelpers::FObjectFinder<UStaticMesh> Cylinder(TEXT("/Engine/BasicShapes/Cylinder.Cylinder"));
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> Rubber(TEXT("/Game/PortSim/Assets/Materials/M_SiteAsphalt.M_SiteAsphalt"));
-    static ConstructorHelpers::FObjectFinder<UMaterialInterface> Steel(TEXT("/Game/PortSim/Assets/Materials/M_Steel.M_Steel"));
-    auto WheelPart=[&](const FString& Name,FVector Position,float Diameter,float Width,UMaterialInterface* Material)
+    auto WheelPart=[&](const FString& Name,FVector Position,float Diameter,float Width)
     {
         auto* Wheel=CreateDefaultSubobject<UStaticMeshComponent>(FName(*Name));
         Wheel->SetupAttachment(RootComponent);
-        Wheel->SetStaticMesh(Cylinder.Object);
+        const bool bTire=Name.StartsWith(TEXT("Bogie_AGV"));
+        Wheel->SetStaticMesh(bTire?TireAsset.Object:HubAsset.Object);
         Wheel->SetMobility(EComponentMobility::Movable);
         Wheel->SetRelativeLocation(Position);
         // Cylinder Z is the axle; AGVs travel along local Y, so turn the axle
@@ -29,23 +40,42 @@ APortAGVActor::APortAGVActor()
         Wheel->SetRelativeScale3D(FVector(Diameter/Size.X,Diameter/Size.Y,Width/Size.Z));
         Wheel->SetCollisionProfileName(TEXT("NoCollision"));
         Wheel->SetGenerateOverlapEvents(false);
-        if(Material) Wheel->SetMaterial(0,Material);
+        // Authored rim/tire material slots include tread, bolts and recessed dish.
+        Wheel->ComponentTags.Add(TEXT("PortSim.AuthoredExterior"));
         WheelMeshes.Add(Wheel);
     };
-    for (int32 Side:{-1,1}) for (int32 Axle:{-1,0,1})
+    for (int32 Side:{-1,1}) for (int32 Axle:{-1,1})
     {
         WheelPart(FString::Printf(TEXT("Bogie_AGV_%d_%d"),Side,Axle),
-            FVector(Side*170,Axle*480,75),140,75,Rubber.Object);
+            FVector(Side*170,Axle*480,75),140,75);
         WheelPart(FString::Printf(TEXT("WheelHub_AGV_%d_%d"),Side,Axle),
-            FVector(Side*208,Axle*480,75),80,4,Steel.Object);
+            FVector(Side*208,Axle*480,75),80,4);
     }
-    Box(TEXT("AGV_Sensor"),RootComponent,FVector(0,670,265),FVector(110,45,90));
-    Box(TEXT("Front_LiDAR"),RootComponent,FVector(0,700,250),FVector(70,35,55));
-    Box(TEXT("Rear_LiDAR"),RootComponent,FVector(0,-700,250),FVector(70,35,55));
-    Box(TEXT("Transponder_Antenna"),RootComponent,FVector(0,0,20),FVector(80,80,15));
-    Box(TEXT("Wheel_Encoder_Left"),RootComponent,FVector(-180,0,75),FVector(30,30,30));
-    Box(TEXT("Wheel_Encoder_Right"),RootComponent,FVector(180,0,75),FVector(30,30,30));
-    Box(TEXT("Steering_Encoder"),RootComponent,FVector(0,500,75),FVector(35,35,35));
+    Box(TEXT("AGV_Sensor"),RootComponent,FVector(0,670,265),FVector(110,45,90))->SetVisibility(false);
+    Box(TEXT("Front_LiDAR"),RootComponent,FVector(0,700,250),FVector(70,35,55))->SetVisibility(false);
+    Box(TEXT("Rear_LiDAR"),RootComponent,FVector(0,-700,250),FVector(70,35,55))->SetVisibility(false);
+    Box(TEXT("Transponder_Antenna"),RootComponent,FVector(0,0,20),FVector(80,80,15))->SetVisibility(false);
+    Box(TEXT("Wheel_Encoder_Left"),RootComponent,FVector(-180,0,75),FVector(30,30,30))->SetVisibility(false);
+    Box(TEXT("Wheel_Encoder_Right"),RootComponent,FVector(180,0,75),FVector(30,30,30))->SetVisibility(false);
+    Box(TEXT("Steering_Encoder"),RootComponent,FVector(0,500,75),FVector(35,35,35))->SetVisibility(false);
+    // Unit numbers remain per-vehicle; manufacturer/operator lettering is baked
+    // into the shared body mesh to avoid dozens of extra components per AGV.
+    for(int32 Side:{-1,1})
+    {
+        auto* Number=Label(*FString::Printf(TEXT("RotemFleetSide_%d"),Side),FVector(Side*200,240,115));
+        Number->SetRelativeRotation(FRotator(0,Side>0?0:180,0));
+        Number->SetWorldSize(48);
+        Number->SetVerticalAlignment(EVRTA_TextCenter);
+        Number->ComponentTags.Add(TEXT("PortSim.FleetNumber"));
+    }
+    for(int32 End:{-1,1})
+    {
+        auto* Number=Label(*FString::Printf(TEXT("RotemFleetEnd_%d"),End),FVector(0,End*711,115));
+        Number->SetRelativeRotation(FRotator(0,End*90,0));
+        Number->SetWorldSize(30);
+        Number->SetVerticalAlignment(EVRTA_TextCenter);
+        Number->ComponentTags.Add(TEXT("PortSim.FleetNumber"));
+    }
     NameLabel=Label(TEXT("AGVLabel"),FVector(0,0,230));
     NameLabel->SetText(FText::FromString(TEXT("AGV")));
     WorkerMarker=Box(TEXT("Emergency_Worker"),RootComponent,FVector(0,0,90),FVector(55,55,180));
@@ -58,6 +88,10 @@ APortAGVActor::APortAGVActor()
 void APortAGVActor::InitializeVehicle(int32 Number)
 {
     VehicleID=Number;
+    TArray<UTextRenderComponent*> Lettering;
+    GetComponents<UTextRenderComponent>(Lettering);
+    for(auto* Text:Lettering) if(Text->ComponentHasTag(TEXT("PortSim.FleetNumber")))
+        Text->SetText(FText::FromString(FString::Printf(TEXT("%03d"),Number)));
     DisplayedBattery=-1; RefreshBatteryLabel();
 #if WITH_EDITOR
     SetActorLabel(FString::Printf(TEXT("AGV_%02d"),Number));
@@ -78,6 +112,7 @@ void APortAGVActor::ResetVehicle(FVector Position)
     IncidentFaults.Reset();IncidentResponses.Reset();IncidentNavigationClock=IncidentPacketReadyAt=0;
     IncidentPositionUncertaintyCm=IncidentWheelMarkCm=0;bIncidentNeedsPositionFix=bIncidentFMSPending=false;IncidentPendingFMSNode=INDEX_NONE;
     bIncidentRoadHold=false;
+    bIncidentHandoverHold=false;
     DeckCoGOffsetCm=FVector::ZeroVector;
     Speed=0; CompletedJobs=0; PayloadKg=0; LastCurvaturePerCm=0;
     BatteryPercent=ChargeLimitPercent; bNeedsCharge=bCharging=false;

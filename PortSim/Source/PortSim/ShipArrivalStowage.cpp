@@ -64,7 +64,8 @@ bool APortSiteLogistics::PlanArrivalStowage()
         auto Layout=ShipStowageAssumptions;
         for(Layout.Tiers=3;Layout.Tiers<=MaximumArrivalTiers;++Layout.Tiers)
         {
-            Plan=PlanShipStowage(Bookings,Layout);
+            Plan=PlanShipStowage(Bookings,Layout,true);
+            if(!Plan.Feasible) Plan=PlanShipStowage(Bookings,Layout);
             if(Plan.Feasible) break;
         }
         if(!Plan.Feasible || Plan.Placements.Num()!=Bookings.Num())
@@ -92,7 +93,7 @@ bool APortSiteLogistics::PlanArrivalStowage()
             C.Transform.SetLocation(Position); C.Transform.SetRotation(FQuat::Identity);
             IndexedCargoCount=-1;
             C.ShipSlot=P; C.Wave=0;
-            C.STS=Vessel*3+FMath::Clamp(FMath::RoundToInt(P.PositionM.X/70.)+1,0,2);
+            C.STS=Vessel*3+TerminalLayout::VesselDischargeZone(P.PositionM.X);
             C.OriginalSTS=C.STS;
             C.Actor->SetActorLocationAndRotation(Position,FQuat::Identity,false,nullptr,ETeleportType::TeleportPhysics);
             C.Actor->SetActorHiddenInGame(false); C.Actor->SetActorEnableCollision(true);

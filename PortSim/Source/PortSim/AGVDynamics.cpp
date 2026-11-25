@@ -8,6 +8,7 @@ namespace
 
 void FAGVDynamicsSettings::Sanitize()
 {
+    AxleCount=FMath::Clamp(AxleCount,2,3);
     WheelRadiusM=Bounded(WheelRadiusM,.7,.1,2); WheelInertiaKgM2=Bounded(WheelInertiaKgM2,400,20,10000);
     TrackM=Bounded(TrackM,3.4,1,4.2); WheelbaseM=Bounded(WheelbaseM,9.6,3,14);
     if(EmptyCoGM.ContainsNaN()) EmptyCoGM=FVector(0,0,1);
@@ -27,7 +28,8 @@ void FAGVDynamicsSettings::Sanitize()
 void FAGVDynamicsState::Reset(double Speed,const FAGVDynamicsSettings& Settings)
 {
     *this=FAGVDynamicsState(); U=FMath::IsFinite(Speed)?Speed:0;
-    for(auto& W:Wheels) W.Omega=U/FMath::Max(.1f,Settings.WheelRadiusM);
+    WheelCount=FMath::Clamp(Settings.AxleCount,2,3)*2;
+    for(int J=0;J<WheelCount;++J) Wheels[J].Omega=U/FMath::Max(.1f,Settings.WheelRadiusM);
 }
 
 void FAGVDynamicsState::RefreshLoads(const FAGVDynamicsSettings& C,const FAGVDynamicsInput& I)
@@ -36,26 +38,29 @@ void FAGVDynamicsState::RefreshLoads(const FAGVDynamicsSettings& C,const FAGVDyn
     TotalMassKg=Empty+Cargo;
     CombinedCoGM=(C.EmptyCoGM*Empty+(I.CargoCoGM+(I.CargoContactEnabled?CargoOffsetM:FVector::ZeroVector))*Cargo)/TotalMassKg;
     const double Weight=TotalMassKg*PortFriction::Gravity;
-    // Equal axle spring load sharing, plus fore/aft and left/right moments.
+    WheelCount=FMath::Clamp(C.AxleCount,2,3)*2;
+    for(int J=WheelCount;J<6;++J) Wheels[J]=FAGVWheelDynamics();
+    // Equal static axle loads plus fore/aft and left/right moments.
     // Dynamic spring reactions feed wheel normal loads and hence tire forces.
     const double RollReaction=C.RollStiffnessNmPerRad*Roll+C.RollDampingNmsPerRad*RollRate;
     const double PitchReaction=C.PitchStiffnessNmPerRad*Pitch+C.PitchDampingNmsPerRad*PitchRate;
     const double LeftFraction=.5+CombinedCoGM.Y/C.TrackM-RollReaction/(Weight*C.TrackM);
-    const double FrontFraction=1./3.+CombinedCoGM.X/C.WheelbaseM-PitchReaction/(Weight*C.WheelbaseM);
-    const double RearFraction=1./3.-CombinedCoGM.X/C.WheelbaseM+PitchReaction/(Weight*C.WheelbaseM);
-    const double Fractions[3]={RearFraction,1./3.,FrontFraction};
+    const double BaseFraction=2./WheelCount;
+    const double FrontFraction=BaseFraction+CombinedCoGM.X/C.WheelbaseM-PitchReaction/(Weight*C.WheelbaseM);
+    const double RearFraction=BaseFraction-CombinedCoGM.X/C.WheelbaseM+PitchReaction/(Weight*C.WheelbaseM);
     MinimumRawLoadN=TNumericLimits<double>::Max(); double Sum=0;
-    for(int A=0;A<3;++A) for(int S=0;S<2;++S)
+    for(int A=0;A<WheelCount/2;++A) for(int S=0;S<2;++S)
     {
-        auto& W=Wheels[A*2+S]; const double Raw=Weight*Fractions[A]*(S==0?LeftFraction:1-LeftFraction);
+        const double Fraction=A==0?RearFraction:(A==WheelCount/2-1?FrontFraction:BaseFraction);
+        auto& W=Wheels[A*2+S]; const double Raw=Weight*Fraction*(S==0?LeftFraction:1-LeftFraction);
         MinimumRawLoadN=FMath::Min(MinimumRawLoadN,Raw); W.NormalN=FMath::Max(0.,Raw); Sum+=W.NormalN;
     }
     LeftLoadN=RightLoadN=FrontLoadN=RearLoadN=0;
-    for(int J=0;J<6;++J)
+    for(int J=0;J<WheelCount;++J)
     {
         auto& W=Wheels[J]; W.NormalN*=Weight/FMath::Max(1.,Sum);
         (J%2==0?LeftLoadN:RightLoadN)+=W.NormalN;
-        if(J/2==0) RearLoadN+=W.NormalN; if(J/2==2) FrontLoadN+=W.NormalN;
+        if(J/2==0) RearLoadN+=W.NormalN; if(J/2==WheelCount/2-1) FrontLoadN+=W.NormalN;
     }
     LoadTransferRatio=(RightLoadN-LeftLoadN)/Weight;
     WheelLift=MinimumRawLoadN<=0; PeakLTR=FMath::Max(PeakLTR,FMath::Abs(LoadTransferRatio));
@@ -115,9 +120,9 @@ void FAGVDynamicsState::Step(const FAGVDynamicsSettings& Settings,const FAGVDyna
         { Braking=true; BrakingElapsed=BrakingDistanceM=0; LastBrakeValid=false; }
         if(Braking && !Slowing && FMath::Abs(Target)>.05) { Braking=false; LastBrakeValid=false; }
         double ForceX=0,ForceY=0,Moment=0; MaxSlip=0;
-        for(int J=0;J<6;++J)
+        for(int J=0;J<WheelCount;++J)
         {
-            auto& W=Wheels[J]; const double X=(J/2-1)*C.WheelbaseM*.5,Y=(J%2==0?1:-1)*C.TrackM*.5;
+            auto& W=Wheels[J]; const double X=(double(J/2)/(WheelCount/2-1)-.5)*C.WheelbaseM,Y=(J%2==0?1:-1)*C.TrackM*.5;
             W.Steer=FMath::Atan2(X*I.CurvaturePerM,1-Y*I.CurvaturePerM);
             const double CS=FMath::Cos(W.Steer),SN=FMath::Sin(W.Steer);
             const double RX=X-CombinedCoGM.X,RY=Y-CombinedCoGM.Y;
@@ -227,7 +232,7 @@ void FAGVDynamicsState::Step(const FAGVDynamicsSettings& Settings,const FAGVDyna
         Heading+=(OldYaw+YawRate)*.5*Dt;
         const double Distance=I.CargoContactEnabled?OriginStep.Size2D():FMath::Sqrt(Forward*Forward+Side*Side);
         GroundDistanceM+=Distance; SideSlipDistanceM+=FMath::Abs(Side);
-        double MeanOmega=0; for(const auto& W:Wheels) MeanOmega+=W.Omega/6.;
+        double MeanOmega=0; for(int J=0;J<WheelCount;++J) MeanOmega+=Wheels[J].Omega/WheelCount;
         WheelDistanceM+=MeanOmega*C.WheelRadiusM*Dt;
         EffectiveRadiusM=FMath::Abs(YawRate)>1.e-5?FMath::Abs(U/YawRate):0;
         IMUSpecificForceMps2=FVector(Ax,Ay,PortFriction::Gravity)-(CargoRelativeVelocityMps-RelativeV)*(I.CargoContactEnabled?CargoFraction/Dt:0);

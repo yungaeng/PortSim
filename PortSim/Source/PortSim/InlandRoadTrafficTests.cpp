@@ -105,6 +105,21 @@ bool FInlandRoadTrafficTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Live initial planning diverts from the occupied north spine"),Site->Jobs[0].ReturnCorridor!=2);
     TestTrue(TEXT("Return still ends at its own depot bay"),Site->Jobs[0].Route.Last().Equals(Site->FleetPark(0),.1));
 
+    Site->RoadReservations.Reset();
+    Site->bTrafficIndexReady=false;
+    B->ResetVehicle(FVector(NorthX,19000,0));
+    B->SetActorRotation(FRotator::ZeroRotator);
+    Site->BeginTrafficFrame();
+    Site->SetAGVIncidentDriveFailure(1,true,1.,0.);
+    TestTrue(TEXT("A failed vehicle on the north spine leaves another return corridor available"),Site->PlanRoadRoute(0,false));
+    TestTrue(TEXT("Return uses a different crossing under actual incident control"),Site->Jobs[0].ReturnCorridor!=2);
+    FVector ClearFrom=A->GetActorLocation();
+    for(const FVector Point:Site->Jobs[0].Route)
+    {
+        TestFalse(TEXT("Every planned chord clears the isolated chassis"),Site->IncidentRoadBlocked(ClearFrom,Point));
+        ClearFrom=Point;
+    }
+
     // Recorded V112/V123/V141 merge cycle, with V131 preventing another
     // reverse manoeuvre behind V112. All four poses come from the stalled run.
     auto* Recorded=World->SpawnActor<APortSiteLogistics>();

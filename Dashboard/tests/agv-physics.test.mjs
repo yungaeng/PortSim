@@ -15,6 +15,12 @@ test('live tire details distinguish measured braking, constraints and synthetic 
  assert.match(renderAGVPhysics(a),/2 s \/ 5 m/);
  a.agv_physics.overturn_threshold=true;assert.match(renderAGVPhysics(a),/해석 범위 이탈/);
  assert.doesNotMatch(renderAGVSensors(a),/NaN|undefined|Infinity/);
+ a.agv_physics.wheels=['rear_left','rear_right','front_left','front_right'].map((name,i)=>({name,rpm:10*(i+1)}));
+ assert.match(renderAGVSensors(a),/후좌\/후우\/전좌\/전우/);
+ assert.match(renderAGVSensors(a),/10 \/ 20 \/ 30 \/ 40/);
+ html=renderAGVPhysics(a);assert.match(html,/2축 · 4개 접촉점/);
+ for(const label of ['후좌','후우','전좌','전우']) assert.match(html,new RegExp(label));
+ assert.doesNotMatch(html,/중좌|중우|6개 등가/);
 });
 test('bench results show failed/contact-limited runs and escape external text',()=>{
  assert.match(renderAGVExperiments(null),/결과가 아직 없습니다/);

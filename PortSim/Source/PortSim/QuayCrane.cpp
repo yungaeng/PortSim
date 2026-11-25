@@ -7,6 +7,7 @@
 #include "PortEnvironmentComponent.h"
 #include "PortFogVisualComponent.h"
 #include "PortPrecipitationVisualComponent.h"
+#include "PortWaterVisualComponent.h"
 #include "PortContainerActor.h"
 #include "PortWorkingCrane.h"
 #include "Misc/FileHelper.h"
@@ -67,6 +68,7 @@ AQuayCrane::AQuayCrane()
     Environment=CreateDefaultSubobject<UPortEnvironmentComponent>(TEXT("Environment"));
     FogVisual=CreateDefaultSubobject<UPortFogVisualComponent>(TEXT("FogVisual"));
     CreateDefaultSubobject<UPortPrecipitationVisualComponent>(TEXT("PrecipitationVisual"));
+    CreateDefaultSubobject<UPortWaterVisualComponent>(TEXT("WaterVisual"));
     PrimaryActorTick.bCanEverTick = true;
     PrimaryActorTick.TickGroup = TG_PrePhysics;
     RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
@@ -172,6 +174,7 @@ void AQuayCrane::BuildYard()
     SunLight=NewObject<UDirectionalLightComponent>(this,TEXT("Sun"));
     SunLight->SetMobility(EComponentMobility::Movable);
     SunLight->SetAtmosphereSunLight(true);
+    SunLight->SetForwardShadingPriority(1);
     SunLight->SetLightSourceAngle(0.545f);
     SunLight->SetIntensity(0.f);
     AddInstanceComponent(SunLight);
@@ -237,6 +240,8 @@ void AQuayCrane::ApplyAppearance()
     for(const auto& Vessel:VesselActors) AddEquipmentMeshes(Vessel);
     for (auto* Mesh : Meshes)
     {
+        // Preserve authored multi-material AGV exteriors, tires and alloy rims.
+        if(Mesh->ComponentHasTag(TEXT("PortSim.AuthoredExterior"))) continue;
         const FString Name = Mesh->GetName();
         auto* Mat = Yellow;
         if (Name.StartsWith(TEXT("Rope")) || Name.StartsWith(TEXT("Rail")) || Name.StartsWith(TEXT("Bogie"))) Mat = Steel;

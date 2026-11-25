@@ -46,4 +46,4 @@ struct FPortShipStowageResult
 // Shared by initial physical arrival placement and the dashboard. Explicit
 // simulation cells/constant KM/static lashing proxy, not vessel approval.
 FPortShipStowageResult PlanShipStowage(const TArray<FPortShipPlanningCargo>& Cargo,
-    const FPortShipStowageAssumptions& A);
+    const FPortShipStowageAssumptions& A,bool bBalanceDischarge=false);

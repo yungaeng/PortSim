@@ -75,6 +75,7 @@ void APortSupportVehicle::Configure(EPortSupportType Type,int32 Number)
         RecoveryGrip=NewObject<USceneComponent>(this,TEXT("RecoveryTwistlockAnchor"));
         AddInstanceComponent(RecoveryGrip);RecoveryGrip->SetupAttachment(RootComponent);
         RecoveryGrip->SetRelativeLocation(HydraulicPositionM*100);RecoveryGrip->RegisterComponent();
+        TireSettings.AxleCount=3;
         TireSettings.WheelbaseM=5.76f;TireSettings.TrackM=3.0f;TireSettings.WheelRadiusM=.6f;
         TireSettings.EmptyCoGM=FVector(-.8,0,1.3);TireDynamics.Reset(0,TireSettings);
     }

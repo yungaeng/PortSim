@@ -2,28 +2,55 @@
 #include "PortWorkingCrane.h"
 #include "PortAGVActor.h"
 #include "PortContainerActor.h"
+#include "AGVTrafficGeometry.h"
 #include "Dom/JsonObject.h"
 #include "Components/StaticMeshComponent.h"
 #include "Engine/StaticMesh.h"
 #include "Engine/World.h"
 
+namespace
+{
+    bool IntersectsControlZone(const FPortIncidentRoadClosure& Zone,FVector From,FVector To)
+    {
+        if(Zone.bDriveFaultZone)
+            return AGVTrafficGeometry::SweptChassisIntersects(From,To,Zone.Center,Zone.Longitudinal,730,210,0,
+                Zone.HalfLength+Zone.Clearance,Zone.HalfWidth+Zone.Clearance);
+        const FVector Direction=(To-From).GetSafeNormal2D(),Side(-Direction.Y,Direction.X,0);
+        const FVector Margin=Direction.GetAbs()*730+Side.GetAbs()*210+FVector(0,0,500);
+        const FBox Bounds=Zone.Bounds.ExpandBy(Margin);
+        return Bounds.IsInsideOrOn(From)||Bounds.IsInsideOrOn(To)||FMath::LineBoxIntersection(Bounds,From,To,To-From);
+    }
+}
+
 bool APortSiteLogistics::HasIncidentRoadClosure() const
 {for(const auto& R:IncidentRoadClosures)if(R.Value.Active)return true;return false;}
 
 bool APortSiteLogistics::IsIncidentYardBlocked(int32 Slot) const
-{for(const auto& R:IncidentBlockedYardSlots)if(R.Value==Slot)return true;return false;}
+{
+    for(const auto& Entry:IncidentBlockedYardSlots) if(Entry.Value==Slot) return true;
+    if(IncidentRoadClosures.IsEmpty()||!Yard.IsValidIndex(Slot)) return false;
+    const FVector Pad=YardHandover(Yard[Slot]);
+    for(const auto& Entry:IncidentRoadClosures)
+        if(Entry.Value.Active&&Entry.Value.bDriveFaultZone&&
+            IntersectsControlZone(Entry.Value,Pad,Pad+FVector(.1,0,0))) return true;
+    return false;
+}
 
 bool APortSiteLogistics::IncidentRoadBlocked(FVector A,FVector B,bool Record)
 {
-    const FVector D=(B-A).GetSafeNormal2D(),Side(-D.Y,D.X,0);
-    const FVector Margin=D.GetAbs()*730+Side.GetAbs()*210+FVector(0,0,500);
+    return FindIncidentRoadClosure(A,B,Record)!=nullptr;
+}
+
+FPortIncidentRoadClosure* APortSiteLogistics::FindIncidentRoadClosure(FVector A,FVector B,bool Record)
+{
     for(auto& R:IncidentRoadClosures)if(R.Value.Active)
     {
-        const FBox Box(R.Value.Bounds.Min-Margin,R.Value.Bounds.Max+Margin);
-        if(Box.IsInsideOrOn(A)||Box.IsInsideOrOn(B)||FMath::LineBoxIntersection(Box,A,B,B-A))
-        {if(Record){R.Value.Responded=true;++R.Value.Affected;}return true;}
+        auto& Zone=R.Value;
+        if(!IntersectsControlZone(Zone,A,B)) continue;
+        if(Record)Zone.Responded=true;
+        return &Zone;
     }
-    return false;
+    return nullptr;
 }
 
 bool APortSiteLogistics::ApplyExtendedIncident(const FJsonObject& C,FString& Error,bool Clear)
@@ -51,7 +78,10 @@ bool APortSiteLogistics::ApplyExtendedIncident(const FJsonObject& C,FString& Err
                 if((FMath::Abs(D.X)<.999&&FMath::Abs(D.Y)<.999)||Straight<Distance+800)
                 {Error=TEXT("제동거리 뒤에 차단물을 놓을 직선 도로가 부족합니다.");return false;}
                 const FVector Center=From+D*Distance,Side(-D.Y,D.X,0),E=D.GetAbs()*400+Side.GetAbs()*260+FVector(0,0,200);
-                FPortIncidentRoadClosure R;R.Bounds=FBox(Center-E,Center+E);
+                FPortIncidentRoadClosure R;R.Bounds=FBox(Center-E,Center+E);R.Cause=V;R.Center=Center;
+                double Duration=0.;
+                if(C.TryGetNumberField(TEXT("duration"),Duration)&&FMath::IsFinite(Duration)&&Duration>0&&Duration<=3600)
+                    R.ExpectedClearAt=IncidentClock+Duration;
                 // Reject insertion into an occupied chassis envelope; never push a vehicle aside.
                 for(const auto& Other:TrafficVehicles)if(IsValid(Other)&&R.Bounds.ExpandBy(800).IsInsideOrOn(Other->GetActorLocation()))
                 {Error=TEXT("차단 위치에 다른 AGV가 있어 안전한 도로 공간을 기다립니다.");return false;}
@@ -87,7 +117,9 @@ bool APortSiteLogistics::ApplyExtendedIncident(const FJsonObject& C,FString& Err
     {
         if(!PortIncident::CraneExtension(Action,!K->bSTS)){Error=TEXT("장비에 지원하지 않는 돌발상황입니다.");return false;}
         if(!K->Fault.IsEmpty()&&!K->IsEquipmentUnavailable()){Error=TEXT("기존 안전 오류를 먼저 해결하세요.");return false;}
-        if(!Clear&&K->IncidentFaults.Contains(Action)){Error=TEXT("이미 발생한 돌발상황입니다.");return false;}
+        const bool ControllerActive=PortIncident::ControllerFailure(Action)&&
+            (K->IncidentFaults.Contains(TEXT("equipment_failure"))||K->IncidentFaults.Contains(TEXT("restart_controller")));
+        if(!Clear&&(K->IncidentFaults.Contains(Action)||ControllerActive)){Error=TEXT("이미 발생한 돌발상황입니다.");return false;}
         if(Action==TEXT("slot_occupied"))
         {
             if(Clear)IncidentBlockedYardSlots.Remove(ID);
@@ -100,7 +132,7 @@ bool APortSiteLogistics::ApplyExtendedIncident(const FJsonObject& C,FString& Err
             }
         }
         if(Clear)K->IncidentFaults.Remove(Action);else {K->IncidentFaults.Add(Action);K->IncidentResponses.Remove(Action);}
-        if(Action==TEXT("equipment_failure"))
+        if(PortIncident::ControllerFailure(Action))
         {K->SetEquipmentFailure(!Clear);if(!Clear)K->IncidentResponses.Add(Action);ManageEquipmentFailures();}
         bIncidentInputUsed=true;RecordRecoveryEvent(Clear?TEXT("incident_repaired"):Action,K,K,K,K->CargoActor.Get());return true;
     }

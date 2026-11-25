@@ -1,7 +1,7 @@
 import {mkdir,readdir,readFile,writeFile,rename,unlink} from 'node:fs/promises';
 import {randomUUID} from 'node:crypto';
 import path from 'node:path';
-import {cleanScenario,cleanWeather,incidentActions} from './public/incident-model.mjs';
+import {cleanScenario,cleanWeather,cleanControlRadius,incidentActions,userClearsIncident} from './public/incident-model.mjs';
 
 export function equipmentCommands({directory,readState}){
  return async(req,res)=>{
@@ -21,6 +21,7 @@ export function equipmentCommands({directory,readState}){
   let extra={};
   if(scenario){
    if(!state.incident_control_supported)return reply(409,'돌발상황 제어를 지원하는 엔진 빌드가 필요합니다.');
+   if(input.action==='scenario_start'&&!(state.incident_control_version>=4))return reply(409,'자동 복구를 지원하는 엔진 빌드가 필요합니다.');
    try{
     if(input.action==='scenario_start')extra=cleanScenario(input,state);
     if(input.action==='set_environment')extra={weather:cleanWeather(input.weather)};
@@ -35,6 +36,7 @@ export function equipmentCommands({directory,readState}){
    if(!state.incident_control_supported)return reply(409,'최신 엔진 빌드가 필요합니다.');
    const allowed=(incidentActions[actor?.type]||[]).map(([action])=>action);
    if(!allowed.includes(input.fault_action))return reply(400,'지원하지 않는 복구 대상입니다.');
+   if(!userClearsIncident(input.fault_action))return reply(409,'이 고장은 엔진의 자동 복구 일정에 따라 처리됩니다.');
    extra.fault_action=input.fault_action;
   }
   const actions=actor?.type==='agv'?['fail','fail_reboot','misdelivery','repair','replace_loaded_agv','worker_enter','clear_worker']:['fail','fail_reboot','fail_sensor_repair','fail_gantry','fail_pickup','repair',...(actor?.type==='rmg'?['fail_placement']:[])];
@@ -42,6 +44,9 @@ export function equipmentCommands({directory,readState}){
   if(!scenario&&actor.fault && actor.fault_scope!=='equipment')return reply(409,'센서 수리로 안전 오류를 해제할 수 없습니다.');
   if(input.action==='replace_loaded_agv')return reply(409,'새 AGV 배정과 R/S 이동·인계는 현재 잠겨 있습니다.');
   if(input.action==='worker_enter'&&(!Number.isFinite(input.worker_distance_m)||input.worker_distance_m<5||input.worker_distance_m>80))return reply(400,'작업자 진입 거리는 5~80m로 입력하세요.');
+  if(input.action==='fail'&&actor?.type==='agv'&&input.control_radius_m!==undefined){
+   try{extra.control_radius_m=cleanControlRadius(input.control_radius_m);}catch(error){return reply(400,error.message);}
+  }
   await mkdir(directory,{recursive:true});
   let pending=0;
   for(const file of await readdir(directory)){

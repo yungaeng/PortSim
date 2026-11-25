@@ -135,6 +135,28 @@ bool FBlockedPickupDispatchTest::RunTest(const FString& Parameters)
         if(Lease) TestFalse(TEXT("The first lease does not claim the occupied spine"),
             Lease->ContainsByPredicate([&](const FBox& Segment) { return Segment.Intersect(BusySpine); }));
     }
+    Site->Jobs[0]=Site->Jobs[1];
+    Site->Jobs[1]=FSiteTransfer();
+    Site->Jobs[2]=FSiteTransfer();
+    Departing->ResetVehicle(FVector(55000,50000,0));
+    Departing->SetDriveFailure(true);
+    Site->STSOwners[0]=0;
+    Site->YardApproachOwners[0]=0;
+    Site->DeferredYardLeases[0].Vehicle=0;
+    Crane->SetHandoverVehicle(Old);
+    Site->RoadReservations.Reset();
+    Site->RoadTargets.Reset();
+    Site->RoadReservationEndWaypoint.Reset();
+    Site->bTrafficIndexReady=false;
+    Site->SetAGVIncidentDriveFailure(0,true,.5,0);
+    Site->RefreshAGVIncidentControl();
+    TestTrue(TEXT("An isolated failed pickup is reassigned through a usable exit"),
+        Site->STSOwners[0]==1&&Crane->GetHandoverVehicle()==Replacement&&Site->Jobs[0].Stage==0);
+    TestTrue(TEXT("The replacement owns the same in-progress transfer and yard admission"),
+        Site->Jobs[1].Actor.Get()==Cargo&&Site->Jobs[1].TripID==77&&Site->YardApproachOwners[0]==1&&
+        Site->DeferredYardLeases[0].Vehicle==1&&!Site->Jobs[1].Route.IsEmpty());
+    TestTrue(TEXT("No teleport or duplicate cargo during incident reassignment"),
+        Old->GetActorTransform().Equals(OldPose)&&Cargo->GetActorTransform().Equals(CargoPose)&&Site->Manifest.Num()==1);
     World->DestroyWorld(false);return true;
 }
 #endif

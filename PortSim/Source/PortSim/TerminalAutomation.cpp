@@ -115,8 +115,6 @@ void AQuayCrane::BuildTerminal()
     const float SeaRail=STSProfile.bReady?STSProfile.WatersideRailX:-850.f;
     const float LandRail=STSProfile.bReady?SeaRail+STSProfile.RailGauge:850.f;
     if(!bUnifiedTerminal) Box(TEXT("RailPier"), FVector(SeaRail,0.f,-30.f), FVector(190.f,10000.f,100.f));
-    auto* Water = Box(TEXT("Water"), FVector(-30700.f,0.f,-260.f), FVector(60000.f,145000.f,20.f));
-    Water->SetCollisionEnabled(ECollisionEnabled::NoCollision);
     if (bUnifiedTerminal)
     {
         BuildTerminalSite();

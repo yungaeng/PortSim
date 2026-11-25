@@ -41,6 +41,24 @@ bool FIncidentExtensionTest::RunTest(const FString& Parameters)
     TestTrue(TEXT("Disconnect cannot be overwritten by repeated command generation"),!V->Sensors.bFMSConnected&&V->Sensors.FMSNodeIndex==4);
     TestTrue(TEXT("Restore communication"),Command(TEXT("fms_disconnect"),true));V->SetFMSCommand(Next,5,6,false);
     TestTrue(TEXT("Fresh FMS command confirms reconnect"),V->Sensors.bFMSConnected&&V->Sensors.FMSNodeIndex==5);
+    Site->Jobs[0].Waypoint=1; // The completed docking route has no next waypoint.
+    V->SetFMSCommand(Goal,0,1,true);
+    V->SetFMSHold(true);
+    const FTransform Docked=V->GetActorTransform();
+    TestTrue(TEXT("A docked AGV can lose both link and position"),
+        Command(TEXT("fms_disconnect"))&&Command(TEXT("localization_loss")));
+    Site->AdvanceIncidentScenarios(.1);
+    TestFalse(TEXT("A disconnected dock cannot confirm its command"),V->Sensors.bFMSConnected);
+    TestTrue(TEXT("Restore the docked AGV's link and localization sensor"),
+        Command(TEXT("fms_disconnect"),true)&&Command(TEXT("localization_loss"),true));
+    V->SetActorLocation(Docked.GetLocation()+FVector(0,100,0));
+    Site->AdvanceIncidentScenarios(.1);
+    TestTrue(TEXT("A stale docking node cannot confirm an off-pad vehicle"),!V->Sensors.bFMSConnected&&V->bIncidentNeedsPositionFix);
+    V->SetActorTransform(Docked);
+    Site->AdvanceIncidentScenarios(.1);
+    TestTrue(TEXT("Stopped AGV confirms its actual dock without releasing its hold"),
+        V->Sensors.bFMSConnected&&V->Sensors.bTransponderLocked&&!V->bIncidentNeedsPositionFix&&
+        V->Sensors.bFMSHold&&V->GetActorTransform().Equals(Docked));
     FPortIncidentRoadClosure Block;Block.Bounds=FBox(FVector(-300,4500,-100),FVector(300,5500,200));Site->IncidentRoadClosures.Add(V->GetName(),Block);
     FAGVRoadNetwork N;const FVector A(0,0,0),B(0,10000,0),C(5000,0,0),D(5000,10000,0);
     N.Add(A,B,true);N.Add(A,C,true);N.Add(C,D,true);N.Add(D,B,true);TArray<FVector> Route;
@@ -65,6 +83,28 @@ bool FIncidentExtensionTest::RunTest(const FString& Parameters)
     }
     TestTrue(TEXT("Wheel slip during braking is included in localization uncertainty"),ValidDuringBraking);
     TestTrue(TEXT("Degraded position estimation still permits commanded braking"),V->Speed<450.f&&!V->Sensors.bTransponderLocked);
+
+    V->ResetVehicle(FVector(0,5000,0));
+    V->SetActorRotation(FRotator::ZeroRotator); // longitudinal axis is +Y
+    const FVector FailedPosition=V->GetActorLocation();
+    Site->RoadReservations.Add(V->VehicleID,{FBox(A,B)});
+    Site->RoadTargets.Add(V->VehicleID,B);
+    Site->SetAGVIncidentDriveFailure(0,true,1.,5.);
+    TestTrue(TEXT("The failed AGV stays in its physical place"),V->bDriveFault&&V->GetActorLocation().Equals(FailedPosition));
+    TestFalse(TEXT("The disabled AGV releases future claims"),Site->RoadReservations.Contains(V->VehicleID)||Site->RoadTargets.Contains(V->VehicleID));
+    TestTrue(TEXT("Disabled chassis blocks its lane"),Site->IncidentRoadBlocked(A,B));
+    TestFalse(TEXT("Parallel pavement beyond the control margin stays open"),Site->IncidentRoadBlocked(A+FVector(600,0,0),B+FVector(600,0,0)));
+    Site->IncidentClock+=6.;
+    Site->RefreshAGVIncidentControl();
+    TestTrue(TEXT("A repair estimate expiring does not reopen the lane"),Site->IncidentRoadBlocked(A,B));
+    V->bIncidentSensorFault=true;
+    Site->SetAGVIncidentDriveFailure(0,false,1.,0.);
+    Site->RefreshAGVIncidentControl();
+    TestTrue(TEXT("A concurrent sensor fault holds the closure after the drive repair request"),Site->IncidentRoadBlocked(A,B));
+    V->bIncidentSensorFault=false;
+    Site->RefreshAGVIncidentControl();
+    TestFalse(TEXT("A stopped, healthy AGV permits the control zone to reopen"),Site->IncidentRoadBlocked(A,B));
+    TestFalse(TEXT("Handover control clears with the repaired zone"),V->bIncidentHandoverHold);
     World->DestroyWorld(false);return true;
 }
 #endif

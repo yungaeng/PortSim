@@ -17,18 +17,25 @@ void APortWorkingCrane::SetGantryFailure(bool Failed)
     else if(FaultType==EPortCraneFault::GantryUnavailable)
     {
         Fault.Empty(); FaultType=EPortCraneFault::None;
-        if(bSensorFault) Stop(TEXT("Injected sensor unavailable"),EPortCraneFault::SensorUnavailable);
+        if(IncidentFaults.Contains(TEXT("equipment_failure"))||IncidentFaults.Contains(TEXT("restart_controller"))) SetEquipmentFailure(true);
+        else if(bSensorFault) Stop(TEXT("Injected sensor unavailable"),EPortCraneFault::SensorUnavailable);
     }
+}
+
+void APortWorkingCrane::RepairPickupFailure()
+{
+    if(!IsPickupUnavailable()||RetainsLoad()||(IsValid(CargoActor)&&CargoActor->GetBody()->IsSimulatingPhysics())) return;
+    Fault.Empty();FaultType=EPortCraneFault::None;Pickup=FSTSPickupController();
+    PickupRecoveryStep=PickupRecoveryCount=0;PickupRecoveryPhase=TEXT("repaired");RecoveryStatus=TEXT("repaired");NextSample=0;
+    if(bGantryFault) Stop(TEXT("Gantry drive unavailable"),EPortCraneFault::GantryUnavailable);
+    else if(IncidentFaults.Contains(TEXT("equipment_failure"))||IncidentFaults.Contains(TEXT("restart_controller"))) SetEquipmentFailure(true);
+    else if(bSensorFault) Stop(TEXT("Injected sensor unavailable"),EPortCraneFault::SensorUnavailable);
 }
 
 void APortWorkingCrane::RepairEquipment()
 {
-    if(IsPickupUnavailable())
-    {
-        if(RetainsLoad() || (IsValid(CargoActor) && CargoActor->GetBody()->IsSimulatingPhysics())) return;
-        Fault.Empty();FaultType=EPortCraneFault::None;Pickup=FSTSPickupController();
-        PickupRecoveryStep=PickupRecoveryCount=0;PickupRecoveryPhase=TEXT("repaired");RecoveryStatus=TEXT("repaired");NextSample=0;
-    }
+    RepairPickupFailure();
+    if(IsPickupUnavailable()) return;
     // Never use an equipment repair to clear an overload/collision/lock fault.
     if(!Fault.IsEmpty() && !IsEquipmentUnavailable()) return;
     if(bGantryFault) SetGantryFailure(false);

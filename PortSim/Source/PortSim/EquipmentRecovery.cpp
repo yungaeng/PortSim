@@ -58,6 +58,17 @@ bool APortSiteLogistics::CanSTSService(int32 STS,int32 Cargo,const FVector* Dest
     return true;
 }
 
+bool APortSiteLogistics::NeedsSTSPickupRebind(int32 V) const
+{
+    const auto& J=Jobs[V];
+    if(J.ExportIndex!=INDEX_NONE || (J.Stage!=6 && J.Stage!=1 && J.Stage!=10) ||
+        !STSOwners.IsValidIndex(J.STS) || STSOwners[J.STS]!=V) return false;
+    const int32 Cargo=J.Stage==10?J.ExtraCargo:J.Cargo;
+    const auto* Crane=Equipment[YardCraneCount+J.STS].Get();
+    return Manifest.IsValidIndex(Cargo) && Manifest[Cargo].Actor.IsValid() &&
+        Manifest[Cargo].Actor->LocationOwner==ECargoOwner::Ship && !Crane->IsBusy();
+}
+
 bool APortSiteLogistics::JobHeldByFailure(int32 V) const
 {
     const auto& J=Jobs[V];
@@ -65,7 +76,7 @@ bool APortSiteLogistics::JobHeldByFailure(int32 V) const
     const auto* STS=Equipment.IsValidIndex(YardCraneCount+J.STS)?Equipment[YardCraneCount+J.STS].Get():nullptr;
     // Keep unrelated loaded/returning trips moving. An approaching vehicle
     // may still reach its reserved pad; only the stationary pickup waits.
-    if(STS && STS->IsEquipmentUnavailable() && (J.Stage==1 || J.Stage==10)) return true;
+    if((J.Stage==1 || J.Stage==10) && ((STS && STS->IsEquipmentUnavailable()) || NeedsSTSPickupRebind(V))) return true;
     return J.Stage==4 && Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsEquipmentUnavailable();
 }
 
@@ -109,6 +120,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
         auto* Crane=Equipment[I].Get();
         if(Crane->IsEquipmentUnavailable())
         {
+            const int32 S=I-YardCraneCount;
             Crane->RecoveryStatus=Crane->IsPickupUnavailable()?TEXT("pickup_alignment_isolated"):
                 Crane->bGantryFault?TEXT("gantry_blocked_repair_required"):
                 Crane->bFaultEvacuating?TEXT("evacuating_with_independent_safety"):
@@ -123,11 +135,13 @@ void APortSiteLogistics::ManageEquipmentFailures()
                 {
                     // Abort only an unlatched, supported pickup. Released loads
                     // awaiting settling and retained loads stay with their job.
+                    const bool WasPrepared=PreparedCargo.IsValidIndex(S) && Manifest.IsValidIndex(PreparedCargo[S]) &&
+                        Manifest[PreparedCargo[S]].Actor.Get()==Crane->CargoActor.Get();
                     const bool Cancelled=Crane->CancelUnliftedJob();
+                    if(Cancelled && WasPrepared) PreparedStarted[S]=false;
                     if(Cancelled && I<YardCraneCount) for(int32 V=0;V<Jobs.Num();++V) if(Jobs[V].RMG==I && Jobs[V].Stage==4)
                     { auto& J=Jobs[V]; J.Stage=9; J.bRMGReserved=false; J.bEquipmentWaiting=true; J.RecoveryAnchor=Vehicles[V]->GetActorLocation(); RMGBusy[I]=false; }
                 }
-                const int32 S=I-YardCraneCount;
                 if(S>=0 && PreparedCargo.IsValidIndex(S) && Manifest.IsValidIndex(PreparedCargo[S]) &&
                     !PreparedStarted[S] && NextVehicles[S]==INDEX_NONE)
                 {
@@ -148,7 +162,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
     {
         auto& J=Jobs[V];
         if(IsLoadedRecoveryVehicle(V)) continue;
-        J.bEquipmentWaiting=(Equipment.IsValidIndex(YardCraneCount+J.STS) &&
+        J.bEquipmentWaiting=NeedsSTSPickupRebind(V) || (Equipment.IsValidIndex(YardCraneCount+J.STS) &&
             Equipment[YardCraneCount+J.STS]->IsEquipmentUnavailable() && (J.Stage==6 || J.Stage==1 || J.Stage==10)) ||
             (Equipment.IsValidIndex(J.RMG) && Equipment[J.RMG]->IsEquipmentUnavailable() && J.Stage>=2 && J.Stage<=9);
         if(Equipment.IsValidIndex(YardCraneCount+J.STS) && Equipment[YardCraneCount+J.STS]->bRailSafetyHold) J.bEquipmentWaiting=true;
@@ -172,7 +186,7 @@ void APortSiteLogistics::ManageEquipmentFailures()
             auto* Crane=Equipment[YardCraneCount+J.STS].Get();
             if(CraneAvailable(YardCraneCount+J.STS) && ReserveYardApproach(V,LaneCount==9))
             {
-                J.bYardAdmissionSuspended=false; J.bEquipmentWaiting=false;
+                J.bYardAdmissionSuspended=false; J.bEquipmentWaiting=NeedsSTSPickupRebind(V);
                 Crane->SetDestinationReady(J.Stage!=6); Vehicles[V]->SetFMSHold(false);
             }
             else { J.bEquipmentWaiting=true; Crane->SetDestinationReady(false); }
@@ -191,32 +205,34 @@ void APortSiteLogistics::ManageEquipmentFailures()
     for(int32 V=0;V<Jobs.Num();++V)
     {
         auto& J=Jobs[V];
-        if(J.Stage!=6 && J.Stage!=1 && J.Stage!=10) continue;
+        if(!NeedsSTSPickupRebind(V)) continue;
         auto* Old=Equipment[YardCraneCount+J.STS].Get();
         const int32 Cargo=J.Stage==10?J.ExtraCargo:J.Cargo;
-        if(!Manifest.IsValidIndex(Cargo) || Manifest[Cargo].Actor->LocationOwner!=ECargoOwner::Ship || Old->RetainsLoad()) continue;
-        if(Old->IsBusy() && CraneAvailable(YardCraneCount+J.STS)) continue;
+        if(Old->RetainsLoad()) continue;
         int32 Best=INDEX_NONE; double Cost=TNumericLimits<double>::Max();
         const int32 Origin=Manifest[Cargo].OriginalSTS;
         // An approaching AGV is not at the handover yet. Preserve the failed
         // crane's assigned pad, including any measured landing adjustment.
-        const FVector Destination=Old->AssignedDestination();
+        const FVector Destination=J.Stage==6?Old->AssignedDestination():Vehicles[V]->CargoPosition();
         for(int32 S=Origin/3*3;S<Origin/3*3+3;++S)
         {
-            if(FMath::Abs(S-Origin)>1 || !CanSTSService(S,Cargo,&Destination) || Equipment[YardCraneCount+S]->IsBusy() ||
-                (STSOwners[S]!=INDEX_NONE && STSOwners[S]!=V) || NextVehicles[S]!=INDEX_NONE) continue;
+            if(FMath::Abs(S-Origin)>1 || !CanSTSService(S,Cargo,&Destination) || Equipment[YardCraneCount+S]->IsBusy()) continue;
+            if(S!=J.STS && (STSOwners[S]!=INDEX_NONE || NextVehicles[S]!=INDEX_NONE)) continue;
             if(J.Stage!=10 && Manifest.IsValidIndex(J.ExtraCargo) && !CanSTSService(S,J.ExtraCargo,&Destination)) continue;
+            if(S==J.STS) { Best=S; break; }
             const double D=FMath::Abs(Equipment[YardCraneCount+S]->GantryWorldY()-Manifest[Cargo].Transform.GetLocation().Y);
             if(D<Cost) { Best=S; Cost=D; }
         }
         if(Best==INDEX_NONE) { Manifest[Cargo].RecoveryHold=TEXT("sts_no_reachable_alternative"); continue; }
         auto* Replacement=Equipment[YardCraneCount+Best].Get();
-        if(!Replacement->CanReach(Manifest[Cargo].Actor->GetActorLocation(),Destination)) continue;
         if(!Replacement->AssignCargo(Manifest[Cargo].Actor.Get(),Manifest[Cargo].Actor->GetActorLocation(),Destination,false,false,Vehicles[V]))
         { Stop(TEXT("Validated STS recovery assignment rejected")); return; }
         Replacement->SetDestinationReady(J.Stage!=6 && !J.bYardAdmissionSuspended);
         STSOwners[J.STS]=INDEX_NONE; STSOwners[Best]=V;
-        const int32 Previous=J.STS; J.STS=Best;
+        const int32 Previous=J.STS;
+        if(Previous!=Best && !bCargoAlignedHandover && J.FixedPickupPadSTS==INDEX_NONE)
+            J.FixedPickupPadSTS=Previous;
+        J.STS=Best;
         for(int32 AssignedCargo:{Cargo,J.Stage!=10?J.ExtraCargo:INDEX_NONE}) if(Manifest.IsValidIndex(AssignedCargo))
         {
             auto& C=Manifest[AssignedCargo];
@@ -228,7 +244,12 @@ void APortSiteLogistics::ManageEquipmentFailures()
             C.STS=Best; C.RecoveryHold.Empty();
         }
         J.bEquipmentWaiting=J.bYardAdmissionSuspended; Vehicles[V]->SetFMSHold(false);
-        PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAILURE_REASSIGNED: cargo=%d old=%d new=%d agv=%d"),Manifest[Cargo].ID,Previous+1,Best+1,Vehicles[V]->VehicleID);
+        if(Previous==Best)
+        {
+            RecordRecoveryEvent(TEXT("sts_pickup_resumed"),Old,Old,Old,Manifest[Cargo].Actor.Get());
+            PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAILURE_PICKUP_RESUMED: C%d STS%d AGV%d stage=%d"),Manifest[Cargo].ID,Best+1,Vehicles[V]->VehicleID,J.Stage);
+        }
+        else PORTSIM_SIM_LOG(LogTemp,Display,TEXT("STS_FAILURE_REASSIGNED: cargo=%d old=%d new=%d agv=%d"),Manifest[Cargo].ID,Previous+1,Best+1,Vehicles[V]->VehicleID);
     }
     for(int32 I=0;I<Manifest.Num();++I)
     {
