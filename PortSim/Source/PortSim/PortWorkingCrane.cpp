@@ -142,6 +142,15 @@ void APortWorkingCrane::Configure(int32 Number,bool bQuayside,FVector Source,FVe
 FVector APortWorkingCrane::Local(FVector World) const { return Orientation.UnrotateVector(World-Home); }
 FVector APortWorkingCrane::HeadPosition() const { return Home+Orientation.RotateVector(Head+SuspendedOffset); }
 
+bool APortWorkingCrane::EnsureTransferHeight(float WorldSpreaderZ)
+{
+    const float Required=Local(FVector(Home.X,Home.Y,WorldSpreaderZ)).Z;
+    if(Required>STSProfile.LiftAboveRail)
+    { Stop(TEXT("Cargo clearance exceeds crane mechanical lifting height")); return false; }
+    SafeZ=FMath::Max(SafeZ,Required);
+    return true;
+}
+
 void APortWorkingCrane::ResetOperation()
 {
     if (!bConfigured) return;
@@ -795,6 +804,10 @@ bool APortWorkingCrane::AssignCargo(APortContainerActor* Cargo,FVector Source,FV
         { Stop(TEXT("Source/destination outside reference crane working envelope")); return false; }
     }
     ClearSTSState(); HandoverAGV=HandoverVehicle; bReverseTransfer=ReverseTransfer;
+    // A transfer setting is not a ceiling for high-tier pickup. Raise it
+    // before approach, including clearance for the suspended box's bottom.
+    if(bSTS && !EnsureTransferHeight(FMath::Max(Source.Z,Destination.Z)+
+        WorkingCrane::LiftOffset+Cargo->ExternalDimensionsCm.Z+100.f)) return false;
     CargoActor=Cargo; Slots[0]=Source; Slots[1]=Destination; SourceSlot=Stage=0;
     TelescopeTargetLengthCm=Cargo->ExternalDimensionsCm.Y;
     bDestinationReady=true;

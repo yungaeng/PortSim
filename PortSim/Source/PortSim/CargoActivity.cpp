@@ -8,14 +8,17 @@
 void APortSiteLogistics::RemoveCargoActivity(APortContainerActor* Cargo)
 {
     InvalidateShipRemaining();
+    DirtyKinematicCargo.Remove(Cargo);
     FreeCargo.Remove(Cargo); MovingCargo.Remove(Cargo); FixedCargo.Remove(Cargo);
     CargoMotionVersions.Remove(Cargo);
     IndexedCargoCount=-1;
+    bStaticShipCollisionReady=false;
 }
 
 void APortSiteLogistics::RefreshCargoActivity(APortContainerActor* Cargo)
 {
     if(!IsValid(Cargo) || !Cargo->GetBody()) return;
+    DirtyKinematicCargo.Add(Cargo);
     CargoMotionVersions.Remove(Cargo);
     FreeCargo.Remove(Cargo); MovingCargo.Remove(Cargo); FixedCargo.Remove(Cargo);
     if(Cargo->GetBody()->IsSimulatingPhysics()) FreeCargo.Add(Cargo);
@@ -26,9 +29,11 @@ void APortSiteLogistics::RefreshCargoActivity(APortContainerActor* Cargo)
 void APortSiteLogistics::RebuildCargoActivity()
 {
     InvalidateShipRemaining();
+    DirtyKinematicCargo.Reset();
     FreeCargo.Reset(); MovingCargo.Reset(); FixedCargo.Reset();
     for(const auto& Cargo:ShipContainers) RefreshCargoActivity(Cargo);
     CargoMotionVersions.Reset(); IndexedCargoCount=-1;
+    bStaticShipCollisionReady=false;
 }
 
 void APortSiteLogistics::UpdateCargoMotion(APortContainerActor* Actor)

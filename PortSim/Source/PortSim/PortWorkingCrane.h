@@ -44,6 +44,7 @@ public:
     bool AssignCargo(APortContainerActor* Cargo, FVector Source, FVector Destination, bool SourceSupport, bool DestinationSupport, APortAGVActor* HandoverVehicle=nullptr,bool ReverseTransfer=false);
     void UpdateShipLandingTarget(FVector Target);
     void SetSTSProfile(const FSTSOperatingProfile& Profile) { STSProfile=Profile; }
+    bool EnsureTransferHeight(float WorldSpreaderZ);
     UPROPERTY(EditAnywhere,BlueprintReadWrite,Category="Operation") bool bCoordinatedSTSTravel=true;
     void SetWindVelocity(FVector WorldVelocityMetersPerSecond);
     void SetFogVisibilityMeters(float VisibilityMeters);

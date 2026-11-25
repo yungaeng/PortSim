@@ -420,10 +420,10 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
                 if(BaseTorque>C.MotorMaxTorque) {Stop(TEXT("Hoist motor cannot hold suspended mass"));return false;}
                 const double AccelLimit=FMath::Max(0.,(TorqueLimit-BaseTorque)/(Mass/(ShaftFactor*C.Efficiency*C.MotorCount)+C.MotorInertia*ShaftFactor));
                 Acceleration=FMath::Min(Acceleration,AccelLimit*100.);
-                // Vessel velocity feed-forward must not raise a held spreader
-                // through the reserved travel ceiling. Brake within the
-                // remaining stroke using the actual motor acceleration limit.
-                const double UpwardStroke=FMath::Max(0.,double(SafeZ)-Head.Z);
+                // Brake within the mechanical lifting stroke. SafeZ is a
+                // transfer target, not a ceiling on high-tier acquisition or
+                // vessel-heave tracking above the configured transfer height.
+                const double UpwardStroke=FMath::Max(0.,double(STSProfile.LiftAboveRail)-Head.Z);
                 Desired=FMath::Min(Desired,FMath::Sqrt(2.*Acceleration*UpwardStroke));
             }
             if(I<2)
@@ -473,7 +473,7 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
                     const double NextStroke=FMath::Max(0.,double(AxisVelocity[I]))*Step+
                         .5*Acceleration*Step*Step;
                     const double UpwardLimit=FMath::Sqrt(2.*Acceleration*
-                        FMath::Max(0.,double(SafeZ)-Head.Z-NextStroke));
+                        FMath::Max(0.,double(STSProfile.LiftAboveRail)-Head.Z-NextStroke));
                     const double Command=FMath::Min(Requested,(UpwardLimit-AxisVelocity[I])/Step);
                     AxisVelocity[I]=FMath::Clamp(AxisVelocity[I]+FMath::Clamp(Command,-Acceleration,Acceleration)*Step,
                         -double(Limits[I]),double(Limits[I]));

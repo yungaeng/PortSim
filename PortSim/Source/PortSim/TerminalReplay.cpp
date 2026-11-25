@@ -38,6 +38,16 @@ namespace
 }
 
 bool FTerminalReplay::IsPredicting() { return false; }
+FTerminalReplay::~FTerminalReplay() { ReleasePhysicsRegistry(); }
+void FTerminalReplay::ReleasePhysicsRegistry()
+{
+    if(auto* World=PhysicsWorld.Get())
+    {
+        World->RemoveOnActorSpawnedHandler(PhysicsSpawnHandle);
+        World->RemoveOnActorDestroyedHandler(PhysicsDestroyHandle);
+    }
+    PhysicsActors.Reset(); PhysicsWorld.Reset(); bPhysicsActorsDirty=true;
+}
 bool FTerminalReplay::IsAdvancingPhysics() { return AdvancingPhysics; }
 void FTerminalReplay::Log(FName Category,ELogVerbosity::Type Verbosity,FString Message)
 {
@@ -55,6 +65,7 @@ void FTerminalReplay::ResetDiagnostics(double Wall)
 }
 void FTerminalReplay::Invalidate()
 {
+    bPhysicsActorsDirty=true;
     Credit=0; ++Revision; State=TEXT("live_input_hold");
     ResetDiagnostics();
 }
@@ -98,26 +109,58 @@ bool FTerminalReplay::AdvanceLivePhysics(AQuayCrane& Owner)
     // Terminal cargo and explicitly managed R/S bodies may be dynamic. External actors require their
     // own engine ticks and callbacks and retain the standard world path.
     PortSimPerformance::FScope EligibilityTiming(TEXT("forward_frame"));
-    TSet<const AActor*> CargoActors;
-    for(const auto& Cargo:Owner.SiteLogistics->ShipContainers) if(IsValid(Cargo)) CargoActors.Add(Cargo);
+    if(PhysicsWorld.Get()!=World)
+    {
+        ReleasePhysicsRegistry(); PhysicsWorld=World;
+        PhysicsSpawnHandle=World->AddOnActorSpawnedHandler(FOnActorSpawned::FDelegate::CreateLambda(
+            [this](AActor*) { bPhysicsActorsDirty=true; }));
+        PhysicsDestroyHandle=World->AddOnActorDestroyedHandler(FOnActorDestroyed::FDelegate::CreateLambda(
+            [this](AActor*) { bPhysicsActorsDirty=true; }));
+    }
+    if(bPhysicsActorsDirty)
+    {
+        PhysicsActors.Reset();
+        for(TActorIterator<AActor> It(World);It;++It)
+        {
+            auto* Box=Cast<APortContainerActor>(*It);
+            if(Box && Box->GetOwner()==Owner.SiteLogistics && Box->GetClass()==APortContainerActor::StaticClass() &&
+                Box->GetComponents().Num()==2 && IsValid(Box->Body) && IsValid(Box->Visual) &&
+                Box->Visual->GetCollisionEnabled()==ECollisionEnabled::NoCollision && !Box->Visual->IsAnySimulatingPhysics()) continue;
+            PhysicsActors.Add(*It);
+        }
+        // Prune weak pose keys when inventory changes, never every display frame.
+        auto& Poses=Owner.SiteLogistics->KinematicPhysicsPoses;
+        for(auto It=Poses.CreateIterator();It;++It) if(!It.Key().IsValid()) It.RemoveCurrent();
+        bPhysicsActorsDirty=false;
+    }
     TArray<UPrimitiveComponent*> RecoveryBodies;
     TArray<UPrimitiveComponent*> KinematicParts;
     bool HasOtherPhysics=false;
-    for(TActorIterator<AActor> It(World);It;++It)
+    for(const auto& Actor:PhysicsActors)
     {
+        AActor* const CurrentActor=Actor.Get(); if(!IsValid(CurrentActor)) continue;
         // Owned cargo is maintained by physics/attachment lifecycle callbacks.
         // Only externally supplied cargo needs reconciliation at frame entry.
-        if(auto* Cargo=Cast<APortContainerActor>(*It); Cargo && CargoActors.Contains(Cargo) && Cargo->GetOwner()!=Owner.SiteLogistics)
-            Owner.SiteLogistics->RefreshCargoActivity(Cargo);
-        const auto* RS=Cast<APortSupportVehicle>(*It);
+        auto* Cargo=Cast<APortContainerActor>(CurrentActor);
+        const bool OwnedCargo=Cargo && Cargo->GetOwner()==Owner.SiteLogistics;
+        const bool TerminalCargo=OwnedCargo || (Cargo && Owner.SiteLogistics->ShipContainers.Contains(Cargo));
+        if(TerminalCargo && !OwnedCargo) Owner.SiteLogistics->RefreshCargoActivity(Cargo);
+        // The normal container has only its tracked body and non-colliding
+        // artwork. Lifecycle/transform callbacks maintain its activity and
+        // dirty pose, so do not enumerate components or commit idle bodies.
+        // Extended actors still take the full compatibility check below.
+        if(OwnedCargo && Cargo->GetComponents().Num()==2 && IsValid(Cargo->Body) && IsValid(Cargo->Visual) &&
+            Cargo->Visual->GetCollisionEnabled()==ECollisionEnabled::NoCollision && !Cargo->Visual->IsAnySimulatingPhysics())
+            continue;
+        const auto* RS=Cast<APortSupportVehicle>(CurrentActor);
         const bool ManagedRS=RS && Owner.SupportFleet.ContainsByPredicate([&](const auto& A){return A.Get()==RS;});
-        TInlineComponentArray<UPrimitiveComponent*> Parts(*It);
+        TInlineComponentArray<UPrimitiveComponent*> Parts(CurrentActor);
         for(auto* Part:Parts)
         {
             // Include dormant R/S parts: a rollover can enable them mid-batch.
             if(ManagedRS) RecoveryBodies.Add(Part);
             if(Part->IsAnySimulatingPhysics() && !(ManagedRS && RS->OwnsRecoveryPhysicsBody(Part)) &&
-                (!CargoActors.Contains(*It) || Part!=Cast<APortContainerActor>(*It)->GetBody())) return false;
+                (!TerminalCargo || Part!=Cargo->GetBody())) return false;
             if(Part->IsPhysicsStateCreated() && Part->K2_IsPhysicsCollisionEnabled() && !Part->IsStaticPhysics())
             {
                 KinematicParts.Add(Part);
@@ -167,18 +210,21 @@ bool FTerminalReplay::AdvanceLivePhysics(AQuayCrane& Owner)
         // A zero-time world frame does not consume queued kinematic targets.
         // Clear historical targets before a new free body can contact them.
         auto& Poses=Owner.SiteLogistics->KinematicPhysicsPoses;
-        for(auto* Part:KinematicParts) if(IsValid(Part) && !Part->IsAnySimulatingPhysics())
+        auto Commit=[&](UPrimitiveComponent* Part)
         {
+            if(!IsValid(Part) || Part->IsAnySimulatingPhysics()) return;
             const FTransform Pose=Part->GetComponentTransform();
             const FTransform* Previous=Poses.Find(Part);
-            if(!Force && Previous && Previous->Equals(Pose,0.)) continue;
+            if(!Force && Previous && Previous->Equals(Pose,0.)) return;
             if(auto* Body=Part->GetBodyInstance())
             {
                 Body->SetBodyTransform(Pose,ETeleportType::TeleportPhysics,false);
                 Poses.Add(Part,Pose);
             }
-        }
-        for(auto It=Poses.CreateIterator();It;++It) if(!It.Key().IsValid()) It.RemoveCurrent();
+        };
+        for(auto* Part:KinematicParts) Commit(Part);
+        for(const auto& Box:Owner.SiteLogistics->DirtyKinematicCargo) if(Box.IsValid()) Commit(Box->GetBody());
+        Owner.SiteLogistics->DirtyKinematicCargo.Reset();
     };
     {
         TGuardValue<bool> Guard(AdvancingPhysics,true);

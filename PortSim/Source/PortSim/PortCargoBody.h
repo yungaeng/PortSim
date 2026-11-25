@@ -12,4 +12,5 @@ public:
     virtual void SetSimulatePhysics(bool Enabled) override;
 protected:
     virtual void OnAttachmentChanged() override;
+    virtual void OnUpdateTransform(EUpdateTransformFlags UpdateTransformFlags,ETeleportType Teleport) override;
 };

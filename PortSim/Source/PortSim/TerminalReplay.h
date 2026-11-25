@@ -2,11 +2,14 @@
 #include "CoreMinimal.h"
 
 class AQuayCrane;
+class AActor;
+class UWorld;
 // Forward-only fixed-step execution. Explicit checkpoint capture/restore lives
 // in FTerminalCheckpoint and is never part of accelerated playback.
 class FTerminalReplay
 {
 public:
+    ~FTerminalReplay();
     bool Tick(AQuayCrane& Owner,double WallSeconds);
     void Invalidate();
     const TCHAR* Mode() const { return State; }
@@ -31,6 +34,11 @@ private:
     uint64 DiagnosticPhysicsCalls=0;
     int32 DiagnosticFreeCargoPeak=0;
     void ResetDiagnostics(double Wall=0);
+    TWeakObjectPtr<UWorld> PhysicsWorld;
+    TArray<TWeakObjectPtr<AActor>> PhysicsActors;
+    FDelegateHandle PhysicsSpawnHandle,PhysicsDestroyHandle;
+    bool bPhysicsActorsDirty=true;
+    void ReleasePhysicsRegistry();
 };
 
 #define PORTSIM_SIM_LOG(Category,Verbosity,Format,...) \

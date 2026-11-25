@@ -17,6 +17,7 @@ bool APortSiteLogistics::CraneAvailable(int32 I) const
 
 void APortSiteLogistics::RebuildSTSStreams()
 {
+    ++SourceAccessRevision;
     ManifestBySTS.SetNum(LaneCount);
     for(auto& Stream:ManifestBySTS) Stream.Reset();
     for(int32 I=0;I<Manifest.Num();++I) ManifestBySTS[Manifest[I].STS].Add(I);

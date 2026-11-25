@@ -85,6 +85,9 @@ void APortContainerActor::ApplyWind(FVector WindVelocityMetersPerSecond,float Dr
 void APortContainerActor::SetSecuredVesselMotion(FVector Position,FQuat Rotation,FVector VelocityCentimetersPerSecond,
     FVector AccelerationCentimetersPerSecondSquared,FVector JerkCentimetersPerSecondCubed,double FrameDurationSeconds,bool ApplyPose)
 {
+    if(Body->Mobility==EComponentMobility::Static &&
+        (!GetActorLocation().Equals(Position,0.) || !GetActorQuat().Equals(Rotation,0.) || !VelocityCentimetersPerSecond.IsZero()))
+        Body->SetMobility(EComponentMobility::Movable);
     CachedMotionAlpha=-1;
     const bool WasSimulating=Body->IsSimulatingPhysics();
     if(WasSimulating) Body->SetSimulatePhysics(false);

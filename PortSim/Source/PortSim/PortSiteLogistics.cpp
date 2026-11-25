@@ -266,6 +266,9 @@ void APortSiteLogistics::SetRainState(const FPortRainState& State)
 
 void APortSiteLogistics::SetVesselMotions(const TArray<FPortVesselMotion>& Motions,const TArray<FVector>& BasePivots,const FPortSeaState& SeaState)
 {
+    if(SeaState.bSeaMotionEnabled || FrameSeaState.bSeaMotionEnabled!=SeaState.bSeaMotionEnabled ||
+        Motions.ContainsByPredicate([](const FPortVesselMotion& M){return !M.IsAtRestAtBase();}))
+        bStaticShipCollisionReady=false;
     FrameSeaState=SeaState;
     VesselMotions=Motions;
     VesselBasePivots=BasePivots;
@@ -291,6 +294,7 @@ void APortSiteLogistics::ApplyVesselMotions(float FrameDurationSeconds)
     const bool Rebuild=IndexedCargoCount!=Count;
     if(Rebuild)
     {
+        bStaticShipCollisionReady=false;
         CargoBays.Reset(); CargoSources.Reset(); CargoBayIndex.Reset(); CargoMotionVersions.Reset();
         TMap<FIntVector,int32> Groups;
         for(const auto* Records:{&Manifest,&RetainedCargo,&ExportCargo}) for(const auto& Cargo:*Records)
@@ -328,9 +332,12 @@ void APortSiteLogistics::ApplyVesselMotions(float FrameDurationSeconds)
     if(ReuseStationary) for(int32 V=0;V<VesselMotions.Num();++V)
         if(!SameRestPose(CurrentCargoMotions[V],VesselMotions[V]) || !SameRestPose(PreviousCargoMotions[V],VesselMotions[V]))
         { ReuseStationary=false; break; }
-    if(ReuseStationary) { ShipWindowStart=0; ShipWindowEnd=1; return; }
+    if(ReuseStationary && bStaticShipCollisionReady) { ShipWindowStart=0; ShipWindowEnd=1; return; }
     PreviousCargoMotions=CurrentCargoMotions;
     CurrentCargoMotions=VesselMotions;
+    if(!FrameSeaState.bSeaMotionEnabled && !CurrentCargoMotions.IsEmpty() &&
+        !CurrentCargoMotions.ContainsByPredicate([](const FPortVesselMotion& M){return !M.IsAtRestAtBase();}))
+        PreviousCargoMotions=CurrentCargoMotions; // OFF commits the fixed base scene, with no residual moving interval.
     CargoMotionDuration=FrameDurationSeconds; ++CargoMotionVersion;
     ShipWindowStart=0; ShipWindowEnd=1;
     for(int32 I=0;I<CargoBays.Num();++I)
@@ -357,6 +364,19 @@ void APortSiteLogistics::ApplyVesselMotions(float FrameDurationSeconds)
         auto* Box=Crane->CargoActor.Get(); UpdateCargoMotion(Box);
         if(Box->LocationOwner==ECargoOwner::Ship && !Box->GetAttachParentActor())
         { Box->ApplySecuredMotionFraction(0.); Crane->UpdateMovingShipSource(Box,Box->GetActorLocation()); }
+    }
+    if(!bStaticShipCollisionReady && !FrameSeaState.bSeaMotionEnabled && !CurrentCargoMotions.IsEmpty() &&
+        !CurrentCargoMotions.ContainsByPredicate([](const FPortVesselMotion& M){return !M.IsAtRestAtBase();}))
+    {
+        // Once on initialization or ON->OFF, commit pending boxes to the base
+        // pose as well. Subsequent stationary sensor queries need no cargo sync.
+        for(const auto& Entry:CargoSources) if(auto* Box=Entry.Key.Get(); IsValid(Box) &&
+            Box->LocationOwner==ECargoOwner::Ship && !Box->GetAttachParentActor() && !Box->GetBody()->IsSimulatingPhysics())
+        {
+            UpdateCargoMotion(Box); Box->ApplySecuredMotionFraction(1.);
+            Box->GetBody()->SetMobility(EComponentMobility::Static);
+        }
+        bStaticShipCollisionReady=true;
     }
 }
 void APortSiteLogistics::AddShipCargo(FVector Position,int32 STS,int32 Wave,FName ContainerName,bool bLoadFromYard,
@@ -534,6 +554,23 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
     // tiers leave first, so no boxes are lifted through an upper stack.
     Manifest.StableSort([](const FSiteShipCargo& A,const FSiteShipCargo& B) { return A.Wave!=B.Wave?A.Wave<B.Wave:A.Transform.GetLocation().Z>B.Transform.GetLocation().Z; });
     BuildSourceAccess();
+    if(LaneCount==9)
+    {
+        // Reserve transfer clearance over the whole vessel, including retained
+        // and future export stacks, rather than only the selected source tier.
+        float StackTop[3]={0,0,0}, HalfHeight[3]={0,0,0};
+        for(const auto* Records:{&Manifest,&RetainedCargo,&ExportCargo}) for(const auto& C:*Records)
+        {
+            const int32 V=C.STS/3; const auto* Box=C.Actor.Get();
+            if(V<0 || V>=3 || !IsValid(Box)) continue;
+            const float Half=Box->ExternalDimensionsCm.Z*.5f;
+            StackTop[V]=FMath::Max(StackTop[V],float(C.Transform.GetLocation().Z)+Half);
+            HalfHeight[V]=FMath::Max(HalfHeight[V],Half);
+        }
+        for(int32 S=0;S<LaneCount;++S) if(!Equipment[YardCraneCount+S]->EnsureTransferHeight(
+            StackTop[S/3]+HalfHeight[S/3]+154.5f+100.f))
+        { Stop(TEXT("Vessel stack exceeds STS transfer clearance")); return; }
+    }
     if(!PlanYardDestinations())
     {
         if(Fault.IsEmpty()) Stop(TEXT("Could not create supported pre-discharge yard plan"));
@@ -583,12 +620,21 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
 bool APortSiteLogistics::SourceAccessible(int32 Cargo) const
 {
     const auto& C=Manifest[Cargo];
-    if(C.PlanningOrder>=DispatchLimit || C.Actor->LocationOwner!=ECargoOwner::Ship) return false;
-    for(int32 Above:SourceAbove[Cargo])
-        if(Manifest[Above].Actor->LocationOwner==ECargoOwner::Ship) return false;
-    if(C.Wave>0) for(const auto& Other:Manifest)
-        if(Other.STS/3==C.STS/3 && Other.Wave<C.Wave && Other.Actor->LocationOwner==ECargoOwner::Ship) return false;
-    return true;
+    if(C.PlanningOrder>=DispatchLimit) return false;
+    if(SourceAccessVersions.Num()!=Manifest.Num())
+    { SourceAccessVersions.Init(0,Manifest.Num()); SourceAccessResults.Init(false,Manifest.Num()); }
+    if(SourceAccessVersions[Cargo]==SourceAccessRevision) return SourceAccessResults[Cargo];
+    auto Compute=[&]()
+    {
+        if(C.Actor->LocationOwner!=ECargoOwner::Ship) return false;
+        for(int32 Above:SourceAbove[Cargo])
+            if(Manifest[Above].Actor->LocationOwner==ECargoOwner::Ship) return false;
+        if(C.Wave>0) for(const auto& Other:Manifest)
+            if(Other.STS/3==C.STS/3 && Other.Wave<C.Wave && Other.Actor->LocationOwner==ECargoOwner::Ship) return false;
+        return true;
+    };
+    const bool Result=Compute(); SourceAccessResults[Cargo]=Result; SourceAccessVersions[Cargo]=SourceAccessRevision;
+    return Result;
 }
 
 void APortSiteLogistics::PrepareExecutableCargo(int32 Lane,TOptional<TArray<int32>>* SourceCandidates)
@@ -3143,6 +3189,9 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
 
 void APortSiteLogistics::SynchronizeShipCollision(const FBox& Query,double ControlFraction)
 {
+    // Sea OFF: the initialization/transition pose commit made the fixed scene
+    // query-correct. Do not walk bay candidates at every sensor/control sample.
+    if(bStaticShipCollisionReady && !FrameSeaState.bSeaMotionEnabled) return;
     PortSimPerformance::FScope Timing(TEXT("ship_query_sync"));
     auto Sync=[&](APortContainerActor* Box)
     {
@@ -3256,8 +3305,15 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
     {
         const auto* Crane=Equipment[YardCraneCount+STS].Get();
         if(!Crane->IsWaitingForAGV()) continue;
-        for(auto& C:Manifest) if(C.Actor.Get()==Crane->CargoActor)
-        { C.STSWaitingForVehicleSeconds+=Dt; break; }
+        int32 Index=PreparedCargo[STS];
+        auto Matches=[&](int32 I){return Manifest.IsValidIndex(I) && Manifest[I].Actor.Get()==Crane->CargoActor;};
+        if(!Matches(Index) && Jobs.IsValidIndex(STSOwners[STS]))
+        {
+            const auto& Job=Jobs[STSOwners[STS]];
+            Index=Matches(Job.Cargo)?Job.Cargo:Job.ExtraCargo;
+        }
+        if(!Matches(Index)) Index=Manifest.IndexOfByPredicate([&](const FSiteShipCargo& C){return C.Actor.Get()==Crane->CargoActor;});
+        if(Manifest.IsValidIndex(Index)) Manifest[Index].STSWaitingForVehicleSeconds+=Dt;
     }
     for(auto& Job:Jobs) if(Job.Stage) { Job.Time+=Dt; if(Paused) Job.PausedSeconds+=Dt; }
     Freeze(Paused || !Fault.IsEmpty());
@@ -3548,6 +3604,8 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
             Yard[Job.Slot].Occupied=true;
             Cargo->GetBody()->SetSimulatePhysics(false);
             Cargo->SetActorLocation(Yard[Job.Slot].Position);
+            // Only after the existing placement/settling checks and final pose.
+            Cargo->GetBody()->SetMobility(EComponentMobility::Static);
             PlacedContainers.Add(Cargo);
             Manifest[Job.Cargo].HandoverMask|=4;
             Manifest[Job.Cargo].State=2; ++Delivered; ++Vehicle->CompletedJobs;

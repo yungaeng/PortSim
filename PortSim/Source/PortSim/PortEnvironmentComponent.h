@@ -22,6 +22,14 @@ struct PORTSIM_API FPortVesselMotion
     float RollDegrees=0;
     float PitchDegrees=0;
 
+    bool IsAtRestAtBase() const
+    {
+        return TranslationCentimeters.IsZero() && Rotation.Equals(FQuat::Identity,0.) &&
+            LinearVelocityCentimetersPerSecond.IsZero() && AngularVelocityRadiansPerSecond.IsZero() &&
+            LinearAccelerationCentimetersPerSecondSquared.IsZero() && AngularAccelerationRadiansPerSecondSquared.IsZero() &&
+            LinearJerkCentimetersPerSecondCubed.IsZero() && AngularJerkRadiansPerSecondCubed.IsZero();
+    }
+
     FVector TransformPosition(FVector BasePosition,FVector Pivot) const
     { return Pivot+TranslationCentimeters+Rotation.RotateVector(BasePosition-Pivot); }
     FQuat TransformRotation(FQuat BaseRotation) const { return Rotation*BaseRotation; }

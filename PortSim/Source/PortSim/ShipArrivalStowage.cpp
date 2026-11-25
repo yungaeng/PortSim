@@ -4,10 +4,21 @@
 
 void APortSiteLogistics::BuildSourceAccess()
 {
+    ++SourceAccessRevision;
     SourceAbove.Reset(); SourceAbove.SetNum(Manifest.Num());
     ManifestBySTS.Reset(); ManifestBySTS.SetNum(FMath::Max(9,LaneCount));
     for(int32 I=0;I<Manifest.Num();++I) ManifestBySTS[Manifest[I].STS].Add(I);
-    for(int32 I=0;I<Manifest.Num();++I) for(int32 J=0;J<Manifest.Num();++J)
+    FTrafficSpatialIndex StackIndex;
+    for(int32 I=0;I<Manifest.Num();++I)
+    {
+        const auto& C=Manifest[I]; const FVector P=C.Transform.GetLocation(), Half=C.Actor->ExternalDimensionsCm*.5;
+        StackIndex.Set(I,{FBox(P-Half,P+Half)});
+    }
+    for(int32 I=0;I<Manifest.Num();++I)
+    {
+    const auto& C=Manifest[I]; const FVector P=C.Transform.GetLocation(), Half=C.Actor->ExternalDimensionsCm*.5;
+    TArray<int32> Candidates=StackIndex.Query({FBox(P-Half,P+Half)}).Array(); Candidates.Sort();
+    for(int32 J:Candidates)
     {
         const auto& Lower=Manifest[I]; const auto& Upper=Manifest[J];
         const FVector Delta=Upper.Transform.GetLocation()-Lower.Transform.GetLocation();
@@ -15,6 +26,7 @@ void APortSiteLogistics::BuildSourceAccess()
             FMath::Abs(Delta.X)<(Upper.Actor->ExternalDimensionsCm.X+Lower.Actor->ExternalDimensionsCm.X)*.5-.1 &&
             FMath::Abs(Delta.Y)<(Upper.Actor->ExternalDimensionsCm.Y+Lower.Actor->ExternalDimensionsCm.Y)*.5-.1)
             SourceAbove[I].Add(J);
+    }
     }
 }
 

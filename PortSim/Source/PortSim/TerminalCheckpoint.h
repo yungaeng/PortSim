@@ -34,7 +34,7 @@ private:
         UPrimitiveComponent* Primitive;
         FTransform Relative;
         FName Socket;
-        uint8 Collision;
+        uint8 Collision,Mobility;
         bool Visible,Hidden;
     };
     struct FLabelState { UTextRenderComponent* Label; FText Text; };

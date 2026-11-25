@@ -45,11 +45,11 @@ void FTerminalCheckpoint::CaptureActor(AActor& Actor)
     TInlineComponentArray<USceneComponent*> Components(&Actor);
     for(auto* Part:Components)
     {
-        if(Part->Mobility==EComponentMobility::Static) continue;
+        if(Part->Mobility==EComponentMobility::Static && !Actor.IsA<APortContainerActor>()) continue;
         Objects.Add(Part);
         auto* Primitive=Cast<UPrimitiveComponent>(Part);
         Parts.Add({Part,Part->GetAttachParent(),Primitive,Part->GetRelativeTransform(),Part->GetAttachSocketName(),
-            uint8(Primitive?Primitive->GetCollisionEnabled():ECollisionEnabled::NoCollision),Part->IsVisible(),Part->bHiddenInGame!=0});
+            uint8(Primitive?Primitive->GetCollisionEnabled():ECollisionEnabled::NoCollision),uint8(Part->Mobility),Part->IsVisible(),Part->bHiddenInGame!=0});
         if(auto* Label=Cast<UTextRenderComponent>(Part)) Labels.Add({Label,Label->Text});
     }
 }
@@ -90,6 +90,7 @@ bool FTerminalCheckpoint::Restore() const
     }
     for(const auto& P:Parts)
     {
+        if(P.Part->Mobility==EComponentMobility::Static) P.Part->SetMobility(EComponentMobility::Movable);
         if(P.Primitive && P.Primitive->IsSimulatingPhysics()) P.Primitive->SetSimulatePhysics(false);
         if(P.Part->GetAttachParent()!=P.Parent || P.Part->GetAttachSocketName()!=P.Socket)
         {
@@ -100,6 +101,7 @@ bool FTerminalCheckpoint::Restore() const
             P.Part->SetRelativeTransform(P.Relative,false,nullptr,ETeleportType::TeleportPhysics);
         if(P.Part->IsVisible()!=P.Visible) P.Part->SetVisibility(P.Visible);
         if(P.Part->bHiddenInGame!=P.Hidden) P.Part->SetHiddenInGame(P.Hidden);
+        if(uint8(P.Part->Mobility)!=P.Mobility) P.Part->SetMobility(EComponentMobility::Type(P.Mobility));
         if(P.Primitive && P.Primitive->GetCollisionEnabled()!=P.Collision)
             P.Primitive->SetCollisionEnabled(ECollisionEnabled::Type(P.Collision));
     }
@@ -169,6 +171,9 @@ void FTerminalCheckpoint::Capture(APortWorkingCrane& O)
 void FTerminalCheckpoint::Capture(APortSiteLogistics& O)
 {
     Values(O.bShipRemainingDirty,O.CachedShipRemaining,O.CachedShipManifestCount);
+    Values(O.SourceAccessRevision,O.SourceAccessVersions,O.SourceAccessResults);
+    Values(O.DirtyKinematicCargo);
+    Values(O.bStaticShipCollisionReady);
     Values(O.IncidentMeasureClock,O.IncidentHaltSeconds,O.IncidentCompletionTimes,O.bIncidentReferenceClean,
         O.IncidentEnvironmentRevision,O.IncidentComparisonKey,O.IncidentRuns,O.IncidentClock,O.bIncidentInputUsed);
     Values(O.FreeCargo,O.MovingCargo,O.FixedCargo,O.CargoBays,O.CargoBayIndex,O.CargoSources,

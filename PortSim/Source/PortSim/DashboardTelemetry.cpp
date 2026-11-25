@@ -416,10 +416,16 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
         DashboardWrite.Wait();
     }
     const double CaptureStart=FPlatformTime::Seconds();
+    TSet<TWeakObjectPtr<APortContainerActor>> SnapshotCargo;
+    if(bDeferringVisuals)
+    {
+        SnapshotCargo=MovingCargo;
+        for(const auto& Crane:Equipment) if(IsValid(Crane) && IsValid(Crane->CargoActor)) SnapshotCargo.Add(Crane->CargoActor.Get());
+    }
     // A telemetry snapshot describes one current scene, including its artwork.
     if(bDeferringVisuals)
     {
-        for(const auto& Box:ShipContainers) if(IsValid(Box))
+        for(const auto& Box:SnapshotCargo) if(Box.IsValid())
         {
             if(Box->LocationOwner==ECargoOwner::Ship && !Box->GetAttachParentActor()) Box->ApplySecuredMotionFraction(1.);
             Box->EndVisualFrame();
@@ -429,7 +435,7 @@ void APortSiteLogistics::ExportDashboard(bool Paused,bool Force)
     auto Snapshot=CaptureDashboard(Paused);
     if(bDeferringVisuals)
     {
-        for(const auto& Box:ShipContainers) if(IsValid(Box)) Box->BeginVisualFrame();
+        for(const auto& Box:SnapshotCargo) if(Box.IsValid()) Box->BeginVisualFrame();
         for(const auto& Crane:Equipment) Crane->DeferRopeVisuals(true);
     }
     const FString Directory=FPaths::ProjectSavedDir()/TEXT("Dashboard");
@@ -594,8 +600,11 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
     TSharedPtr<FJsonObject> Profile;
     if(FJsonSerializer::Deserialize(TJsonReaderFactory<>::Create(STSProfile.SnapshotJson),Profile)) Root->SetObjectField(TEXT("applied_profile"),Profile);
     TMap<AActor*,APortContainerActor*> AttachedCargo;
+    TMap<AActor*,TArray<APortContainerActor*>> CargoByCarrier;
+    const TArray<APortContainerActor*> NoCargo;
     for (const auto& Cargo:ShipContainers)
-        if (IsValid(Cargo)) if (auto* Parent=Cargo->GetAttachParentActor()) AttachedCargo.Add(Parent,Cargo);
+        if (IsValid(Cargo)) if (auto* Parent=Cargo->GetAttachParentActor())
+        { AttachedCargo.Add(Parent,Cargo); CargoByCarrier.FindOrAdd(Parent).Add(Cargo); }
     // Build once per snapshot: cargo details are emitted for both containers
     // and their carriers. Repeated linear manifest searches were quadratic.
     // Keep this index local so resets/reassignment cannot leave stale entries.
@@ -791,7 +800,8 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
             if (auto* const* C=AttachedCargo.Find(V))
             { O->SetStringField(TEXT("cargo"),(*C)->GetName()); CargoPlan(O,*C); }
             TArray<TSharedPtr<FJsonValue>> OnDeck;
-            for(const auto& Box:ShipContainers) if(IsValid(Box) && Box->GetAttachParentActor()==V)
+            const auto* DeckCargo=CargoByCarrier.Find(V);
+            for(auto* Box:DeckCargo?*DeckCargo:NoCargo)
             {
                 auto Item=Object(); Item->SetStringField(TEXT("id"),Box->GetName());
                 Item->SetStringField(TEXT("name"),Box->ContainerID.ToString()); Item->SetNumberField(TEXT("mass_kg"),Box->MassKg);
@@ -879,7 +889,8 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
             O->SetStringField(TEXT("state"),TEXT("idle"));
             O->SetStringField(TEXT("loaded_recovery_status"),TEXT("복구 배정 대기"));
             double Load=0;
-            for(const auto& Cargo:ShipContainers) if(Cargo->GetAttachParentActor()==RS)
+            const auto* RecoveryCargo=CargoByCarrier.Find(RS);
+            for(auto* Cargo:RecoveryCargo?*RecoveryCargo:NoCargo)
             {Load+=Cargo->MassKg;O->SetStringField(TEXT("cargo"),Cargo->GetName());}
             O->SetNumberField(TEXT("payload_kg"),Load);
             O->SetNumberField(TEXT("recovery_capacity_kg"),45000);

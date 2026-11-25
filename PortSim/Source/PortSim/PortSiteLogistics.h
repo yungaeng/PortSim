@@ -152,6 +152,7 @@ public:
     void PublishCargoPresentation();
     void SynchronizeFreeCargoCollision(float Dt);
     TSet<TWeakObjectPtr<APortContainerActor>> FreeCargo, MovingCargo, FixedCargo;
+    TSet<TWeakObjectPtr<APortContainerActor>> DirtyKinematicCargo;
     struct FCargoBay
     {
         int32 Vessel=0;
@@ -164,6 +165,7 @@ public:
     TMap<TWeakObjectPtr<APortContainerActor>,uint64> CargoMotionVersions;
     TArray<FPortVesselMotion> PreviousCargoMotions, CurrentCargoMotions;
     uint64 CargoMotionVersion=0;
+    bool bStaticShipCollisionReady=false;
     float CargoMotionDuration=0;
     int32 IndexedCargoCount=-1;
     void UpdateCargoMotion(APortContainerActor* Cargo);
@@ -172,7 +174,7 @@ public:
     void ExportDashboard(bool Paused, bool Force=false);
     bool Validate(FString& Error) const;
     int32 ShipRemaining() const;
-    void InvalidateShipRemaining() const { bShipRemainingDirty=true; }
+    void InvalidateShipRemaining() const { bShipRemainingDirty=true; ++SourceAccessRevision; }
     int32 InTransit() const;
     bool IsIdle() const;
     APortAGVActor* LoadedVehicle(APortAGVActor* Preferred=nullptr) const;
@@ -293,6 +295,9 @@ private:
     TArray<FSiteShipCargo> Manifest;
     mutable bool bShipRemainingDirty=true;
     mutable int32 CachedShipRemaining=0, CachedShipManifestCount=-1;
+    mutable uint64 SourceAccessRevision=1;
+    mutable TArray<uint64> SourceAccessVersions;
+    mutable TArray<bool> SourceAccessResults;
     TArray<FSiteShipCargo> InitialManifestPlan;
     struct FDeferredYardLease { int32 Vehicle,Slot; };
     TArray<FDeferredYardLease> DeferredYardLeases;
