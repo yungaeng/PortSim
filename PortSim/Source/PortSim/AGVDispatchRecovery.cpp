@@ -56,6 +56,7 @@ void APortSiteLogistics::ReassignBlockedParkingVehicles()
         if(!Since || TrafficClock-*Since<45. || !V->Sensors.bFMSHold || TrafficClock<J.DispatchRetryAfter) continue;
         const int32 S=J.STS;
         const bool Standby=J.Stage==7;
+        const bool WasActive=AGVThroughputController.Config.bEnabled&&AGVThroughputController.IsFleetMember(Old);
         if(Standby && !CanReleaseParkedStandby(Old)) continue;
         if(!Standby && (!Equipment.IsValidIndex(YardCraneCount+S) || !CraneAvailable(YardCraneCount+S) ||
             !STSOwners.IsValidIndex(S) || STSOwners[S]!=Old ||
@@ -72,7 +73,7 @@ void APortSiteLogistics::ReassignBlockedParkingVehicles()
         }
         const FVector Goal=Standby?QueueQuay(S):TransferQuay(J);
         TArray<TPair<double,int32>> Candidates;
-        for(int32 I=0;I<Jobs.Num();++I) if(I!=Old && Vehicles[I]->CanAcceptWork())
+        for(int32 I=0;I<Jobs.Num();++I) if(I!=Old && (WasActive||IsAGVDispatchEnabled(I)) && Vehicles[I]->CanAcceptWork())
         {
             const bool Warm=!Standby && NextVehicles.IsValidIndex(S) && NextVehicles[S]==I &&
                 Jobs[I].Stage==8 && Vehicles[I]->Speed<=.1f;
@@ -101,6 +102,11 @@ void APortSiteLogistics::ReassignBlockedParkingVehicles()
         }
         if(Best==INDEX_NONE) continue;
 
+        if(WasActive)
+        {
+            AGVThroughputController.ActiveFleet[Old]=false;
+            AGVThroughputController.ActiveFleet[Best]=true;
+        }
         if(Standby) NextVehicles[S]=Best;
         else
         {

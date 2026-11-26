@@ -55,7 +55,7 @@ void APortSiteLogistics::ScheduleExport()
     const int32 Lane=Jobs.IndexOfByPredicate([this](const FSiteTransfer& J)
     {
         const int32 Index=&J-Jobs.GetData();
-        return J.Stage==0 && Vehicles[Index]->CanAcceptWork();
+        return IsAGVDispatchEnabled(Index) && J.Stage==0 && Vehicles[Index]->CanAcceptWork();
     });
     if(Lane==INDEX_NONE) return;
     auto& Booking=ExportCargo[Next];

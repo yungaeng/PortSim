@@ -137,7 +137,7 @@ void APortAGVActor::RefreshBatteryLabel()
     DisplayedBattery=Percent; bDisplayedCharging=bCharging;
     NameLabel->SetText(FText::FromString(FString::Printf(TEXT("AGV %d | %d%% %s"),VehicleID,Percent,
         bCharging?TEXT("CHARGING"):TEXT(""))));
-    NameLabel->SetTextRenderColor(bCharging?FColor::Cyan:BatteryPercent<=LowBatteryPercent?FColor::Red:FColor::White);
+    NameLabel->SetTextRenderColor(bCharging?FColor::Cyan:BatteryPercent<=BatteryReturnThresholdPercent?FColor::Red:FColor::White);
 }
 
 void APortAGVActor::AdvanceBattery(double Seconds,bool Operating,bool Charging)
@@ -148,7 +148,7 @@ void APortAGVActor::AdvanceBattery(double Seconds,bool Operating,bool Charging)
         if(bCharging) BatteryPercent=FMath::Min(ChargeLimitPercent,BatteryPercent+Seconds*60./1800.);
         else if(Operating) BatteryPercent=FMath::Max(0.,BatteryPercent-Seconds*60./28800.);
     }
-    if(BatteryPercent<=LowBatteryPercent) bNeedsCharge=true;
+    if(BatteryPercent<=BatteryReturnThresholdPercent) bNeedsCharge=true;
     if(BatteryPercent>=ChargeLimitPercent) { bNeedsCharge=false; bCharging=false; }
     RefreshBatteryLabel();
 }

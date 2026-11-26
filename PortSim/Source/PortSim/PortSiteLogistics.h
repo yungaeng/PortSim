@@ -9,6 +9,7 @@
 #include "TrafficSpatialIndex.h"
 #include "IncidentScenarios.h"
 #include "EquipmentPerformance.h"
+#include "AGVThroughputController.h"
 #include "PortSiteLogistics.generated.h"
 
 class FJsonObject;
@@ -367,6 +368,7 @@ private:
     TArray<int32> STSOwners;
     TArray<int32> NextVehicles;
     TArray<bool> PreparedStarted;
+    FAGVThroughputController AGVThroughputController;
     TMap<int32,TArray<FBox>> RoadReservations;
     TMap<int32,int32> RoadReservationEndWaypoint;
     TMap<int32,FVector> TrafficRecoveryTargets;
@@ -413,6 +415,10 @@ private:
     void ReleaseUnenteredParkingMission(int32 Vehicle);
     void ReassignBlockedParkingVehicles();
     void AdvanceFleetBatteries(float Dt);
+    bool IsAGVDispatchEnabled(int32 Vehicle) const;
+    void ReconcileAGVThroughputFleet();
+    void AdvanceAGVThroughputController(float Dt);
+    bool AGVThroughputWindowInvalid() const;
     FVector ChargingBayPosition(int32 Bay) const;
     void ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue);
     void AssignReturnSTS(int32 Vehicle);

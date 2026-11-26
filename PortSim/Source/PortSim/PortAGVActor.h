@@ -116,8 +116,9 @@ public:
     // Usable 60 percentage points: 8 operating hours, 30-minute fast charge.
     static constexpr double LowBatteryPercent=20.;
     static constexpr double ChargeLimitPercent=80.;
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") double BatteryReturnThresholdPercent=LowBatteryPercent;
     void AdvanceBattery(double Seconds,bool Operating,bool Charging);
-    bool CanAcceptWork() const { return !Emergency.Active && !bDriveFault && !bIncidentHandoverHold && !bIncidentSensorFault && !bIncidentDestinationMismatch && !IncidentFaults.Contains(TEXT("localization_loss")) && !IncidentFaults.Contains(TEXT("fms_delay")) && !IncidentFaults.Contains(TEXT("fms_disconnect")) && !bIncidentNeedsPositionFix && BatteryPercent>LowBatteryPercent && !bNeedsCharge && !bCharging; }
+    bool CanAcceptWork() const { return !Emergency.Active && !bDriveFault && !bIncidentHandoverHold && !bIncidentSensorFault && !bIncidentDestinationMismatch && !IncidentFaults.Contains(TEXT("localization_loss")) && !IncidentFaults.Contains(TEXT("fms_delay")) && !IncidentFaults.Contains(TEXT("fms_disconnect")) && !bIncidentNeedsPositionFix && BatteryPercent>BatteryReturnThresholdPercent && !bNeedsCharge && !bCharging; }
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") double BatteryPercent=80.;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") bool bNeedsCharge=false;
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="AGV|Battery") bool bCharging=false;

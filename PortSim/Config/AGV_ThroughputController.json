@@ -1,0 +1,11 @@
+{
+  "enabled": true,
+  "step_size": 4,
+  "settle_sec": 300,
+  "window_sec": 900,
+  "min_gain_ratio": 0.03,
+  "max_agv": 60,
+  "battery_return_percent": 20,
+  "reprobe_after_sec": 3600,
+  "reprobe_drop_ratio": 0.2
+}

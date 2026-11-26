@@ -492,6 +492,10 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
     DispatchPriorityLimit=INDEX_NONE;
     BaselineYard=Yard.Num()+FixedYard;
     check(LaneCount==8 || LaneCount==9);
+    FAGVThroughputConfig ThroughputConfig;
+    FString ThroughputError;
+    if(LaneCount==9 && !ThroughputConfig.Load(FPaths::ProjectConfigDir()/TEXT("AGV_ThroughputController.json"),ThroughputError))
+    { Stop(ThroughputError); return; }
     if(Yard.Num()<InitialShipCount())
     {
         Stop(FString::Printf(TEXT("Requested %d containers exceeds total yard capacity %d"),InitialShipCount(),Yard.Num()));
@@ -600,12 +604,21 @@ void APortSiteLogistics::Initialize(const TArray<TObjectPtr<APortWorkingCrane>>&
     {
         auto* Vehicle=GetWorld()->SpawnActor<APortAGVActor>(FleetPark(I),FRotator::ZeroRotator,Params);
         Vehicle->InitializeVehicle(100+I);
+        if(LaneCount==9) Vehicle->BatteryReturnThresholdPercent=ThroughputConfig.BatteryReturnPercent;
         // A freshly spawned fleet uses the same marked-bay pose as reset.  The
         // controller steers through the bay gap instead of rotating or sliding.
         Vehicle->ResetVehicle(FleetPark(I));
         Vehicles.Add(Vehicle);
     }
     TrafficVehicles=Vehicles;
+    if(LaneCount==9)
+    {
+        TArray<int32> STSCompletedJobs;
+        for(int32 STS=0;STS<LaneCount;++STS)
+            STSCompletedJobs.Add(Equipment[YardCraneCount+STS]->CompletedJobs);
+        AGVThroughputController.Initialize(ThroughputConfig,Vehicles.Num(),STSCompletedJobs);
+        ReconcileAGVThroughputFleet();
+    }
     bReady=true;
     BeginReport();
     if(!STSProfile.bReady) Stop(TEXT("Site STS reference unavailable: ")+STSProfile.Error);
@@ -797,7 +810,7 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
 
 void APortSiteLogistics::AssignReturnSTS(int32 Vehicle)
 {
-    if(LaneCount!=9 || !Vehicles[Vehicle]->CanAcceptWork()) return;
+    if(LaneCount!=9 || !IsAGVDispatchEnabled(Vehicle) || !Vehicles[Vehicle]->CanAcceptWork()) return;
     auto& Job=Jobs[Vehicle];
     int32 Best=INDEX_NONE;
     double BestScore=TNumericLimits<double>::Max();
@@ -837,7 +850,7 @@ void APortSiteLogistics::AssignReturnSTS(int32 Vehicle)
             continue;
         }
         double IdleETA=TNumericLimits<double>::Max();
-        for(int32 I=0;I<Vehicles.Num();++I) if(Jobs[I].Stage==0 && Vehicles[I]->CanAcceptWork() &&
+        for(int32 I=0;I<Vehicles.Num();++I) if(IsAGVDispatchEnabled(I) && Jobs[I].Stage==0 && Vehicles[I]->CanAcceptWork() &&
             TrafficClock>=Jobs[I].DispatchRetryAfter && ParkingDepartureAvailable(I))
             IdleETA=FMath::Min(IdleETA,AGVDispatchPolicy::EstimatedApproachDistanceCm(
                 Vehicles[I]->GetActorLocation(),Target,S,bDepotParking?I:INDEX_NONE)/AGVDispatchPolicy::CruiseSpeedCmPerSecond);
@@ -895,9 +908,70 @@ void APortSiteLogistics::AdvanceFleetBatteries(float Dt)
         const bool AtBay=Vehicles[I]->Speed<=.1f && Vehicles[I]->GetActorLocation().Equals(
             FleetPark(I),AGVReference::DockingAccuracyCm+1.f);
         Job.Stage=AtBay?FSiteTransfer::Charging:FSiteTransfer::ToCharge;
+        if(AGVThroughputController.Config.bEnabled && AGVThroughputController.ActiveFleet.IsValidIndex(I))
+            AGVThroughputController.ActiveFleet[I]=false;
         if(AtBay) Vehicles[I]->AdvanceBattery(0,false,true);
         else if(!PlanRoadRoute(I,false)) { Stop(TEXT("No road route to charging bay")); return; }
     }
+    ReconcileAGVThroughputFleet();
+}
+
+bool APortSiteLogistics::IsAGVDispatchEnabled(int32 Vehicle) const
+{
+    return LaneCount!=9 || !AGVThroughputController.Config.bEnabled ||
+        AGVThroughputController.IsFleetMember(Vehicle);
+}
+
+void APortSiteLogistics::ReconcileAGVThroughputFleet()
+{
+    if(LaneCount!=9 || !AGVThroughputController.Config.bEnabled) return;
+    const int32 Target=FMath::Clamp(AGVThroughputController.TargetAGV,0,
+        FMath::Min(AGVThroughputController.Config.MaxAGV,AGVThroughputController.ActiveFleet.Num()));
+    while(AGVThroughputController.ActiveFleetCount()>Target)
+    {
+        int32 Remove=INDEX_NONE;
+        for(int32 I=AGVThroughputController.ActiveFleet.Num()-1;I>=0;--I)
+            if(AGVThroughputController.ActiveFleet[I] && Jobs.IsValidIndex(I) && Jobs[I].Stage==0)
+            { Remove=I; break; }
+        if(Remove==INDEX_NONE) break;
+        AGVThroughputController.ActiveFleet[Remove]=false;
+    }
+    while(AGVThroughputController.ActiveFleetCount()<Target)
+    {
+        int32 Add=INDEX_NONE;
+        for(int32 I=0;I<Vehicles.Num();++I)
+            if(!AGVThroughputController.IsFleetMember(I) && Jobs.IsValidIndex(I) && Jobs[I].Stage==0 &&
+                Vehicles[I]->CanAcceptWork() && !IsLoadedRecoveryVehicle(I))
+            { Add=I; break; }
+        if(Add==INDEX_NONE)
+            for(int32 I=0;I<Vehicles.Num();++I)
+                if(!AGVThroughputController.IsFleetMember(I) && Jobs.IsValidIndex(I) &&
+                    (Jobs[I].Stage==FSiteTransfer::ToCharge || Jobs[I].Stage==FSiteTransfer::Charging))
+                { Add=I; break; }
+        if(Add==INDEX_NONE) break;
+        AGVThroughputController.ActiveFleet[Add]=true;
+    }
+}
+
+bool APortSiteLogistics::AGVThroughputWindowInvalid() const
+{
+    if(!Fault.IsEmpty() || !IsolatedEquipment.IsEmpty() || bRecoveryRailGuard || HasLoadedAGVRecovery())
+        return true;
+    for(const auto& Crane:Equipment)
+        if(IsValid(Crane) && (!Crane->Fault.IsEmpty() || Crane->IsEquipmentUnavailable() ||
+            Crane->bFaultEvacuating || Crane->bFaultEvacuationComplete || Crane->bRailSafetyHold))
+            return true;
+    return false;
+}
+
+void APortSiteLogistics::AdvanceAGVThroughputController(float Dt)
+{
+    if(LaneCount!=9 || !AGVThroughputController.Config.bEnabled) return;
+    TArray<int32> STSCompletedJobs;
+    for(int32 STS=0;STS<LaneCount;++STS)
+        STSCompletedJobs.Add(Equipment[YardCraneCount+STS]->CompletedJobs);
+    AGVThroughputController.Advance(Dt,STSCompletedJobs,AGVThroughputWindowInvalid());
+    ReconcileAGVThroughputFleet();
 }
 
 bool APortSiteLogistics::UpdateDispatchPriorities()
@@ -955,7 +1029,7 @@ int32 APortSiteLogistics::NearestDispatchVehicle(int32 STS,bool Standby)
     for(int32 I=0;I<Vehicles.Num();++I)
     {
         const bool Parked=Jobs[I].Stage==0;
-        if((!Parked && !CanRedirectEmptyReturn(I)) || !Vehicles[I]->CanAcceptWork() ||
+        if(!IsAGVDispatchEnabled(I) || (!Parked && !CanRedirectEmptyReturn(I)) || !Vehicles[I]->CanAcceptWork() ||
             TrafficClock<Jobs[I].DispatchRetryAfter || !ParkingDepartureAvailable(I)) continue;
         const FVector Target=Standby?QueueQuay(STS):CargoQuay(PreparedCargo[STS]);
         if(Best!=INDEX_NONE && FVector::Dist2D(Vehicles[I]->GetActorLocation(),Target)>BestDistance+.1) continue;
@@ -3383,7 +3457,15 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
     }
     for (const auto& Vehicle:Vehicles) Moving+=Vehicle->Speed>1.f;
     PeakMovingVehicles=FMath::Max(PeakMovingVehicles,Moving);
-    if (LaneCount==9) { AdvanceFleetBatteries(Dt); if(!Fault.IsEmpty()) return; ScheduleExport(); if(!Fault.IsEmpty()) return; ScheduleFleet(); }
+    if (LaneCount==9)
+    {
+        AdvanceAGVThroughputController(Dt);
+        AdvanceFleetBatteries(Dt);
+        if(!Fault.IsEmpty()) return;
+        ScheduleExport();
+        if(!Fault.IsEmpty()) return;
+        ScheduleFleet();
+    }
     RecoverTrafficCycle();
     if(!Fault.IsEmpty()) return;
     // Age actual blocked road requests, with a capped pickup/STS-exit bonus.
@@ -3744,6 +3826,16 @@ void APortSiteLogistics::ResetLogistics()
     for (auto& Slot:Yard) if (Slot.Reserved)
     { Slot.Occupied=false; Slot.Mesh->UpdateInstanceTransform(Slot.Instance,SiteLogistics::Hidden(SiteLogistics::YardTransform(Slot)),false,true,true); }
     for (int32 I=0;I<Jobs.Num();++I) { Jobs[I]=FSiteTransfer(); Vehicles[I]->ResetVehicle(FleetPark(I)); }
+    if(LaneCount==9)
+    {
+        TArray<int32> STSCompletedJobs;
+        for(int32 STS=0;STS<LaneCount;++STS)
+            STSCompletedJobs.Add(Equipment[YardCraneCount+STS]->CompletedJobs);
+        AGVThroughputController.Initialize(AGVThroughputController.Config,Vehicles.Num(),STSCompletedJobs);
+        for(const auto& Vehicle:Vehicles)
+            Vehicle->BatteryReturnThresholdPercent=AGVThroughputController.Config.BatteryReturnPercent;
+        ReconcileAGVThroughputFleet();
+    }
     STSOwners.Init(INDEX_NONE,LaneCount);
     NextVehicles.Init(INDEX_NONE,LaneCount); PreparedStarted.Init(false,LaneCount); QueuedHandoffs=0;
     NoProgressTime=0; LastProgressDelivered=0; RoadBlockers.Reset(); RoadWaitSince.Reset(); TrafficClock=0; LastCycleRecoveryAt=-10;

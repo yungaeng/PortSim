@@ -290,12 +290,13 @@ void APortSiteLogistics::ReassignIncidentPickup(int32 Lane)
     auto* Crane=Equipment[YardCraneCount+STS].Get();
     if(Crane->GetHandoverVehicle()!=Failed||!Job.Actor.IsValid()) return;
 
+    const bool WasActive=AGVThroughputController.Config.bEnabled&&AGVThroughputController.IsFleetMember(Lane);
     TArray<TPair<double,int32>> Candidates;
     const FVector Goal=TransferQuay(Job);
     if(IncidentRoadBlocked(Goal,Goal+FVector(0,.1,0))) return;
     for(int32 I=0;I<Jobs.Num();++I)
     {
-        if(I==Lane||Jobs[I].Stage!=0||TrafficClock<Jobs[I].DispatchRetryAfter||
+        if(I==Lane||(!WasActive&&!IsAGVDispatchEnabled(I))||Jobs[I].Stage!=0||TrafficClock<Jobs[I].DispatchRetryAfter||
             !Vehicles[I]->CanAcceptWork()||!ParkingDepartureAvailable(I)) continue;
         Candidates.Emplace(AGVDispatchPolicy::Score(Vehicles[I]->GetActorLocation(),Goal,STS,Vehicles[I]->CompletedJobs,0,I),I);
     }
@@ -320,6 +321,11 @@ void APortSiteLogistics::ReassignIncidentPickup(int32 Lane)
         }
         // Commit only after the replacement has a feasible approach; the
         // cargo, physical pad and yard booking stay with the same transfer.
+        if(WasActive)
+        {
+            AGVThroughputController.ActiveFleet[Lane]=false;
+            AGVThroughputController.ActiveFleet[Replacement]=true;
+        }
         STSOwners[STS]=Replacement;
         if(Yard.IsValidIndex(Job.Slot))
         {

@@ -584,6 +584,14 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
         TEXT("oldest executable source + supported yard + AGV admission before pickup"));
     int32 IdleVehicles=0; for(const auto& J:Jobs) IdleVehicles+=J.Stage==0;
     Root->SetNumberField(TEXT("idle_agvs"),IdleVehicles);
+    auto AGVController=MakeShared<FJsonObject>();
+    AGVController->SetBoolField(TEXT("enabled"),AGVThroughputController.Config.bEnabled);
+    AGVController->SetStringField(TEXT("stage"),AGVThroughputController.StageName());
+    AGVController->SetNumberField(TEXT("target_agv"),AGVThroughputController.TargetAGV);
+    AGVController->SetNumberField(TEXT("active_agv"),AGVThroughputController.ActiveFleetCount());
+    AGVController->SetNumberField(TEXT("reference_containers_per_hour"),AGVThroughputController.ReferenceThroughput);
+    AGVController->SetNumberField(TEXT("recent_containers_per_hour"),AGVThroughputController.RecentThroughput);
+    Root->SetObjectField(TEXT("agv_throughput_controller"),AGVController);
     Root->SetStringField(TEXT("yard_stacking_policy"),TEXT("outbound_order > handling/hazard zones > compatible size > heavy below light"));
     Root->SetStringField(TEXT("cargo_information_basis"),TEXT("synthetic_simulation_booking"));
     Root->SetStringField(TEXT("paired_transport_mode"),TEXT("two sequential verified crane lifts, one AGV journey"));
@@ -762,7 +770,8 @@ TUniquePtr<FJsonObject> APortSiteLogistics::CaptureDashboard(bool Paused)
             O->SetNumberField(TEXT("battery_percent"),V->BatteryPercent);
             O->SetBoolField(TEXT("charging"),V->bCharging);
             O->SetBoolField(TEXT("needs_charge"),V->bNeedsCharge);
-            O->SetBoolField(TEXT("dispatch_eligible"),V->CanAcceptWork());
+            O->SetBoolField(TEXT("dispatch_eligible"),IsAGVDispatchEnabled(Vehicles.IndexOfByKey(V))&&V->CanAcceptWork());
+            O->SetNumberField(TEXT("battery_return_threshold_percent"),V->BatteryReturnThresholdPercent);
             O->SetNumberField(TEXT("charge_limit_percent"),APortAGVActor::ChargeLimitPercent);
             O->SetNumberField(TEXT("speed_mps"),V->Speed*.01);
             O->SetNumberField(TEXT("speed_limit_mps"),V->SpeedLimitCmPerSecond()*.01);
