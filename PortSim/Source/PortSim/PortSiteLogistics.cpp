@@ -3220,6 +3220,7 @@ void APortSiteLogistics::Advance(float Dt,bool Paused)
 {
     if(bReady && !FTerminalReplay::IsPredicting() && !FTerminalReplay::IsAdvancingPhysics()) ProcessDashboardCommands();
     if(bReady) AdvanceIncidentMeasurement(Dt,Paused);
+    if(bReady) AdvanceEquipmentPerformance(Dt,Paused);
     if(bReady&&!FTerminalReplay::IsPredicting()) AdvanceIncidentScenarios(Dt);
     if(!FTerminalReplay::IsPredicting() && !FTerminalReplay::IsAdvancingPhysics()) PortSimPerformance::Report(SimulationTime,Delivered,GetWorld());
     PortSimPerformance::FScope Profile(TEXT("site_advance"));
