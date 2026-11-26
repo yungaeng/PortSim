@@ -334,13 +334,14 @@ bool APortWorkingCrane::MoveSTS(FVector Target,float Dt)
     if(!STSProfile.ContainsTarget(Target)) { Stop(TEXT("Automatic target outside STS envelope")); return false; }
     const double ControlPayload=bCarrying?(Pickup.EstimateValid?Pickup.EstimatedMass:STSProfile.ContainerMassKg):0;
     float Hoist=STSProfile.HoistLimit(ControlPayload,bCarrying);
-    if(Stage==2 || Stage==5)
+    const bool Prelanding=Stage==4 && bCarrying && Target.Z<SafeZ-1.f;
+    if(Stage==2 || Stage==5 || Prelanding)
     {
         const float Distance=FMath::Abs(Target.Z-Observation.DrivePosition.Z);
         Hoist=FMath::Min(Hoist,FMath::Sqrt(FMath::Square(STSProfile.ApproachSpeed)+
             2.f*STSProfile.HoistAcceleration*FMath::Max(0.f,Distance-STSProfile.ApproachDistance)));
     }
-    if(Stage==2 && bCarrying) Hoist=FMath::Min(Hoist,STSProfile.ApproachSpeed);
+    if((Stage==2 && bCarrying) || Prelanding) Hoist=FMath::Min(Hoist,STSProfile.ApproachSpeed);
     FSTSDynamicsParameters C=STSProfile.Dynamics;
     // The plant receives the current environment. The controller receives the
     // latest 20 Hz wind-sensor observation below, just like the other feedback.

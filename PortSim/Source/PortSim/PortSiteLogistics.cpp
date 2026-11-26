@@ -790,6 +790,7 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
     // Book a compatible, supported yard service before pickup. Physical
     // approach ownership is acquired once the cargo is ready at the quay.
     if(!ReserveYardApproach(Vehicle,true)) { Stop(TEXT("STS activation lost yard approach admission")); return; }
+    if(LaneCount==9) ReserveYard(Vehicle,true);
     auto& Record=Manifest[Job.Cargo];
     Record.VehicleAssignedAt=SimulationTime;
     if(LaneCount==9)
@@ -826,6 +827,7 @@ void APortSiteLogistics::AssignReturnSTS(int32 Vehicle)
         // admission. An unentered depot standby may yield to a faster return.
         if(!CraneAvailable(YardCraneCount+S) || !YardDispatchReady(PreparedCargo[S])) continue;
         const int32 Queued=NextVehicles[S];
+        if(Queued==INDEX_NONE && HasBerthQueueTraffic(S,Vehicle)) continue;
         // A reserved standby remains physical traffic even after it reaches
         // the STS bay. Never turn it into an idle vehicle on the road.
         if(Queued!=INDEX_NONE && !CanReleaseParkedStandby(Queued)) continue;
@@ -920,6 +922,22 @@ bool APortSiteLogistics::IsAGVDispatchEnabled(int32 Vehicle) const
 {
     return LaneCount!=9 || !AGVThroughputController.Config.bEnabled ||
         AGVThroughputController.IsFleetMember(Vehicle);
+}
+
+bool APortSiteLogistics::HasBerthQueueTraffic(int32 STS,int32 IgnoreVehicle) const
+{
+    if(LaneCount!=9 || STS<0 || STS>=LaneCount) return false;
+    const int32 BerthGroup=STS/3;
+    for(int32 I=0;I<Jobs.Num();++I)
+    {
+        if(I==IgnoreVehicle) continue;
+        const auto& Job=Jobs[I];
+        if(Job.ReturnSTS!=INDEX_NONE && Job.ReturnSTS/3==BerthGroup) return true;
+        if(Job.Stage==7 && Job.STS>=0 && Job.STS/3==BerthGroup) return true;
+        if(Job.Stage==8 && Job.STS>=0 && Job.STS/3==BerthGroup &&
+            NextVehicles.IsValidIndex(Job.STS) && NextVehicles[Job.STS]==I) return true;
+    }
+    return false;
 }
 
 void APortSiteLogistics::ReconcileAGVThroughputFleet()
@@ -1107,15 +1125,16 @@ void APortSiteLogistics::ScheduleFleet()
         }
         else if (const int32 V=NearestDispatchVehicle(S,false); V!=INDEX_NONE) ActivateVehicle(V,S,false);
     }
-    // One physically separate, painted waiting bay per STS. In the converted
-    // apron/fixed-handover layout it clears the loaded departure tangent, so
-    // the next EMPTY vehicle can approach during the current crane cycle.
+    // Keep at most one empty standby in each three-STS berth group. Its
+    // separate painted bay clears the loaded departure tangent without filling
+    // every quay with parked AGVs.
     // Legacy occupied parking rows and cargo-aligned moving docks stay excluded.
     if(bReuseFreedApron && bDepotParking && !bCargoAlignedHandover)
         for(int32 S:ReadySTS)
         {
             if(STSOwners[S]==INDEX_NONE || NextVehicles[S]!=INDEX_NONE ||
                 !CraneAvailable(YardCraneCount+S)) continue;
+            if(HasBerthQueueTraffic(S)) continue;
             PrepareNextCargo(S,&SourceCandidates[S]);
             if(PreparedCargo[S]==INDEX_NONE || !YardDispatchReady(PreparedCargo[S])) continue;
             const int32 V=NearestDispatchVehicle(S,true); if(V==INDEX_NONE)continue;
@@ -1296,17 +1315,24 @@ void APortSiteLogistics::ReleaseYardApproachIfClear(int32 Lane)
     Job.bYardReleased=true;
 }
 
-bool APortSiteLogistics::ReserveYard(int32 Lane)
+bool APortSiteLogistics::ReserveYard(int32 Lane,bool bPreposition)
 {
     auto& Job=Jobs[Lane];
     const int32 Planned=Manifest[Job.Cargo].PlannedSlot;
     if(!Yard.IsValidIndex(Planned)) { Stop(TEXT("Manifest has no valid planned yard slot")); return false; }
     const auto& Slot=Yard[Planned]; const int32 RMG=Slot.Crane;
+    const int32 ApproachKey=YardApproachKey(Slot);
+    const bool OwnsApproach=YardApproachOwners[ApproachKey]==Lane;
+    if(Job.bRMGReserved && Job.RMG==RMG && RMGBusy[RMG])
+        return bPreposition || OwnsApproach;
+    if(bPreposition ? (!Job.bYardAdvanceBooking || OwnsApproach || YardApproachOwners[ApproachKey]!=INDEX_NONE) :
+        !OwnsApproach) return false;
     if(LaneCount==9 && (Slot.LengthFt!=Manifest[Job.Cargo].Actor->LengthFt ||
         (Slot.LengthFt==20 && Slot.Below!=INDEX_NONE &&
             (!Yard.IsValidIndex(Slot.Partner) || Yard[Slot.Partner].Below==INDEX_NONE ||
                 !Yard[Yard[Slot.Partner].Below].Occupied)))) return false;
-    if (!Slot.Reserved || Slot.Central || Slot.Occupied || IsIncidentYardBlocked(Planned) || Job.Slot!=Planned || YardApproachOwners[YardApproachKey(Slot)]!=Lane || BlocksBusy[Slot.Block] ||
+    if (!Slot.Reserved || Slot.Central || Slot.Occupied || IsIncidentYardBlocked(Planned) || Job.Slot!=Planned ||
+        (!bPreposition && !OwnsApproach) || (bPreposition && YardApproachOwners[ApproachKey]!=INDEX_NONE) || BlocksBusy[Slot.Block] ||
         RMGBusy[RMG] || Equipment[RMG]->IsBusy() || !Equipment[RMG]->Fault.IsEmpty() ||
         (CentralPending!=INDEX_NONE && Yard[CentralSlots[CentralPending]].Block==Slot.Block && YardApproachOwners[YardApproachKey(Slot)]!=Lane)) return false;
     const FVector Dock=YardHandover(Slot);
@@ -3419,7 +3445,7 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
             bool Approaching=false;
             for(const auto& Job:Jobs)
                 if(Job.bRMGReserved && !Job.bYardReleased &&
-                    (Job.Stage==1 || Job.Stage==2 || Job.Stage==3 || Job.Stage==9) &&
+                    (Job.Stage==1 || Job.Stage==2 || Job.Stage==3 || Job.Stage==6 || Job.Stage==9) &&
                     Equipment.IsValidIndex(Job.RMG) && Equipment[Job.RMG]==Crane &&
                     Yard.IsValidIndex(Job.Slot) && Job.ExportIndex==INDEX_NONE)
                 { Approaching=Crane->PrepareRMGApproach(YardHandover(Yard[Job.Slot])); break; }

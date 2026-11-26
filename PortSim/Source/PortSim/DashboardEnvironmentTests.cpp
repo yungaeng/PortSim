@@ -39,27 +39,40 @@ bool FAdvanceYardBookingTest::RunTest(const FString& Parameters)
     auto* R=W->SpawnActor<APortWorkingCrane>();R->Configure(1,false,FVector(-1000,0,349.5),FVector(1000,0,149.5),false);
     Site->Equipment.Add(R);Site->BlocksBusy.Init(false,1);Site->YardApproachOwners.Init(0,1);
     Site->RMGBusy.Init(true,1);Site->SlotAssigned.Init(false,3);Site->Jobs.SetNum(3);
+    Site->NextVehicles.Init(INDEX_NONE,9);
     for(int32 I=0;I<3;++I)
     {
         auto* V=W->SpawnActor<APortAGVActor>(FVector(I*2000,5000,0),FRotator::ZeroRotator);V->InitializeVehicle(100+I);Site->Vehicles.Add(V);
         auto* Box=W->SpawnActor<APortContainerActor>();Box->InitializeContainer(9900+I);
         FSiteShipCargo C;C.Actor=Box;C.PlannedSlot=I;Site->Manifest.Add(C);
-        FSiteYardSlot S;S.Reserved=true;S.Occupied=false;S.Crane=0;S.Block=0;S.Handover=FVector(16000,0,0);Site->Yard.Add(S);
+        FSiteYardSlot S;S.Reserved=true;S.Occupied=false;S.Crane=0;S.Block=0;S.Handover=FVector(1000,1000,0);Site->Yard.Add(S);
         Site->Jobs[I].Cargo=I;Site->Jobs[I].Actor=Box;Site->Jobs[I].Stage=6;
     }
+    Site->Jobs[2].Stage=7;Site->Jobs[2].STS=1;
+    TestTrue(TEXT("One standby reserves its entire berth group's quay queue"),Site->HasBerthQueueTraffic(0));
+    TestFalse(TEXT("The current vehicle is ignored when checking its own return"),Site->HasBerthQueueTraffic(0,2));
+    Site->Jobs[2]=FSiteTransfer();Site->Jobs[2].Stage=8;Site->Jobs[2].STS=1;Site->NextVehicles[1]=2;
+    TestTrue(TEXT("A returned AGV waiting at the quay also occupies the berth queue"),Site->HasBerthQueueTraffic(0));
+    Site->Jobs[2]=FSiteTransfer();Site->NextVehicles[1]=INDEX_NONE;
     Site->YardApproachOwners[0]=INDEX_NONE;
     Site->RMGBusy[0]=false;
     const FTransform BookedPose=Site->Vehicles[1]->GetActorTransform();
     TestTrue(TEXT("An STS pickup reserves a supported yard service"),Site->ReserveYardApproach(1,true));
-    TestTrue(TEXT("Booking leaves both the physical approach and RMG free"),
+    TestTrue(TEXT("Advance booking leaves the physical approach available"),
         Site->Jobs[1].bYardAdvanceBooking && Site->SlotAssigned[1] &&
         Site->YardApproachOwners[0]==INDEX_NONE && !Site->RMGBusy[0] &&
         Site->Vehicles[1]->GetActorTransform().Equals(BookedPose));
+    TestTrue(TEXT("Eligible reservation starts the RMG approach before AGV arrival"),Site->ReserveYard(1,true));
+    TestTrue(TEXT("RMG approaches while the AGV stays at its current position"),
+        Site->Jobs[1].bRMGReserved && Site->RMGBusy[0] && R->RailWorkInterval().Y>=999.f &&
+        Site->YardApproachOwners[0]==INDEX_NONE && Site->Vehicles[1]->GetActorTransform().Equals(BookedPose));
     TestFalse(TEXT("An unpromoted pickup cannot create an unlimited service queue"),Site->CanBookNextYardService(2));
     Site->Jobs[1].Stage=2;
     TestTrue(TEXT("Loaded departure promotes its own service to approach ownership"),Site->ReserveYardApproach(1));
-    TestTrue(TEXT("Approach promotion does not reserve an idle RMG machine early"),
-        Site->YardApproachOwners[0]==1 && !Site->Jobs[1].bYardAdvanceBooking && !Site->RMGBusy[0]);
+    TestTrue(TEXT("Loaded departure promotes the prepositioned RMG service"),
+        Site->YardApproachOwners[0]==1 && !Site->Jobs[1].bYardAdvanceBooking && Site->RMGBusy[0]);
+    Site->Jobs[1].bRMGReserved=false;Site->Jobs[1].RMG=INDEX_NONE;Site->RMGBusy[0]=false;
+    R->CancelRMGApproach();
     Site->Jobs[1].Stage=6;
     Site->SlotAssigned[1]=false;
     Site->YardApproachOwners[0]=0;

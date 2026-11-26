@@ -584,7 +584,19 @@ void APortWorkingCrane::AdvanceStep(float Dt,bool bGlobalPaused)
     case 1: Target=FVector(Source.X,Source.Y,SafeZ); break;
     case 2: Target=Source+FVector(0,0,WorkingCrane::LiftOffset); break;
     case 3: Target=FVector(Source.X,Source.Y,SafeZ); break;
-    case 4: Target=FVector(Destination.X,Destination.Y,SafeZ); break;
+    case 4:
+        Target=FVector(Destination.X,Destination.Y,SafeZ);
+        if(bSTS && bCarrying && IsValid(HandoverAGV))
+        {
+            const FVector Landing=Destination+Orientation.UnrotateVector(
+                Observation.SpreaderPosition-Observation.CargoPosition);
+            if(FVector::Dist2D(Local(Observation.SpreaderPosition),Landing)<=500.f)
+            {
+                constexpr float PrelandingClearanceCm=200.f;
+                Target=Landing+FVector(0,0,PrelandingClearanceCm);
+            }
+        }
+        break;
     case 5:
         // Pickup retains the achieved coupling offset. Compensate it from
         // measurements so the cargo, rather than an ideal head centre, lands on the AGV.

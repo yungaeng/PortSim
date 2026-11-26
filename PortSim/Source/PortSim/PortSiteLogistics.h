@@ -416,6 +416,7 @@ private:
     void ReassignBlockedParkingVehicles();
     void AdvanceFleetBatteries(float Dt);
     bool IsAGVDispatchEnabled(int32 Vehicle) const;
+    bool HasBerthQueueTraffic(int32 STS,int32 IgnoreVehicle=INDEX_NONE) const;
     void ReconcileAGVThroughputFleet();
     void AdvanceAGVThroughputController(float Dt);
     bool AGVThroughputWindowInvalid() const;
@@ -436,7 +437,7 @@ private:
     void RecoverTrafficCycle();
     double PendingSimulationSeconds=0;
     int32 YardApproachKey(const FSiteYardSlot& Slot) const { return LaneCount==9?Slot.Crane:Slot.Block; }
-    bool ReserveYard(int32 Lane);
+    bool ReserveYard(int32 Lane,bool bPreposition=false);
     bool LimitGeneratedCargoToYardCapacity();
     bool PlanYardDestinations();
     bool PlanLegacyYardDestinations();
