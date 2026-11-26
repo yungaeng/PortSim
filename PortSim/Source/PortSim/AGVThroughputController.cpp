@@ -70,9 +70,14 @@ void FAGVThroughputController::Initialize(const FAGVThroughputConfig& InConfig,i
     const TArray<int32>& STSCompletedJobs)
 {
     Config=InConfig;
-    Stage=EAGVThroughputStage::Probing;
-    TargetAGV=Config.bEnabled?0:FMath::Min(Config.MaxAGV,FleetSize);
-    LastAcceptedAGV=0;
+    // Start with one probe-size reserve so STS/RMG work can begin overlapping
+    // AGV approach immediately instead of waiting for the first throughput
+    // window just to create the first active fleet.
+    TargetAGV=Config.bEnabled?
+        FMath::Clamp(Config.StepSize,1,FMath::Min(Config.MaxAGV,FleetSize)):
+        FMath::Min(Config.MaxAGV,FleetSize);
+    Stage=Config.bEnabled?EAGVThroughputStage::Settling:EAGVThroughputStage::Saturated;
+    LastAcceptedAGV=TargetAGV;
     SaturatedAGV=0;
     ReferenceThroughput=RecentThroughput=SaturatedThroughput=0.;
     StageElapsed=WindowElapsed=SaturatedElapsed=0.;

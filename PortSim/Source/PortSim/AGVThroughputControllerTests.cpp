@@ -18,6 +18,9 @@ bool FAgvThroughputControllerTest::RunTest(const FString& Parameters)
     TArray<int32> Counts={0};
     FAGVThroughputController Controller;
     Controller.Initialize(Config,60,Counts);
+    TestEqual(TEXT("Controller starts with one probe-size AGV reserve"),Controller.TargetAGV,4);
+    TestTrue(TEXT("Initial reserve enters settling before throughput measurement"),
+        FString(Controller.StageName())==TEXT("Settling"));
     auto Measure=[&](FAGVThroughputController& C,TArray<int32>& Completed,
         const TFunction<double(const FAGVThroughputController&)>& Rate)
     {
