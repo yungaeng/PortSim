@@ -702,6 +702,23 @@ void APortSiteLogistics::PrepareExecutableCargo(int32 Lane,TOptional<TArray<int3
         { Other.Actor->SetActorHiddenInGame(false); Other.Actor->SetActorEnableCollision(true); }
     const int32 Returning=NextVehicles[Lane];
     if(Returning!=INDEX_NONE && Jobs[Returning].Stage==5) Jobs[Returning].ReturnCargo=Best;
+    // Lane 9 starts the selected STS pickup while the AGV is still approaching.
+    // The destination remains interlocked until the actual vehicle claims the
+    // handover, allowing pickup and approach to overlap instead of waiting for
+    // an idle-vehicle assignment first.
+    if(LaneCount==9 && STSOwners[Lane]==INDEX_NONE)
+    {
+        auto* Crane=Equipment[YardCraneCount+Lane].Get();
+        if(CraneAvailable(YardCraneCount+Lane) && !Crane->IsBusy())
+        {
+            if(!Crane->AssignCargo(C.Actor.Get(),C.Actor->GetActorLocation(),
+                CargoQuay(Best)+FVector(0,0,349.5f),false,false))
+            { Stop(TEXT("STS could not start pre-work: ")+Crane->Fault); return; }
+            Crane->SetDestinationReady(false);
+            PreparedStarted[Lane]=true;
+            ++PrefetchedJobs;
+        }
+    }
     // Leave the box secured aboard until ActivateVehicle atomically claims
     // the AGV and downstream approach. No speculative suspended load.
 }
@@ -795,11 +812,19 @@ void APortSiteLogistics::ActivateVehicle(int32 Vehicle,int32 STS,bool FromQueue)
     Record.VehicleAssignedAt=SimulationTime;
     if(LaneCount==9)
     {
-        if(!Equipment[YardCraneCount+STS]->AssignCargo(Record.Actor.Get(),Record.Actor->GetActorLocation(),
-            TransferQuay(Job)+FVector(0,0,349.5f),false,false))
-        { Stop(TEXT("STS could not start admitted cargo: ")+Equipment[YardCraneCount+STS]->Fault); return; }
-        Equipment[YardCraneCount+STS]->SetDestinationReady(false);
-        ++PrefetchedJobs; // STS pickup overlaps its assigned AGV's approach.
+        auto* Crane=Equipment[YardCraneCount+STS].Get();
+        const bool Prestarted=PreparedStarted[STS] &&
+            Crane->CargoActor==Record.Actor.Get() && Crane->IsBusy();
+        if(Prestarted)
+            Crane->SetDestinationReady(false);
+        else
+        {
+            if(!Crane->AssignCargo(Record.Actor.Get(),Record.Actor->GetActorLocation(),
+                TransferQuay(Job)+FVector(0,0,349.5f),false,false))
+            { Stop(TEXT("STS could not start admitted cargo: ")+Crane->Fault); return; }
+            Crane->SetDestinationReady(false);
+            ++PrefetchedJobs;
+        }
         PORTSIM_SIM_LOG(LogTemp,Display,TEXT("DISPATCH_ADMITTED: STS%d C%d AGV%d RMG%d queue_seconds=%.1f"),
             STS+1,Record.ID,Vehicles[Vehicle]->VehicleID,Job.RMG+1,SimulationTime-Record.DispatchEligibleAt);
     }
@@ -1092,8 +1117,15 @@ void APortSiteLogistics::ScheduleFleet()
     ReadySTS.StableSort([&](int32 A,int32 B)
     {
         const int32 CargoA=PreparedCargo[A],CargoB=PreparedCargo[B];
-        const bool ReadyA=STSOwners[A]==INDEX_NONE && CargoA!=INDEX_NONE && !Equipment[YardCraneCount+A]->IsBusy();
-        const bool ReadyB=STSOwners[B]==INDEX_NONE && CargoB!=INDEX_NONE && !Equipment[YardCraneCount+B]->IsBusy();
+        auto Ready=[&](int32 S,int32 Cargo)
+        {
+            if(STSOwners[S]!=INDEX_NONE || Cargo==INDEX_NONE) return false;
+            auto* Crane=Equipment[YardCraneCount+S].Get();
+            if(!Crane->IsBusy()) return true;
+            return PreparedStarted[S] && Crane->CargoActor==Manifest[Cargo].Actor.Get();
+        };
+        const bool ReadyA=Ready(A,CargoA);
+        const bool ReadyB=Ready(B,CargoB);
         if(ReadyA!=ReadyB) return ReadyA;
         if(ReadyA)
         {
@@ -1117,7 +1149,10 @@ void APortSiteLogistics::ScheduleFleet()
         // Earlier assignments in this same pass may claim the selected RMG.
         // Reconsider another executable box instead of lifting the blocked one.
         PrepareNextCargo(S,&SourceCandidates[S]);
-        if (!CraneAvailable(YardCraneCount+S) || STSOwners[S]!=INDEX_NONE || PreparedCargo[S]==INDEX_NONE || Equipment[YardCraneCount+S]->IsBusy() ||
+        const bool Prestarted=PreparedCargo[S]!=INDEX_NONE && PreparedStarted[S] &&
+            Equipment[YardCraneCount+S]->CargoActor==Manifest[PreparedCargo[S]].Actor.Get();
+        if (!CraneAvailable(YardCraneCount+S) || STSOwners[S]!=INDEX_NONE || PreparedCargo[S]==INDEX_NONE ||
+            (Equipment[YardCraneCount+S]->IsBusy() && !Prestarted) ||
             !YardDispatchReady(PreparedCargo[S])) continue;
         if (NextVehicles[S]!=INDEX_NONE)
         {
@@ -3450,6 +3485,17 @@ void APortSiteLogistics::AdvanceStep(float Dt,bool Paused)
                     Equipment.IsValidIndex(Job.RMG) && Equipment[Job.RMG]==Crane &&
                     Yard.IsValidIndex(Job.Slot) && Job.ExportIndex==INDEX_NONE)
                 { Approaching=Crane->PrepareRMGApproach(YardHandover(Yard[Job.Slot])); break; }
+            if(!Approaching)
+                for(int32 S=0;S<PreparedCargo.Num();++S)
+                {
+                    const int32 Cargo=PreparedCargo[S];
+                    if(!Manifest.IsValidIndex(Cargo)) continue;
+                    const int32 Slot=Manifest[Cargo].PlannedSlot;
+                    if(!Yard.IsValidIndex(Slot)) continue;
+                    const int32 RMG=Yard[Slot].Crane;
+                    if(Equipment.IsValidIndex(RMG) && Equipment[RMG]==Crane)
+                    { Approaching=Crane->PrepareRMGApproach(YardHandover(Yard[Slot])); break; }
+                }
             if(!Approaching) Crane->CancelRMGApproach();
         }
         const int32 PreviousRecoveries=Crane->TotalPickupRecoveryEvents;
